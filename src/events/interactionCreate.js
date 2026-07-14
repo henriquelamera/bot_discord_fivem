@@ -1134,10 +1134,11 @@ module.exports = {
       }
 
       if (interaction.customId === 'cat_status_admin') {
-        const config = load(CONFIG_FILE, {});
+        try {
+          const config = load(CONFIG_FILE, {});
 
-        // Credenciais
-        const token = config.discord_token ? '✅ Configurado' : '❌ Não configurado';
+          // Credenciais
+          const token = config.discord_token ? '✅ Configurado' : '❌ Não configurado';
         const clientId = config.client_id ? '✅ Configurado' : '❌ Não configurado';
         const guildId = config.guild_id ? '✅ Configurado' : '❌ Não configurado';
 
@@ -1264,6 +1265,13 @@ module.exports = {
           embeds: [embed],
           ephemeral: true,
         });
+        } catch (error) {
+          console.error('❌ Erro em cat_status_admin:', error);
+          await interaction.reply({
+            content: `❌ Erro ao exibir status: ${error.message}`,
+            ephemeral: true,
+          }).catch(err => console.error('Erro ao enviar mensagem de erro:', err));
+        }
       }
 
       if (interaction.customId === 'cat_boas_vindas') {
@@ -1314,10 +1322,11 @@ module.exports = {
       }
 
       if (interaction.customId === 'cat_status') {
-        const config = load(CONFIG_FILE, {});
+        try {
+          const config = load(CONFIG_FILE, {});
 
-        // Boas-vindas
-        const boasVindasCanal = config.boas_vindas?.canal_id
+          // Boas-vindas
+          const boasVindasCanal = config.boas_vindas?.canal_id
           ? `✅ #${interaction.guild.channels.cache.get(config.boas_vindas.canal_id)?.name || 'ID Inválido'}`
           : '❌ Canal não configurado';
         const boasVindasRegistro = config.boas_vindas?.canal_registro_id
@@ -1386,6 +1395,13 @@ module.exports = {
           embeds: [embed],
           ephemeral: true,
         });
+        } catch (error) {
+          console.error('❌ Erro em cat_status:', error);
+          await interaction.reply({
+            content: `❌ Erro ao exibir status: ${error.message}`,
+            ephemeral: true,
+          }).catch(err => console.error('Erro ao enviar mensagem de erro:', err));
+        }
       }
     }
 
