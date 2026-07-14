@@ -3811,12 +3811,13 @@ module.exports = {
 
           // Remover ADVs (começa por ADV 2, depois ADV 1)
           let advsRemovidos = 0;
+          const roleOps = [];
           if (temAdv2 && advsRemovidos < advsARemover) {
-            await membro.roles.remove(cargoAdv2Id);
+            roleOps.push(membro.roles.remove(cargoAdv2Id));
             advsRemovidos++;
           }
           if (temAdv1 && advsRemovidos < advsARemover) {
-            await membro.roles.remove(cargoAdv1Id);
+            roleOps.push(membro.roles.remove(cargoAdv1Id));
             advsRemovidos++;
           }
 
@@ -3824,11 +3825,16 @@ module.exports = {
           const temAdvAgora = membro.roles.cache.has(cargoAdv1Id) || membro.roles.cache.has(cargoAdv2Id);
           if (!temAdvAgora && advsARemover > 0) {
             if (cargoAtrasadoId && membro.roles.cache.has(cargoAtrasadoId)) {
-              await membro.roles.remove(cargoAtrasadoId);
+              roleOps.push(membro.roles.remove(cargoAtrasadoId));
             }
             if (cargoEmDiaId) {
-              await membro.roles.add(cargoEmDiaId);
+              roleOps.push(membro.roles.add(cargoEmDiaId));
             }
+          }
+
+          // Executar todas as operações de role em paralelo
+          if (roleOps.length > 0) {
+            await Promise.all(roleOps);
           }
 
           entrega.status = 'aprovada';
