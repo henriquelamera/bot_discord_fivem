@@ -186,6 +186,59 @@ async function validarSenhaPainel(guildId, senha) {
   }
 }
 
+// Pegar todas as configurações do servidor
+async function getConfig(guildId) {
+  try {
+    const result = await pool.query(
+      `SELECT config_json FROM config_servidor
+       WHERE servidor_id = (SELECT id FROM servidores WHERE guild_id = $1)`,
+      [guildId]
+    );
+    if (result.rows.length === 0) return {};
+    return result.rows[0].config_json || {};
+  } catch (error) {
+    console.error('Erro ao pegar configurações:', error);
+    return {};
+  }
+}
+
+// Salvar configurações do servidor
+async function saveConfig(guildId, config) {
+  try {
+    const servidorResult = await pool.query(
+      'SELECT id FROM servidores WHERE guild_id = $1',
+      [guildId]
+    );
+    if (servidorResult.rows.length === 0) {
+      throw new Error('Servidor não registrado');
+    }
+    const servidorId = servidorResult.rows[0].id;
+
+    await pool.query(
+      `INSERT INTO config_servidor (servidor_id, config_json, data_atualizacao)
+       VALUES ($1, $2, NOW())
+       ON CONFLICT (servidor_id)
+       DO UPDATE SET config_json = $2, data_atualizacao = NOW()`,
+      [servidorId, JSON.stringify(config)]
+    );
+  } catch (error) {
+    console.error('Erro ao salvar configurações:', error);
+    throw error;
+  }
+}
+
+// Atualizar um campo específico na configuração
+async function updateConfigField(guildId, field, value) {
+  try {
+    const config = await getConfig(guildId);
+    config[field] = value;
+    await saveConfig(guildId, config);
+  } catch (error) {
+    console.error('Erro ao atualizar campo de configuração:', error);
+    throw error;
+  }
+}
+
 module.exports = {
   registerServer,
   getServer,
@@ -197,4 +250,7 @@ module.exports = {
   getLogs,
   getSenhaPainel,
   validarSenhaPainel,
+  getConfig,
+  saveConfig,
+  updateConfigField,
 };
