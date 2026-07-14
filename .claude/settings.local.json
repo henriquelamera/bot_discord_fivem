@@ -6,7 +6,13 @@
       "PowerShell(New-Item -ItemType File -Path \"c:\\\\bot rbk\\\\src\\\\commands\\\\publicar_registro.js\" -Force)",
       "PowerShell(New-Item -ItemType File -Path \"c:\\\\bot rbk\\\\src\\\\commands\\\\publicar_bau.js\" -Force)",
       "PowerShell(wc -l \"c:\\\\bot rbk\\\\src\\\\events\\\\interactionCreate.js\")",
-      "PowerShell(Get-Process node | Where-Object {$_.Name -eq \"node\"} | Stop-Process -Force)"
+      "PowerShell(Get-Process node | Where-Object {$_.Name -eq \"node\"} | Stop-Process -Force)",
+      "Skill(code-review)",
+      "Skill(code-review:*)",
+      "Bash(node index.js)",
+      "Bash(pkill -f \"node index.js\")",
+      "PowerShell(Get-Process node -ErrorAction SilentlyContinue)",
+      "PowerShell(Stop-Process -Force)"
     ]
   }
 }

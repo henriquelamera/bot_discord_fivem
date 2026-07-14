@@ -184,7 +184,7 @@ module.exports = {
 
         const config = await serverService.getConfig(interaction.guild.id);
         config.boas_vindas = {
-          ...config.boas_vindas,
+          ...(config.boas_vindas || {}),
           texto: texto,
           banner_url: banner,
         };
@@ -423,7 +423,8 @@ module.exports = {
             registradoPorTag: interaction.user.tag,
             data: new Date().toISOString(),
           };
-          save('config.json', config);
+          // ADV pendente salvo na config temporariamente até aprovação
+          // TODO: Migrar para DB quando handler de aprovação for implementado
 
           await canalAprovacao.send({
             embeds: [embed],
@@ -507,7 +508,8 @@ module.exports = {
             solicitadoPorTag: interaction.user.tag,
             data: new Date().toISOString(),
           };
-          save('config.json', config);
+          // ADV pendente salvo na config temporariamente até aprovação
+          // TODO: Migrar para DB quando handler de aprovação for implementado
 
           await canalAprovacao.send({
             embeds: [embed],
@@ -1914,7 +1916,7 @@ module.exports = {
 
         const config = await serverService.getConfig(interaction.guild.id);
         config.registro = {
-          ...config.registro,
+          ...(config.registro || {}),
           canal_id: canalId,
         };
         await serverService.saveConfig(interaction.guild.id, config);

@@ -41,14 +41,14 @@ module.exports = {
 
           if (!cargoEmDiaId || !cargoAtrasadoId || !cargoAdv1Id) {
             console.warn('Cargos de farm não configurados corretamente');
-            return;
+            continue;
           }
 
           // Buscar todos os membros com "Farm em Dia"
           const roleEmDia = guild.roles.cache.get(cargoEmDiaId);
           if (!roleEmDia) {
             console.warn('Cargo Farm em Dia não encontrado');
-            return;
+            continue;
           }
 
           const membrosComFarmEmDia = await roleEmDia.members;
