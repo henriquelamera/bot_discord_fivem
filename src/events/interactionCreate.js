@@ -1161,18 +1161,6 @@ module.exports = {
           ? `✅ ${interaction.guild.roles.cache.get(config.cargo_gerente_id)?.name || 'ID Inválido'}`
           : '❌ Não configurado';
 
-        // Canais
-        const canalBoasVindas = config.boas_vindas?.canal_id
-          ? `✅ #${interaction.guild.channels.cache.get(config.boas_vindas.canal_id)?.name || 'ID Inválido'}`
-          : '❌ Não configurado';
-
-        const canalRegistro = config.boas_vindas?.canal_registro_id
-          ? `✅ #${interaction.guild.channels.cache.get(config.boas_vindas.canal_registro_id)?.name || 'ID Inválido'}`
-          : '❌ Não configurado';
-
-        const canalAprovacoes = config.boas_vindas?.canal_aprovacoes_id
-          ? `✅ #${interaction.guild.channels.cache.get(config.boas_vindas.canal_aprovacoes_id)?.name || 'ID Inválido'}`
-          : '❌ Não configurado';
 
         // Cargos Farm
         const farmEmDia = config.farm?.cargo_em_dia_id
@@ -1247,10 +1235,6 @@ module.exports = {
           { name: '👥 Morador', value: truncate(cargoMorador), inline: true },
           { name: '👤 Membro', value: truncate(cargoMembro), inline: true },
           { name: '👨‍💼 Gerente', value: truncate(cargoGerente), inline: true },
-
-          { name: '👋 Canal Principal', value: truncate(canalBoasVindas), inline: true },
-          { name: '📋 Canal Registro', value: truncate(canalRegistro), inline: true },
-          { name: '✅ Aprovações', value: truncate(canalAprovacoes), inline: true },
 
           { name: '✅ Farm em Dia', value: truncate(farmEmDia), inline: true },
           { name: '⏸️ Farm Atrasado', value: truncate(farmAtrasado), inline: true },
