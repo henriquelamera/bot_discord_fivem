@@ -1202,7 +1202,7 @@ module.exports = {
           ? `✅ #${interaction.guild.channels.cache.get(config.farm.canal_aprovacao_adv)?.name || 'ID Inválido'}`
           : '❌ Não configurado';
 
-        // Cargos Permissões
+        // Cargos Permissões Farm
         const cargosPagamento = config.farm?.cargo_pagamento?.length > 0
           ? `✅ ${config.farm.cargo_pagamento.map(id => interaction.guild.roles.cache.get(id)?.name).filter(Boolean).join(', ')}`
           : '❌ Não configurado';
@@ -1211,6 +1211,7 @@ module.exports = {
           ? `✅ ${config.farm.cargo_responsaveis_farm.map(id => interaction.guild.roles.cache.get(id)?.name).filter(Boolean).join(', ')}`
           : '❌ Não configurado';
 
+        // Cargos Permissões ADV
         const cargosRegistroAdv = config.farm?.cargo_registro_adv?.length > 0
           ? `✅ ${config.farm.cargo_registro_adv.map(id => interaction.guild.roles.cache.get(id)?.name).filter(Boolean).join(', ')}`
           : '❌ Não configurado';
@@ -1430,6 +1431,66 @@ module.exports = {
         }
       }
 
+      if (interaction.customId === 'painel_advs') {
+        const valor = interaction.values[0];
+        const { StringSelectMenuBuilder, ChannelSelectMenuBuilder } = require('discord.js');
+        const config = load(CONFIG_FILE, {});
+
+        if (valor === 'adv_canal_registro' || valor === 'adv_canal_aprovacao') {
+          // Seletor de canal
+          const selectMenu = new ChannelSelectMenuBuilder()
+            .setCustomId(`select_${valor}`)
+            .setPlaceholder('Selecione o canal...');
+
+          const row = new ActionRowBuilder().addComponents(selectMenu);
+
+          const titulo = valor === 'adv_canal_registro' ? 'Canal de Registro de ADV' : 'Canal de Aprovação de ADV';
+
+          await interaction.reply({
+            content: `**${titulo}**\n\nSelecione qual canal será usado:`,
+            components: [row],
+            ephemeral: true,
+          });
+        } else {
+          // Seletor de cargos (para registro e aprovação)
+          const cargos = interaction.guild.roles.cache
+            .filter(role => !role.managed && role.id !== interaction.guild.id)
+            .sort((a, b) => b.position - a.position)
+            .map(role => ({
+              label: role.name,
+              value: role.id,
+              description: `Posição: ${role.position}`,
+            }));
+
+          if (cargos.length === 0) {
+            return await interaction.reply({
+              content: '❌ Nenhum cargo encontrado no servidor.',
+              ephemeral: true,
+            });
+          }
+
+          const selectMenu = new StringSelectMenuBuilder()
+            .setCustomId(`select_${valor}`)
+            .setPlaceholder('Selecione os cargos...')
+            .setMinValues(1)
+            .setMaxValues(Math.min(cargos.length, 25))
+            .addOptions(cargos.slice(0, 25));
+
+          const row = new ActionRowBuilder().addComponents(selectMenu);
+
+          const titulos = {
+            adv_cargos_registro: 'Cargos que Podem Dar ADV',
+            adv_cargos_aprovacao: 'Cargos que Podem Aprovar ADV',
+          };
+
+          await interaction.reply({
+            content: `**${titulos[valor]}**\n\nSelecione quais cargo(s) podem ${valor === 'adv_cargos_registro' ? 'registrar' : 'aprovar'} ADVs:`,
+            components: [row],
+            ephemeral: true,
+          });
+        }
+      }
+
       if (interaction.customId === 'painel_cargos_farm') {
         const valor = interaction.values[0];
         const { StringSelectMenuBuilder } = require('discord.js');
@@ -1627,6 +1688,44 @@ module.exports = {
             ephemeral: true,
           });
         }
+      }
+
+      // Handlers para configuração de ADV - Canais
+      if (interaction.customId === 'select_adv_canal_registro' || interaction.customId === 'select_adv_canal_aprovacao') {
+        const canalId = interaction.values[0];
+        const config = load(CONFIG_FILE, {});
+        if (!config.farm) config.farm = {};
+
+        const tipo = interaction.customId === 'select_adv_canal_registro' ? 'canal_registro_adv' : 'canal_aprovacao_adv';
+        config.farm[tipo] = canalId;
+        save(CONFIG_FILE, config);
+
+        const canal = interaction.guild.channels.cache.get(canalId);
+        const titulo = tipo === 'canal_registro_adv' ? 'Canal de Registro de ADV' : 'Canal de Aprovação de ADV';
+
+        await interaction.reply({
+          content: `✅ ${titulo} configurado!\n**Canal:** #${canal.name}`,
+          ephemeral: true,
+        });
+      }
+
+      // Handlers para configuração de ADV - Cargos
+      if (interaction.customId === 'select_adv_cargos_registro' || interaction.customId === 'select_adv_cargos_aprovacao') {
+        const cargoIds = interaction.values;
+        const config = load(CONFIG_FILE, {});
+        if (!config.farm) config.farm = {};
+
+        const tipo = interaction.customId === 'select_adv_cargos_registro' ? 'cargo_registro_adv' : 'cargo_aprovacao_adv';
+        config.farm[tipo] = cargoIds;
+        save(CONFIG_FILE, config);
+
+        const cargosNomes = cargoIds.map(id => interaction.guild.roles.cache.get(id).name).join(', ');
+        const titulo = tipo === 'cargo_registro_adv' ? 'Cargos que Podem Dar ADV' : 'Cargos que Podem Aprovar ADV';
+
+        await interaction.reply({
+          content: `✅ ${titulo} configurado!\n**Cargos:** ${cargosNomes}`,
+          ephemeral: true,
+        });
       }
 
       if (interaction.customId === 'select_cargo_morador' || interaction.customId === 'select_cargo_bau_aberto') {
