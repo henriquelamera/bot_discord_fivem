@@ -1231,28 +1231,15 @@ module.exports = {
           : '';
         const cargosAprovacaoAdv = safeValue(cargosAprovacaoAdvNomes);
 
-        console.log('=== DEBUG cat_status_admin ===');
-        console.log('token:', typeof token, token);
-        console.log('clientId:', typeof clientId, clientId);
-        console.log('guildId:', typeof guildId, guildId);
-        console.log('cargoMorador:', typeof cargoMorador, cargoMorador);
-        console.log('cargoMembro:', typeof cargoMembro, cargoMembro);
-        console.log('cargoGerente:', typeof cargoGerente, cargoGerente);
-
-        console.log('Criando EmbedBuilder...');
-        const embed = new EmbedBuilder()
-          .setTitle('✅ Status Completo do Bot')
-          .setColor(0x2ecc71);
-        console.log('EmbedBuilder criado com sucesso');
-
-        // Adicionar fields de forma segura
         const truncate = (str, max = 1024) => {
           if (!str) return '❌';
           return str.length > max ? str.substring(0, max - 3) + '...' : str;
         };
 
-        console.log('Adicionando fields...');
-        embed.addFields(
+        const embed = new EmbedBuilder()
+          .setTitle('✅ Status Completo do Bot')
+          .setColor(0x2ecc71)
+          .addFields(
           { name: '🔐 Discord Token', value: truncate(token), inline: true },
           { name: '🆔 Client ID', value: truncate(clientId), inline: true },
           { name: '🏢 Guild ID', value: truncate(guildId), inline: true },
@@ -1281,8 +1268,6 @@ module.exports = {
           { name: '⚠️ Podem Dar ADV', value: truncate(cargosRegistroAdv), inline: false },
           { name: '✅ Aprovam ADV', value: truncate(cargosAprovacaoAdv), inline: false }
         );
-
-        console.log('Embed criado com sucesso!');
 
         await interaction.reply({
           embeds: [embed],
