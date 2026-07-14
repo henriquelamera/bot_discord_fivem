@@ -38,6 +38,7 @@ module.exports = {
           const cargoAtrasadoId = config.farm.cargo_atrasado_id;
           const cargoAdv1Id = config.farm.cargo_adv_1;
           const cargoAdv2Id = config.farm.cargo_adv_2;
+          const cargoGerenteId = config.cargo_gerente_id;
           const cargoResponsaveisIds = config.farm.cargo_responsaveis_farm || [];
 
           if (!cargoEmDiaId || !cargoAtrasadoId || !cargoAdv1Id) {
@@ -56,6 +57,13 @@ module.exports = {
 
           for (const [memberId, membro] of membrosComFarmEmDia) {
             try {
+              // Verificar se tem cargo de Gerente (exempt de farm delivery)
+              const temCargoGerente = cargoGerenteId && membro.roles.cache.has(cargoGerenteId);
+              if (temCargoGerente) {
+                console.log(`⏭️ ${membro.user.tag}: Gerente - isento de farm delivery`);
+                continue;
+              }
+
               // Verificar se há entregas aprovadas na semana passada
               const agora = new Date();
               const umaSemanAtrás = new Date(agora.getTime() - 7 * 24 * 60 * 60 * 1000);

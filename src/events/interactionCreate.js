@@ -1135,10 +1135,37 @@ module.exports = {
 
       if (interaction.customId === 'cat_status_admin') {
         const config = load(CONFIG_FILE, {});
+
+        // Credenciais
         const token = config.discord_token ? '✅ Configurado' : '❌ Não configurado';
         const clientId = config.client_id ? '✅ Configurado' : '❌ Não configurado';
         const guildId = config.guild_id ? '✅ Configurado' : '❌ Não configurado';
-        const cargosQtd = config.cargos_disponiveis ? config.cargos_disponiveis.length : 0;
+
+        // Cargos de Registro
+        const cargoMorador = config.cargo_morador_id
+          ? `✅ ${interaction.guild.roles.cache.get(config.cargo_morador_id)?.name || 'ID Inválido'}`
+          : '❌ Não configurado';
+
+        const cargoMembro = config.cargo_membro_id
+          ? `✅ ${interaction.guild.roles.cache.get(config.cargo_membro_id)?.name || 'ID Inválido'}`
+          : '❌ Não configurado';
+
+        const cargoGerente = config.cargo_gerente_id
+          ? `✅ ${interaction.guild.roles.cache.get(config.cargo_gerente_id)?.name || 'ID Inválido'}`
+          : '❌ Não configurado';
+
+        // Canais
+        const canalBoasVindas = config.boas_vindas?.canal_id
+          ? `✅ #${interaction.guild.channels.cache.get(config.boas_vindas.canal_id)?.name || 'ID Inválido'}`
+          : '❌ Não configurado';
+
+        const canalRegistro = config.boas_vindas?.canal_registro_id
+          ? `✅ #${interaction.guild.channels.cache.get(config.boas_vindas.canal_registro_id)?.name || 'ID Inválido'}`
+          : '❌ Não configurado';
+
+        const canalAprovacoes = config.boas_vindas?.canal_aprovacoes_id
+          ? `✅ #${interaction.guild.channels.cache.get(config.boas_vindas.canal_aprovacoes_id)?.name || 'ID Inválido'}`
+          : '❌ Não configurado';
 
         // Cargos Farm
         const farmEmDia = config.farm?.cargo_em_dia_id
@@ -1157,14 +1184,25 @@ module.exports = {
           ? `✅ ${interaction.guild.roles.cache.get(config.farm.cargo_adv_2)?.name || 'ID Inválido'}`
           : '❌ Não configurado';
 
-        const cargosMateriais = config.farm?.cargo_materiais?.length > 0
-          ? `✅ ${config.farm.cargo_materiais.map(id => interaction.guild.roles.cache.get(id)?.name).filter(Boolean).join(', ')}`
+        // Canais Farm
+        const canalBau = config.farm?.canal_bau_id
+          ? `✅ #${interaction.guild.channels.cache.get(config.farm.canal_bau_id)?.name || 'ID Inválido'}`
           : '❌ Não configurado';
 
-        const cargosMetas = config.farm?.cargo_metas?.length > 0
-          ? `✅ ${config.farm.cargo_metas.map(id => interaction.guild.roles.cache.get(id)?.name).filter(Boolean).join(', ')}`
+        const canalAprovacoesFarm = config.farm?.canal_aprovacoes_id
+          ? `✅ #${interaction.guild.channels.cache.get(config.farm.canal_aprovacoes_id)?.name || 'ID Inválido'}`
           : '❌ Não configurado';
 
+        // Canais ADV
+        const canalRegistroAdv = config.farm?.canal_registro_adv
+          ? `✅ #${interaction.guild.channels.cache.get(config.farm.canal_registro_adv)?.name || 'ID Inválido'}`
+          : '❌ Não configurado';
+
+        const canalAprovacaoAdv = config.farm?.canal_aprovacao_adv
+          ? `✅ #${interaction.guild.channels.cache.get(config.farm.canal_aprovacao_adv)?.name || 'ID Inválido'}`
+          : '❌ Não configurado';
+
+        // Cargos Permissões
         const cargosPagamento = config.farm?.cargo_pagamento?.length > 0
           ? `✅ ${config.farm.cargo_pagamento.map(id => interaction.guild.roles.cache.get(id)?.name).filter(Boolean).join(', ')}`
           : '❌ Não configurado';
@@ -1173,24 +1211,52 @@ module.exports = {
           ? `✅ ${config.farm.cargo_responsaveis_farm.map(id => interaction.guild.roles.cache.get(id)?.name).filter(Boolean).join(', ')}`
           : '❌ Não configurado';
 
+        const cargosRegistroAdv = config.farm?.cargo_registro_adv?.length > 0
+          ? `✅ ${config.farm.cargo_registro_adv.map(id => interaction.guild.roles.cache.get(id)?.name).filter(Boolean).join(', ')}`
+          : '❌ Não configurado';
+
+        const cargosAprovacaoAdv = config.farm?.cargo_aprovacao_adv?.length > 0
+          ? `✅ ${config.farm.cargo_aprovacao_adv.map(id => interaction.guild.roles.cache.get(id)?.name).filter(Boolean).join(', ')}`
+          : '❌ Não configurado';
+
         const embed = new EmbedBuilder()
-          .setTitle('✅ Status do Bot - Admin')
+          .setTitle('✅ Status Completo do Bot')
           .setColor(0x2ecc71)
           .addFields(
-            { name: '🔐 Discord Token', value: token, inline: true },
-            { name: '🆔 Client ID', value: clientId, inline: true },
-            { name: '🏢 Guild ID', value: guildId, inline: true },
-            { name: '🔴 Cargos Disponíveis', value: `${cargosQtd} cargo(s)`, inline: true },
+            { name: '🔐 CREDENCIAIS', value: '---', inline: false },
+            { name: 'Discord Token', value: token, inline: true },
+            { name: 'Client ID', value: clientId, inline: true },
+            { name: 'Guild ID', value: guildId, inline: true },
+
+            { name: '\n📋 CARGOS DE REGISTRO', value: '---', inline: false },
+            { name: 'Morador', value: cargoMorador, inline: true },
+            { name: 'Membro', value: cargoMembro, inline: true },
+            { name: 'Gerente', value: cargoGerente, inline: true },
+
+            { name: '\n👋 CANAIS DE BOAS-VINDAS', value: '---', inline: false },
+            { name: 'Canal Principal', value: canalBoasVindas, inline: true },
+            { name: 'Canal de Registro', value: canalRegistro, inline: true },
+            { name: 'Aprovações', value: canalAprovacoes, inline: true },
+
             { name: '\n🌾 CARGOS DE FARM', value: '---', inline: false },
-            { name: '✅ Farm em Dia', value: farmEmDia, inline: true },
-            { name: '⏸️ Farm Atrasado', value: farmAtrasado, inline: true },
-            { name: '⚠️ ADV Farm 1', value: advFarm1, inline: true },
-            { name: '🚨 ADV Farm 2', value: advFarm2, inline: true },
+            { name: 'Farm em Dia', value: farmEmDia, inline: true },
+            { name: 'Farm Atrasado', value: farmAtrasado, inline: true },
+            { name: 'ADV Farm 1', value: advFarm1, inline: true },
+            { name: 'ADV Farm 2', value: advFarm2, inline: true },
+
+            { name: '\n🌾 CANAIS DE FARM', value: '---', inline: false },
+            { name: 'Abrir Baú', value: canalBau, inline: true },
+            { name: 'Aprovações', value: canalAprovacoesFarm, inline: true },
+
+            { name: '\n⚠️ CANAIS DE ADV', value: '---', inline: false },
+            { name: 'Registro ADV', value: canalRegistroAdv, inline: true },
+            { name: 'Aprovação ADV', value: canalAprovacaoAdv, inline: true },
+
             { name: '\n👥 PERMISSÕES', value: '---', inline: false },
-            { name: '📦 Materiais', value: cargosMateriais, inline: false },
-            { name: '🎯 Metas', value: cargosMetas, inline: false },
-            { name: '💰 Pagamento', value: cargosPagamento, inline: false },
-            { name: '👨‍💼 Responsáveis', value: cargosResponsaveis, inline: false }
+            { name: 'Aprovam Pagamento', value: cargosPagamento, inline: false },
+            { name: 'Responsáveis Farm', value: cargosResponsaveis, inline: false },
+            { name: 'Podem Dar ADV', value: cargosRegistroAdv, inline: false },
+            { name: 'Aprovam ADV', value: cargosAprovacaoAdv, inline: false }
           );
 
         await interaction.reply({
@@ -3514,6 +3580,30 @@ module.exports = {
           const cargoAdv2Id = config.farm?.cargo_adv_2;
           const cargoAtrasadoId = config.farm?.cargo_atrasado_id;
           const cargoEmDiaId = config.farm?.cargo_em_dia_id;
+          const cargoGerenteId = config.cargo_gerente_id;
+
+          // Verificar se é Gerente (exempt de farm delivery e ADV system)
+          const temCargoGerente = cargoGerenteId && membro.roles.cache.has(cargoGerenteId);
+          if (temCargoGerente) {
+            entrega.status = 'aprovada';
+            entrega.data_aprovacao = new Date().toISOString();
+            entrega.aprovador_id = interaction.user.id;
+            save(CONFIG_FILE, config);
+
+            await interaction.reply({
+              content: `✅ Entrega de ${membro.user.tag} aprovada!\n\n(Gerente - isento do sistema de ADV)`,
+              ephemeral: true,
+            });
+
+            try {
+              await membro.user.send({
+                content: `✅ Sua entrega de farm foi **aprovada**! Parabéns!`,
+              });
+            } catch (err) {
+              console.warn('Não foi possível notificar usuário:', err.message);
+            }
+            return;
+          }
 
           // Contar quantos ADVs o membro tem (via banco PostgreSQL)
           const totalADVs = await advService.countADVs(guildId, entrega.usuario_id);
