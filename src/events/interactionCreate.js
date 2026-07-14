@@ -886,6 +886,125 @@ module.exports = {
     }
 
     if (interaction.isButton()) {
+      // Mapeamento rápido de handlers para evitar iteração sequencial de 4600 linhas
+      // Dispatch prioritário para categorias principais
+      if (interaction.customId.startsWith('cat_')) {
+        const handleCategoryButton = async (customId) => {
+          const { StringSelectMenuBuilder, ChannelType } = require('discord.js');
+
+          switch (customId) {
+            case 'cat_boas_vindas': {
+              const selectMenu = new StringSelectMenuBuilder()
+                .setCustomId('painel_boas_vindas')
+                .setPlaceholder('Escolha uma opção...')
+                .addOptions({
+                  label: 'Configurar',
+                  description: 'Configurar sistema de boas-vindas',
+                  value: 'config_boas_vindas',
+                });
+              const row = new ActionRowBuilder().addComponents(selectMenu);
+              await interaction.reply({
+                content: '**👋 Boas-vindas**\n\nSelecione a opção:',
+                components: [row],
+                ephemeral: true,
+              });
+              return true;
+            }
+            case 'cat_status': {
+              try {
+                const config = await serverService.getConfig(interaction.guild.id);
+                const truncate = (str, max = 1024) => {
+                  if (!str) return '❌';
+                  return str.length > max ? str.substring(0, max - 3) + '...' : str;
+                };
+
+                const boasVindasCanal = config.boas_vindas?.canal_id
+                  ? `✅ #${interaction.guild.channels.cache.get(config.boas_vindas.canal_id)?.name || 'ID Inválido'}`
+                  : '❌';
+                const boasVindasRegistro = config.boas_vindas?.canal_registro_id
+                  ? `✅ #${interaction.guild.channels.cache.get(config.boas_vindas.canal_registro_id)?.name || 'ID Inválido'}`
+                  : '❌';
+                const boasVindasAprovacoes = config.boas_vindas?.canal_aprovacoes_id
+                  ? `✅ #${interaction.guild.channels.cache.get(config.boas_vindas.canal_aprovacoes_id)?.name || 'ID Inválido'}`
+                  : '❌';
+
+                const registro = config.registro?.canal_id
+                  ? `✅ #${interaction.guild.channels.cache.get(config.registro.canal_id)?.name || 'ID Inválido'}`
+                  : '❌';
+
+                const farmCategoria = config.farm?.categoria_bau_id
+                  ? `✅ ${interaction.guild.channels.cache.get(config.farm.categoria_bau_id)?.name || 'ID Inválido'}`
+                  : '❌';
+
+                const farmCanal = config.farm?.canal_aprovacoes_id
+                  ? `✅ ${interaction.guild.channels.cache.get(config.farm.canal_aprovacoes_id)?.name || 'ID Inválido'}`
+                  : '❌';
+
+                const boasVindas = config.boas_vindas ? '✅ Configurado' : '❌ Não configurado';
+                const farmStatus = config.farm ? '✅ Configurado' : '❌ Não configurado';
+
+                const statusEmbed = new EmbedBuilder()
+                  .setTitle('✅ Status da Configuração')
+                  .setColor(0x2ecc71)
+                  .addFields(
+                    { name: '**Boas-vindas**', value: boasVindas, inline: false },
+                    { name: 'Canal', value: boasVindasCanal, inline: true },
+                    { name: 'Registro', value: boasVindasRegistro, inline: true },
+                    { name: 'Aprovações', value: boasVindasAprovacoes, inline: true },
+                    { name: '**Registro**', value: truncate(JSON.stringify(config.registro || {})), inline: false },
+                    { name: 'Canal', value: registro, inline: true },
+                    { name: '**Farm**', value: farmStatus, inline: false },
+                    { name: 'Categoria', value: farmCategoria, inline: true },
+                    { name: 'Aprovações', value: farmCanal, inline: true }
+                  );
+
+                await interaction.reply({
+                  embeds: [statusEmbed],
+                  ephemeral: true,
+                });
+                return true;
+              } catch (err) {
+                console.error('Erro em cat_status:', err);
+                await interaction.reply({
+                  content: `❌ Erro ao exibir status: ${err.message}`,
+                  ephemeral: true,
+                });
+                return true;
+              }
+            }
+            case 'cat_registro': {
+              const selectMenu = new StringSelectMenuBuilder()
+                .setCustomId('painel_registro')
+                .setPlaceholder('Escolha uma opção...')
+                .addOptions(
+                  {
+                    label: 'Canal de Registro',
+                    description: 'Onde aparecem os botões de Pedir/Atualizar Registro',
+                    value: 'config_reg_canal_registro',
+                  },
+                  {
+                    label: 'Canal de Aprovações',
+                    description: 'Onde aparecem registros para aprovar/rejeitar',
+                    value: 'config_reg_canal_aprovacoes',
+                  }
+                );
+              const row = new ActionRowBuilder().addComponents(selectMenu);
+              await interaction.reply({
+                content: '**📋 Registro**\n\nSelecione a opção:',
+                components: [row],
+                ephemeral: true,
+              });
+              return true;
+            }
+          }
+          return false; // Não foi um dos principais, cair nos if abaixo
+        };
+
+        if (await handleCategoryButton(interaction.customId)) {
+          return; // Handler foi encontrado e executado
+        }
+      }
+
       if (interaction.customId === 'cat_credenciais') {
         const { StringSelectMenuBuilder } = require('discord.js');
 
@@ -1258,138 +1377,6 @@ module.exports = {
         });
         } catch (error) {
           console.error('❌ Erro em cat_status_admin:', error);
-          await interaction.reply({
-            content: `❌ Erro ao exibir status: ${error.message}`,
-            ephemeral: true,
-          }).catch(err => console.error('Erro ao enviar mensagem de erro:', err));
-        }
-      }
-
-      if (interaction.customId === 'cat_boas_vindas') {
-        const { StringSelectMenuBuilder } = require('discord.js');
-        const selectMenu = new StringSelectMenuBuilder()
-          .setCustomId('painel_boas_vindas')
-          .setPlaceholder('Escolha uma opção...')
-          .addOptions(
-            {
-              label: 'Configurar',
-              description: 'Configurar sistema de boas-vindas',
-              value: 'config_boas_vindas',
-            }
-          );
-
-        const row = new ActionRowBuilder().addComponents(selectMenu);
-        await interaction.reply({
-          content: '**👋 Boas-vindas**\n\nSelecione a opção:',
-          components: [row],
-          ephemeral: true,
-        });
-      }
-
-      if (interaction.customId === 'cat_registro') {
-        const { StringSelectMenuBuilder } = require('discord.js');
-        const selectMenu = new StringSelectMenuBuilder()
-          .setCustomId('painel_registro')
-          .setPlaceholder('Escolha uma opção...')
-          .addOptions(
-            {
-              label: 'Canal de Registro',
-              description: 'Onde aparecem os botões de Pedir/Atualizar Registro',
-              value: 'config_reg_canal_registro',
-            },
-            {
-              label: 'Canal de Aprovações',
-              description: 'Onde aparecem registros para aprovar/rejeitar',
-              value: 'config_reg_canal_aprovacoes',
-            }
-          );
-
-        const row = new ActionRowBuilder().addComponents(selectMenu);
-        await interaction.reply({
-          content: '**📋 Registro**\n\nSelecione a opção:',
-          components: [row],
-          ephemeral: true,
-        });
-      }
-
-      if (interaction.customId === 'cat_status') {
-        try {
-          const config = await serverService.getConfig(interaction.guild.id);
-
-          const truncate = (str, max = 1024) => {
-            if (!str) return '❌';
-            return str.length > max ? str.substring(0, max - 3) + '...' : str;
-          };
-
-          // Boas-vindas
-          const boasVindasCanal = config.boas_vindas?.canal_id
-            ? `✅ #${interaction.guild.channels.cache.get(config.boas_vindas.canal_id)?.name || 'ID Inválido'}`
-            : '❌';
-          const boasVindasRegistro = config.boas_vindas?.canal_registro_id
-            ? `✅ #${interaction.guild.channels.cache.get(config.boas_vindas.canal_registro_id)?.name || 'ID Inválido'}`
-            : '❌';
-          const boasVindasAprovacoes = config.boas_vindas?.canal_aprovacoes_id
-            ? `✅ #${interaction.guild.channels.cache.get(config.boas_vindas.canal_aprovacoes_id)?.name || 'ID Inválido'}`
-            : '❌';
-
-          // Registro
-          const registro = config.registro?.canal_id
-            ? `✅ #${interaction.guild.channels.cache.get(config.registro.canal_id)?.name || 'ID Inválido'}`
-            : '❌';
-
-          // Farm
-          const farmCategoria = config.farm?.categoria_bau_id
-            ? `✅ ${interaction.guild.channels.cache.get(config.farm.categoria_bau_id)?.name || 'ID Inválido'}`
-            : '❌';
-
-          const farmCanal = config.farm?.canal_aprovacoes_id
-            ? `✅ ${interaction.guild.channels.cache.get(config.farm.canal_aprovacoes_id)?.name || 'ID Inválido'}`
-            : '❌';
-
-          const farmItems = config.farm?.itens?.length > 0
-            ? `✅ ${config.farm.itens.length} item(ns)`
-            : '❌';
-
-          const farmMetas = config.farm?.metas && Object.keys(config.farm.metas).length > 0
-            ? `✅ ${Object.keys(config.farm.metas).length} meta(s)`
-            : '❌';
-
-          // Recrutamento
-          const recUniforme = config.recrutamento?.rec_canal_uniforme
-            ? `✅ ${interaction.guild.channels.cache.get(config.recrutamento.rec_canal_uniforme)?.name || 'ID Inválido'}`
-            : '❌';
-
-          const recRegrasFac = config.recrutamento?.rec_canal_regras_fac
-            ? `✅ ${interaction.guild.channels.cache.get(config.recrutamento.rec_canal_regras_fac)?.name || 'ID Inválido'}`
-            : '❌';
-
-          const recRegrasCidade = config.recrutamento?.rec_canal_regras_cidade
-            ? `✅ ${interaction.guild.channels.cache.get(config.recrutamento.rec_canal_regras_cidade)?.name || 'ID Inválido'}`
-            : '❌';
-
-          const embed = new EmbedBuilder()
-            .setTitle('✅ Status das Configurações')
-            .setColor(0x2ecc71)
-            .addFields(
-              { name: '👋 Canal Principal', value: truncate(boasVindasCanal), inline: true },
-              { name: '📋 Canal Registro', value: truncate(boasVindasRegistro), inline: true },
-              { name: '✅ Aprovações BV', value: truncate(boasVindasAprovacoes), inline: true },
-              { name: '📋 Canal Registro', value: truncate(registro), inline: true },
-              { name: '📁 Farm Categoria', value: truncate(farmCategoria), inline: true },
-              { name: '📢 Farm Aprovações', value: truncate(farmCanal), inline: true },
-              { name: '📦 Items', value: truncate(farmItems), inline: true },
-              { name: '🎯 Metas', value: truncate(farmMetas), inline: true },
-              { name: '👕 Uniforme', value: truncate(recUniforme), inline: true },
-              { name: '📜 Regras Fac', value: truncate(recRegrasFac), inline: true },
-              { name: '🏙️ Regras Cidade', value: truncate(recRegrasCidade), inline: true }
-            );
-
-        await interaction.reply({
-          embeds: [embed],
-          ephemeral: true,
-        });
-        } catch (error) {
-          console.error('❌ Erro em cat_status:', error);
           await interaction.reply({
             content: `❌ Erro ao exibir status: ${error.message}`,
             ephemeral: true,
