@@ -256,6 +256,150 @@ registerModal('modal_boas_vindas_mensagem', async (interaction) => {
   }
 });
 
+// SELECT MENUS - Handlers principais
+registerSelectMenu('painel_credenciais', async (interaction) => {
+  const valor = interaction.values[0];
+  if (valor === 'cred_configurar') {
+    const modal = new ModalBuilder()
+      .setCustomId('modal_admin_bot')
+      .setTitle('🔧 Configurações do Bot');
+
+    const tokenInput = new TextInputBuilder()
+      .setCustomId('discord_token')
+      .setLabel('Discord Token do Bot')
+      .setStyle(TextInputStyle.Short)
+      .setPlaceholder('Cola o token aqui')
+      .setRequired(true);
+
+    const clientIdInput = new TextInputBuilder()
+      .setCustomId('client_id')
+      .setLabel('Client ID')
+      .setStyle(TextInputStyle.Short)
+      .setPlaceholder('Cola o Client ID aqui')
+      .setRequired(true);
+
+    const guildIdInput = new TextInputBuilder()
+      .setCustomId('guild_id')
+      .setLabel('Guild ID (ID do Servidor)')
+      .setStyle(TextInputStyle.Short)
+      .setPlaceholder('Cola o ID do servidor aqui')
+      .setRequired(true);
+
+    modal.addComponents(
+      new ActionRowBuilder().addComponents(tokenInput),
+      new ActionRowBuilder().addComponents(clientIdInput),
+      new ActionRowBuilder().addComponents(guildIdInput)
+    );
+
+    await interaction.showModal(modal);
+  }
+});
+
+registerSelectMenu('select_categoria_boas_vindas', async (interaction) => {
+  const { ChannelType } = require('discord.js');
+  const canalId = interaction.values[0];
+  const canal = interaction.guild.channels.cache.get(canalId);
+
+  if (!canal) {
+    return await interaction.reply({
+      content: '❌ Canal não encontrado!',
+      ephemeral: true,
+    });
+  }
+
+  const selectMenu = new StringSelectMenuBuilder()
+    .setCustomId('select_canal_boas_vindas')
+    .setPlaceholder('Selecione o canal...')
+    .addOptions(
+      canal.children.cache
+        .filter(ch => ch.type === ChannelType.GuildText)
+        .map(ch => ({
+          label: ch.name,
+          value: ch.id,
+          description: `${ch.topic || 'Sem tópico'}`.slice(0, 100),
+        }))
+        .slice(0, 25)
+    );
+
+  const row = new ActionRowBuilder().addComponents(selectMenu);
+
+  await interaction.reply({
+    content: '**Passo 2:** Selecione o canal:',
+    components: [row],
+    ephemeral: true,
+  });
+});
+
+registerSelectMenu('select_categoria_bv_canal_saidas', async (interaction) => {
+  const { ChannelType } = require('discord.js');
+  const canalId = interaction.values[0];
+  const canal = interaction.guild.channels.cache.get(canalId);
+
+  if (!canal) {
+    return await interaction.reply({
+      content: '❌ Canal não encontrado!',
+      ephemeral: true,
+    });
+  }
+
+  const selectMenu = new StringSelectMenuBuilder()
+    .setCustomId('select_canal_bv_canal_saidas')
+    .setPlaceholder('Selecione o canal...')
+    .addOptions(
+      canal.children.cache
+        .filter(ch => ch.type === ChannelType.GuildText)
+        .map(ch => ({
+          label: ch.name,
+          value: ch.id,
+          description: `${ch.topic || 'Sem tópico'}`.slice(0, 100),
+        }))
+        .slice(0, 25)
+    );
+
+  const row = new ActionRowBuilder().addComponents(selectMenu);
+
+  await interaction.reply({
+    content: '**Passo 2:** Selecione o canal de saídas:',
+    components: [row],
+    ephemeral: true,
+  });
+});
+
+registerSelectMenu('select_categoria_farm_canal_bau', async (interaction) => {
+  const { ChannelType } = require('discord.js');
+  const canalId = interaction.values[0];
+  const canal = interaction.guild.channels.cache.get(canalId);
+
+  if (!canal) {
+    return await interaction.reply({
+      content: '❌ Canal não encontrado!',
+      ephemeral: true,
+    });
+  }
+
+  const selectMenu = new StringSelectMenuBuilder()
+    .setCustomId('select_canal_farm_canal_bau')
+    .setPlaceholder('Selecione o canal...')
+    .addOptions(
+      canal.children.cache
+        .filter(ch => ch.type === ChannelType.GuildText)
+        .map(ch => ({
+          label: ch.name,
+          value: ch.id,
+          description: `${ch.topic || 'Sem tópico'}`.slice(0, 100),
+        }))
+        .slice(0, 25)
+    );
+
+  const row = new ActionRowBuilder().addComponents(selectMenu);
+
+  await interaction.reply({
+    content: '**Passo 2:** Selecione o canal do baú:',
+    components: [row],
+    ephemeral: true,
+  });
+});
+
 // Padrões para handlers que seguem nome comum
 registerPattern(/^select_.*/, 'selectMenu', async (interaction) => {
   // Fallback para select menus genéricos - será tratado por fallthrough
