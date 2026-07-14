@@ -1,5 +1,6 @@
 const { SlashCommandBuilder, ButtonBuilder, ButtonStyle, ActionRowBuilder, EmbedBuilder } = require('discord.js');
 const serverService = require('../services/serverService');
+const { publishMessage } = require('../utils/publishMessages');
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -10,21 +11,6 @@ module.exports = {
   async execute(interaction) {
     const config = await serverService.getConfig(interaction.guild.id);
     const canalAdvId = config.farm?.canal_registro_adv;
-
-    if (!canalAdvId) {
-      return await interaction.reply({
-        content: '❌ Canal de Registro de ADV não foi configurado!',
-        ephemeral: true,
-      });
-    }
-
-    const canalAdv = interaction.guild.channels.cache.get(canalAdvId);
-    if (!canalAdv) {
-      return await interaction.reply({
-        content: '❌ Canal de Registro de ADV não encontrado!',
-        ephemeral: true,
-      });
-    }
 
     const botaoRegistrar = new ButtonBuilder()
       .setCustomId('registrar_adv')
@@ -45,21 +31,6 @@ module.exports = {
         '**⚠️ Registrar ADV** - Adicionar uma advertência a um membro\n' +
         '**✅ Remover ADV** - Remover uma advertência de um membro');
 
-    try {
-      await canalAdv.send({
-        embeds: [embed],
-        components: [row],
-      });
-
-      await interaction.reply({
-        content: `✅ Botões de ADV publicados em <#${canalAdvId}>!`,
-        ephemeral: true,
-      });
-    } catch (err) {
-      await interaction.reply({
-        content: `❌ Erro ao publicar: ${err.message}`,
-        ephemeral: true,
-      });
-    }
+    await publishMessage(interaction, canalAdvId, 'Canal de Registro de ADV', embed, [row]);
   },
 };

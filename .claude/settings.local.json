@@ -16,7 +16,10 @@
       "Bash(git add *)",
       "Bash(git commit -m 'perf: implement config caching and optimize database queries *)",
       "Bash(timeout 10 node index.js)",
-      "Bash(git commit -m 'perf: parallelize role operations in delivery approval *)"
+      "Bash(git commit -m 'perf: parallelize role operations in delivery approval *)",
+      "Bash(git commit -m 'perf: add aggregate functions for common member/delivery lookups *)",
+      "Bash(git reset *)",
+      "Bash(git commit -m 'refactor: extract publish message logic into reusable utility *)"
     ]
   }
 }
