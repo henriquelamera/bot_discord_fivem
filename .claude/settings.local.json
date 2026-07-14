@@ -26,7 +26,12 @@
       "Bash(git commit -m 'refactor: add panel factory for configuration UI *)",
       "Bash(git commit -m 'fix: optimize button handler response time by adding fast path for common categories *)",
       "Bash(git commit -m 'refactor: add handler registry system for O\\(1\\) dispatch instead of O\\(n\\) if statements *)",
-      "Bash(git commit -m 'refactor: register primary handlers to dispatcher for instant response *)"
+      "Bash(git commit -m 'refactor: register primary handlers to dispatcher for instant response *)",
+      "Bash(node -c src/events/interactionCreate.js)",
+      "Bash(node -c src/utils/handlerRegistry.js)",
+      "Bash(node -c src/handlers/registerAllHandlers.js)",
+      "Bash(timeout 15 node index.js)",
+      "Bash(git commit -m 'fix: ensure dispatcher returns true when handler executes successfully *)"
     ]
   }
 }

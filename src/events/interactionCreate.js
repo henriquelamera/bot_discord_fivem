@@ -30,8 +30,13 @@ module.exports = {
 
     if (interaction.isModalSubmit()) {
       // Tentar dispatcher de handlers registrados primeiro
-      if (await dispatchModal(interaction)) {
-        return; // Handler foi executado com sucesso
+      try {
+        if (await dispatchModal(interaction)) {
+          return; // Handler foi executado com sucesso
+        }
+      } catch (error) {
+        console.error('Erro no dispatcher de modal:', error);
+        // Continua para fallback
       }
 
       // Handler para validar senha do painel_configuracao
@@ -896,8 +901,13 @@ module.exports = {
 
     if (interaction.isButton()) {
       // Tentar dispatcher de handlers registrados (O(1) complexity com Map)
-      if (await dispatchButton(interaction)) {
-        return; // Handler foi executado com sucesso
+      try {
+        if (await dispatchButton(interaction)) {
+          return; // Handler foi executado com sucesso
+        }
+      } catch (error) {
+        console.error('Erro no dispatcher de button:', error);
+        // Continua para fallback
       }
 
       // Mapeamento rápido de handlers para evitar iteração sequencial de 4600 linhas
@@ -1401,8 +1411,13 @@ module.exports = {
 
     if (interaction.isStringSelectMenu()) {
       // Tentar dispatcher de handlers registrados primeiro
-      if (await dispatchSelectMenu(interaction)) {
-        return; // Handler foi executado com sucesso
+      try {
+        if (await dispatchSelectMenu(interaction)) {
+          return; // Handler foi executado com sucesso
+        }
+      } catch (error) {
+        console.error('Erro no dispatcher de selectMenu:', error);
+        // Continua para fallback
       }
 
       if (interaction.customId === 'painel_credenciais') {

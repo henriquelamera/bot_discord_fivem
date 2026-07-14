@@ -32,13 +32,15 @@ function registerPattern(pattern, type, handler) {
 async function dispatchModal(interaction) {
   const handler = handlers.modals.get(interaction.customId);
   if (handler) {
-    return await handler(interaction);
+    await handler(interaction);
+    return true; // Handler foi executado
   }
 
   // Tentar padrão
   for (const { pattern, type, handler } of handlers.patterns) {
     if (type === 'modal' && pattern.test(interaction.customId)) {
-      return await handler(interaction);
+      await handler(interaction);
+      return true;
     }
   }
 
@@ -49,13 +51,15 @@ async function dispatchModal(interaction) {
 async function dispatchButton(interaction) {
   const handler = handlers.buttons.get(interaction.customId);
   if (handler) {
-    return await handler(interaction);
+    await handler(interaction);
+    return true; // Handler foi executado
   }
 
   // Tentar padrão
   for (const { pattern, type, handler } of handlers.patterns) {
     if (type === 'button' && pattern.test(interaction.customId)) {
-      return await handler(interaction);
+      await handler(interaction);
+      return true;
     }
   }
 
@@ -66,13 +70,15 @@ async function dispatchButton(interaction) {
 async function dispatchSelectMenu(interaction) {
   const handler = handlers.selectMenus.get(interaction.customId);
   if (handler) {
-    return await handler(interaction);
+    await handler(interaction);
+    return true; // Handler foi executado
   }
 
   // Tentar padrão
   for (const { pattern, type, handler } of handlers.patterns) {
     if (type === 'selectMenu' && pattern.test(interaction.customId)) {
-      return await handler(interaction);
+      await handler(interaction);
+      return true;
     }
   }
 
