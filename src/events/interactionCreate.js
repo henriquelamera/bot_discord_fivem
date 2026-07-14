@@ -1,5 +1,9 @@
 const { load, save } = require('../store');
 const { ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, EmbedBuilder } = require('discord.js');
+const serverService = require('../services/serverService');
+const memberService = require('../services/memberService');
+const deliveryService = require('../services/deliveryService');
+const advService = require('../services/advService');
 
 const CONFIG_FILE = 'config.json';
 
@@ -114,6 +118,7 @@ module.exports = {
 
       if (interaction.customId === 'modal_entregar_meta') {
         const config = load(CONFIG_FILE, {});
+        const guildId = interaction.guild.id;
         const itens = config.farm?.itens || [];
         const cargoAprovadoresIds = config.farm?.cargo_pagamento || [];
 
@@ -146,10 +151,17 @@ module.exports = {
             }
           }
 
-          // Salvar entrega no config
-          if (!config.farm.entregas) config.farm.entregas = [];
-          const entrega_id = Date.now().toString();
+          // Salvar entrega no banco PostgreSQL
+          const entrega_id = await deliveryService.createDelivery(
+            guildId,
+            interaction.user.id,
+            entrega.itens,
+            entrega.print_url
+          );
           entrega.id = entrega_id;
+
+          // Também salvar no config para compatibilidade (será removido depois)
+          if (!config.farm.entregas) config.farm.entregas = [];
           config.farm.entregas.push(entrega);
           save(CONFIG_FILE, config);
 
@@ -2645,6 +2657,7 @@ module.exports = {
     if (interaction.isButton()) {
       if (interaction.customId.startsWith('aprovar_registro_')) {
         const userId = interaction.customId.replace('aprovar_registro_', '');
+        const guildId = interaction.guild.id;
         const config = load(CONFIG_FILE, {});
         const morador_role_id = config.cargo_morador_id;
 
@@ -2656,6 +2669,13 @@ module.exports = {
         }
 
         try {
+          // 1. Registrar servidor no banco
+          await serverService.registerServer(
+            guildId,
+            interaction.guild.name,
+            interaction.guild.ownerId
+          );
+
           const membro = await interaction.guild.members.fetch(userId);
           const cargo = interaction.guild.roles.cache.get(morador_role_id);
 
@@ -2674,20 +2694,33 @@ module.exports = {
             // Mudar nickname da pessoa
             await membro.setNickname(nomeFormatado);
 
-            // Salvar dados do membro para usar depois
-            if (!config.membros_info) config.membros_info = {};
-            config.membros_info[userId] = {
-              nomeInGame: registroDados.nomeInGame,
-              id: registroDados.id,
-              nomeFormatado: nomeFormatado,
-              aprovado: true,
-            };
+            // 2. Salvar membro no banco PostgreSQL
+            await memberService.saveMember(
+              guildId,
+              userId,
+              registroDados.nomeInGame,
+              registroDados.id,
+              nomeFormatado
+            );
 
-            // Remover do registro pendente
+            // 3. Aprovar membro no banco
+            await memberService.approveMember(guildId, userId);
+
+            // Remover do registro pendente (JSON)
             delete config.registros_pendentes[userId];
           }
 
+          // Adicionar cargo Morador no Discord
           await membro.roles.add(cargo);
+
+          // 4. Registrar ação no log
+          await serverService.logAction(
+            guildId,
+            interaction.user.id,
+            'aprovacao_registro',
+            `Registr do membro ${membro.user.tag} aprovado`
+          );
+
           save(CONFIG_FILE, config);
 
           // Enviar mensagem no canal de registro notificando aprovação
@@ -2708,7 +2741,8 @@ module.exports = {
                   content: conteudo,
                 });
 
-                // Guardar ID da mensagem para deletar depois
+                // Guardar ID da mensagem para deletar depois (ainda em JSON por enquanto)
+                if (!config.membros_info) config.membros_info = {};
                 if (!config.membros_info[userId]) config.membros_info[userId] = {};
                 config.membros_info[userId].mensagem_aprovacao_id = msg.id;
                 save(CONFIG_FILE, config);
@@ -2843,6 +2877,7 @@ module.exports = {
       if (interaction.customId === 'abrir_bau') {
         try {
           const config = load(CONFIG_FILE, {});
+          const guildId = interaction.guild.id;
 
           // Validar se está no servidor
           if (!interaction.guild || !interaction.member) {
@@ -2859,8 +2894,8 @@ module.exports = {
           const rec_uniforme = config.recrutamento?.rec_canal_uniforme;
           const rec_regras_cidade = config.recrutamento?.rec_canal_regras_cidade;
 
-          // Verificar se o registro foi aprovado
-          const registroAprovado = config.membros_info?.[interaction.user.id]?.aprovado;
+          // Verificar se o registro foi aprovado (via banco PostgreSQL)
+          const registroAprovado = await memberService.isMemberApproved(guildId, interaction.user.id);
           if (!registroAprovado) {
             return await interaction.reply({
               content: '❌ Seu registro ainda não foi aprovado! Aguarde a análise da administração.',
@@ -2932,6 +2967,15 @@ module.exports = {
               await interaction.member.roles.remove([...cargoRemover.keys()]);
               console.log(`✅ Cargo(s) de visitante removido para ${interaction.user.tag}`);
             }
+
+            // Log da ação no banco
+            await serverService.logAction(
+              guildId,
+              interaction.user.id,
+              'abrir_bau',
+              `Baú aberto - Cargos: ${cargosAdicionar.map(c => c.name).join(', ')}`
+            );
+
           } catch (err) {
             console.error(`❌ Erro ao gerenciar cargos:`, err.message);
             return await interaction.reply({
@@ -3118,16 +3162,17 @@ module.exports = {
         }
 
         try {
+          const guildId = interaction.guild.id;
           const membro = await interaction.guild.members.fetch(entrega.usuario_id);
           const cargoAdv1Id = config.farm?.cargo_adv_1;
           const cargoAdv2Id = config.farm?.cargo_adv_2;
           const cargoAtrasadoId = config.farm?.cargo_atrasado_id;
           const cargoEmDiaId = config.farm?.cargo_em_dia_id;
 
-          // Contar quantos ADVs o membro tem
+          // Contar quantos ADVs o membro tem (via banco PostgreSQL)
+          const totalADVs = await advService.countADVs(guildId, entrega.usuario_id);
           const temAdv1 = membro.roles.cache.has(cargoAdv1Id);
           const temAdv2 = membro.roles.cache.has(cargoAdv2Id);
-          const totalADVs = (temAdv1 ? 1 : 0) + (temAdv2 ? 1 : 0);
 
           // Calcular quanto é devido e quanto foi entregue
           const metas = config.farm?.metas || {};
