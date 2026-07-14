@@ -1371,12 +1371,12 @@ module.exports = {
           .addFields(
             { name: '👋 Boas-vindas', value: boasVindas, inline: false },
             { name: '📋 Registro', value: registro, inline: false },
-            { name: '\n🌾 FARM', value: '---', inline: false },
+            { name: '🌾 FARM', value: '---', inline: false },
             { name: '📁 Categoria de Baús', value: farmCategoria, inline: false },
             { name: '📢 Canal de Aprovações', value: farmCanal, inline: false },
             { name: '📦 Items', value: farmItems, inline: false },
             { name: '🎯 Metas', value: farmMetas, inline: false },
-            { name: '\n👥 RECRUTAMENTO', value: '---', inline: false },
+            { name: '👥 RECRUTAMENTO', value: '---', inline: false },
             { name: '👕 Uniforme', value: recUniforme, inline: false },
             { name: '📜 Regras da Fac', value: recRegrasFac, inline: false },
             { name: '🏙️ Regras da Cidade', value: recRegrasCidade, inline: false }
