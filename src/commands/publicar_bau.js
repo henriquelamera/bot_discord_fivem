@@ -1,5 +1,5 @@
 const { SlashCommandBuilder, ButtonBuilder, ButtonStyle, ActionRowBuilder, EmbedBuilder } = require('discord.js');
-const { load } = require('../store');
+const serverService = require('../services/serverService');
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -8,7 +8,7 @@ module.exports = {
     .setDefaultMemberPermissions(0x8), // ADMINISTRATOR
 
   async execute(interaction) {
-    const config = load('config.json', {});
+    const config = await serverService.getConfig(interaction.guild.id);
     const canalBauId = config.farm?.canal_bau_id;
 
     if (!canalBauId) {

@@ -1,6 +1,4 @@
-const { load, save } = require('../store');
-
-const CONFIG_FILE = 'config.json';
+const serverService = require('../services/serverService');
 
 function isMonday() {
   const agora = new Date();
@@ -26,13 +24,13 @@ module.exports = {
         console.log('🌾 [Farm Cron] Atualizando status de farms...');
 
         try {
-          const config = load(CONFIG_FILE, {});
-          const guild = client.guilds.cache.first();
+          // Iterar por todos os guilds
+          for (const [guildId, guild] of client.guilds.cache) {
+            const config = await serverService.getConfig(guildId);
 
-          if (!guild || !config.farm) {
-            console.warn('Guild ou configuração de farm não encontrada');
-            return;
-          }
+            if (!config.farm) {
+              continue;
+            }
 
           const cargoEmDiaId = config.farm.cargo_em_dia_id;
           const cargoAtrasadoId = config.farm.cargo_atrasado_id;
@@ -126,6 +124,7 @@ module.exports = {
             } catch (err) {
               console.error(`Erro ao processar membro ${memberId}:`, err);
             }
+          }
           }
 
           console.log('✅ Cron de farm concluído');

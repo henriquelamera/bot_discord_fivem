@@ -1,11 +1,8 @@
-const { load, save } = require('../store');
 const { ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, EmbedBuilder } = require('discord.js');
 const serverService = require('../services/serverService');
 const memberService = require('../services/memberService');
 const deliveryService = require('../services/deliveryService');
 const advService = require('../services/advService');
-
-const CONFIG_FILE = 'config.json';
 
 module.exports = {
   name: 'interactionCreate',
@@ -169,11 +166,11 @@ module.exports = {
         const clientId = interaction.fields.getTextInputValue('client_id');
         const guildId = interaction.fields.getTextInputValue('guild_id');
 
-        const config = load(CONFIG_FILE, {});
+        const config = await serverService.getConfig(interaction.guild.id);
         config.discord_token = token;
         config.client_id = clientId;
         config.guild_id = guildId;
-        save(CONFIG_FILE, config);
+        await serverService.saveConfig(interaction.guild.id, config);
 
         await interaction.reply({
           content: '✅ Configurações do bot salvas com sucesso!',
@@ -185,13 +182,13 @@ module.exports = {
         const texto = interaction.fields.getTextInputValue('texto_boas_vindas');
         const banner = interaction.fields.getTextInputValue('banner_url') || '';
 
-        const config = load(CONFIG_FILE, {});
+        const config = await serverService.getConfig(interaction.guild.id);
         config.boas_vindas = {
           ...config.boas_vindas,
           texto: texto,
           banner_url: banner,
         };
-        save(CONFIG_FILE, config);
+        await serverService.saveConfig(interaction.guild.id, config);
 
         console.log('📝 Boas-vindas configuradas:');
         console.log('   Texto:', texto);
@@ -207,12 +204,12 @@ module.exports = {
         const canalSet = interaction.fields.getTextInputValue('canal_set');
         const descricao = interaction.fields.getTextInputValue('descricao_registro') || '';
 
-        const config = load(CONFIG_FILE, {});
+        const config = await serverService.getConfig(interaction.guild.id);
         config.registro = {
           canal_id: canalSet,
           descricao: descricao,
         };
-        save(CONFIG_FILE, config);
+        await serverService.saveConfig(interaction.guild.id, config);
 
         await interaction.reply({
           content: '✅ Configurações de registro salvas com sucesso!',
@@ -223,12 +220,12 @@ module.exports = {
       if (interaction.customId === 'modal_notificacoes') {
         const cargoNotificacoes = interaction.fields.getTextInputValue('cargo_notificacoes');
 
-        const config = load(CONFIG_FILE, {});
+        const config = await serverService.getConfig(interaction.guild.id);
         config.notificacoes = {
           cargo_id: cargoNotificacoes,
           ativado: true,
         };
-        save(CONFIG_FILE, config);
+        await serverService.saveConfig(interaction.guild.id, config);
 
         await interaction.reply({
           content: '✅ Notificações configuradas com sucesso!',
@@ -239,12 +236,12 @@ module.exports = {
       if (interaction.customId === 'modal_aprovacoes') {
         const cargoAprovacoes = interaction.fields.getTextInputValue('cargo_aprovacoes');
 
-        const config = load(CONFIG_FILE, {});
+        const config = await serverService.getConfig(interaction.guild.id);
         config.aprovacoes = {
           cargo_id: cargoAprovacoes,
           ativado: true,
         };
-        save(CONFIG_FILE, config);
+        await serverService.saveConfig(interaction.guild.id, config);
 
         await interaction.reply({
           content: '✅ Aprovações configuradas com sucesso!',
@@ -253,7 +250,7 @@ module.exports = {
       }
 
       if (interaction.customId === 'modal_entregar_meta') {
-        const config = load(CONFIG_FILE, {});
+        const config = await serverService.getConfig(interaction.guild.id);
         const guildId = interaction.guild.id;
         const itens = config.farm?.itens || [];
         const cargoAprovadoresIds = config.farm?.cargo_pagamento || [];
@@ -299,7 +296,7 @@ module.exports = {
           // Também salvar no config para compatibilidade (será removido depois)
           if (!config.farm.entregas) config.farm.entregas = [];
           config.farm.entregas.push(entrega);
-          save(CONFIG_FILE, config);
+          await serverService.saveConfig(interaction.guild.id, config);
 
           // Notificar aprovadores
           const canalAprovacaoId = config.farm?.canal_aprovacoes_id;
@@ -359,7 +356,7 @@ module.exports = {
       }
 
       if (interaction.customId === 'modal_registrar_adv') {
-        const config = load(CONFIG_FILE, {});
+        const config = await serverService.getConfig(interaction.guild.id);
         const guildId = interaction.guild.id;
         const nomeMembro = interaction.fields.getTextInputValue('nome_membro');
         const motivoAdv = interaction.fields.getTextInputValue('motivo_adv');
@@ -447,7 +444,7 @@ module.exports = {
       }
 
       if (interaction.customId === 'modal_remover_adv') {
-        const config = load(CONFIG_FILE, {});
+        const config = await serverService.getConfig(interaction.guild.id);
         const guildId = interaction.guild.id;
         const nomeMembro = interaction.fields.getTextInputValue('nome_membro_remover');
         const tipoAdv = interaction.fields.getTextInputValue('tipo_adv_remover');
@@ -534,7 +531,7 @@ module.exports = {
         const nomesInput = interaction.fields.getTextInputValue('nome_item');
         const descricaoItem = interaction.fields.getTextInputValue('descricao_item') || '';
 
-        const config = load(CONFIG_FILE, {});
+        const config = await serverService.getConfig(interaction.guild.id);
         if (!config.farm) config.farm = {};
         if (!config.farm.itens) config.farm.itens = [];
 
@@ -565,7 +562,7 @@ module.exports = {
           itensAdicionados.push(nome);
         }
 
-        save(CONFIG_FILE, config);
+        await serverService.saveConfig(interaction.guild.id, config);
 
         const mensagem = nomes.length === 1
           ? `✅ Item **${nomes[0]}** cadastrado com sucesso!`
@@ -578,7 +575,7 @@ module.exports = {
       }
 
       if (interaction.customId === 'modal_cadastro_meta') {
-        const config = load(CONFIG_FILE, {});
+        const config = await serverService.getConfig(interaction.guild.id);
         if (!config.farm) config.farm = {};
         if (!config.farm.metas) config.farm.metas = {};
 
@@ -602,7 +599,7 @@ module.exports = {
           }
         }
 
-        save(CONFIG_FILE, config);
+        await serverService.saveConfig(interaction.guild.id, config);
 
         if (metasAdicionadas.length === 0) {
           return await interaction.reply({
@@ -624,7 +621,7 @@ module.exports = {
         const solicitadoPor = interaction.fields.getTextInputValue('solicitado_por');
         const userId = interaction.user.id;
 
-        const config = load(CONFIG_FILE, {});
+        const config = await serverService.getConfig(interaction.guild.id);
 
         // Salvar dados temporários da atualização
         if (!config.atualizacoes_pendentes) config.atualizacoes_pendentes = {};
@@ -635,7 +632,7 @@ module.exports = {
           data: new Date().toISOString(),
           atualizarCargo: atualizarCargo === 'sim',
         };
-        save(CONFIG_FILE, config);
+        await serverService.saveConfig(interaction.guild.id, config);
 
         // Se não vai atualizar cargo, enviar direto para aprovação
         if (atualizarCargo !== 'sim') {
@@ -722,7 +719,7 @@ module.exports = {
         const atualizarCargo = interaction.fields.getTextInputValue('atualizar_cargo').toLowerCase();
         const solicitadoPor = interaction.fields.getTextInputValue('solicitado_por');
 
-        const config = load(CONFIG_FILE, {});
+        const config = await serverService.getConfig(interaction.guild.id);
 
         // Salvar dados temporários da atualização
         if (!config.atualizacoes_pendentes) config.atualizacoes_pendentes = {};
@@ -733,7 +730,7 @@ module.exports = {
           data: new Date().toISOString(),
           atualizarCargo: atualizarCargo === 'sim',
         };
-        save(CONFIG_FILE, config);
+        await serverService.saveConfig(interaction.guild.id, config);
 
         // Se não vai atualizar cargo, enviar direto para aprovação
         if (atualizarCargo !== 'sim') {
@@ -820,7 +817,7 @@ module.exports = {
         const telefone = interaction.fields.getTextInputValue('telefone_registro') || 'Não informado';
         const recrutador = interaction.fields.getTextInputValue('recrutador_registro') || 'Não informado';
 
-        const config = load(CONFIG_FILE, {});
+        const config = await serverService.getConfig(interaction.guild.id);
 
         // Salvar dados do registro para usar na aprovação
         if (!config.registros_pendentes) config.registros_pendentes = {};
@@ -867,7 +864,7 @@ module.exports = {
             .setStyle((require('discord.js')).ButtonStyle.Danger)
         );
 
-        save(CONFIG_FILE, config);
+        await serverService.saveConfig(interaction.guild.id, config);
 
         try {
           await setChannel.send({ embeds: [embed], components: [botoes] });
@@ -1135,7 +1132,7 @@ module.exports = {
 
       if (interaction.customId === 'cat_status_admin') {
         try {
-          const config = load(CONFIG_FILE, {});
+          const config = await serverService.getConfig(interaction.guild.id);
 
           const safeValue = (value) => {
           if (!value || !value.trim()) return '❌ Não configurado';
@@ -1315,7 +1312,7 @@ module.exports = {
 
       if (interaction.customId === 'cat_status') {
         try {
-          const config = load(CONFIG_FILE, {});
+          const config = await serverService.getConfig(interaction.guild.id);
 
           const truncate = (str, max = 1024) => {
             if (!str) return '❌';
@@ -1444,7 +1441,7 @@ module.exports = {
       if (interaction.customId === 'painel_advs') {
         const valor = interaction.values[0];
         const { StringSelectMenuBuilder } = require('discord.js');
-        const config = load(CONFIG_FILE, {});
+        const config = await serverService.getConfig(interaction.guild.id);
 
         if (valor === 'adv_canal_registro' || valor === 'adv_canal_aprovacao') {
           // Mostrar categorias de canais
@@ -1648,11 +1645,11 @@ module.exports = {
         const cargoIds = interaction.values; // Agora pega todos!
         const tipo = interaction.customId.replace('select_', '');
 
-        const config = load(CONFIG_FILE, {});
+        const config = await serverService.getConfig(interaction.guild.id);
         if (!config.farm) config.farm = {};
 
         config.farm[tipo] = cargoIds;
-        save(CONFIG_FILE, config);
+        await serverService.saveConfig(interaction.guild.id, config);
 
         const cargosNomes = cargoIds
           .map(id => interaction.guild.roles.cache.get(id).name)
@@ -1678,7 +1675,7 @@ module.exports = {
           interaction.customId === 'select_cargo_responsaveis_farm') {
 
         const tipo = interaction.customId.replace('select_', '');
-        const config = load(CONFIG_FILE, {});
+        const config = await serverService.getConfig(interaction.guild.id);
         if (!config.farm) config.farm = {};
 
         const titulosCargo = {
@@ -1694,7 +1691,7 @@ module.exports = {
           const cargoIds = interaction.values;
           config.farm[tipo] = cargoIds;
           const cargosNomes = cargoIds.map(id => interaction.guild.roles.cache.get(id).name).join(', ');
-          save(CONFIG_FILE, config);
+          await serverService.saveConfig(interaction.guild.id, config);
 
           await interaction.reply({
             content: `✅ ${titulosCargo[tipo]} configurado!\n**Cargos:** ${cargosNomes}`,
@@ -1704,7 +1701,7 @@ module.exports = {
           // Cargos de dia/atrasado/adv são únicos
           const cargoId = interaction.values[0];
           config.farm[`${tipo}_id`] = cargoId;
-          save(CONFIG_FILE, config);
+          await serverService.saveConfig(interaction.guild.id, config);
 
           const cargo = interaction.guild.roles.cache.get(cargoId);
 
@@ -1763,12 +1760,12 @@ module.exports = {
       // Handlers para configuração de ADV - Canais
       if (interaction.customId === 'select_adv_canal_registro' || interaction.customId === 'select_adv_canal_aprovacao') {
         const canalId = interaction.values[0];
-        const config = load(CONFIG_FILE, {});
+        const config = await serverService.getConfig(interaction.guild.id);
         if (!config.farm) config.farm = {};
 
         const tipo = interaction.customId === 'select_adv_canal_registro' ? 'canal_registro_adv' : 'canal_aprovacao_adv';
         config.farm[tipo] = canalId;
-        save(CONFIG_FILE, config);
+        await serverService.saveConfig(interaction.guild.id, config);
 
         const canal = interaction.guild.channels.cache.get(canalId);
         const titulo = tipo === 'canal_registro_adv' ? 'Canal de Registro de ADV' : 'Canal de Aprovação de ADV';
@@ -1782,12 +1779,12 @@ module.exports = {
       // Handlers para configuração de ADV - Cargos
       if (interaction.customId === 'select_adv_cargos_registro' || interaction.customId === 'select_adv_cargos_aprovacao') {
         const cargoIds = interaction.values;
-        const config = load(CONFIG_FILE, {});
+        const config = await serverService.getConfig(interaction.guild.id);
         if (!config.farm) config.farm = {};
 
         const tipo = interaction.customId === 'select_adv_cargos_registro' ? 'cargo_registro_adv' : 'cargo_aprovacao_adv';
         config.farm[tipo] = cargoIds;
-        save(CONFIG_FILE, config);
+        await serverService.saveConfig(interaction.guild.id, config);
 
         const cargosNomes = cargoIds.map(id => interaction.guild.roles.cache.get(id).name).join(', ');
         const titulo = tipo === 'cargo_registro_adv' ? 'Cargos que Podem Dar ADV' : 'Cargos que Podem Aprovar ADV';
@@ -1802,7 +1799,7 @@ module.exports = {
         const cargoId = interaction.values[0];
         const isMorador = interaction.customId === 'select_cargo_morador';
 
-        const config = load(CONFIG_FILE, {});
+        const config = await serverService.getConfig(interaction.guild.id);
 
         if (isMorador) {
           config.cargo_morador_id = cargoId;
@@ -1810,7 +1807,7 @@ module.exports = {
           config.cargo_bau_aberto_id = cargoId;
         }
 
-        save(CONFIG_FILE, config);
+        await serverService.saveConfig(interaction.guild.id, config);
 
         const cargo = interaction.guild.roles.cache.get(cargoId);
         const titulo = isMorador ? 'Morador' : 'Baú Aberto';
@@ -1824,9 +1821,9 @@ module.exports = {
       if (interaction.customId === 'select_cargos_bot') {
         const cargoIds = interaction.values;
 
-        const config = load(CONFIG_FILE, {});
+        const config = await serverService.getConfig(interaction.guild.id);
         config.cargos_disponiveis = cargoIds;
-        save(CONFIG_FILE, config);
+        await serverService.saveConfig(interaction.guild.id, config);
 
         const cargosNomes = cargoIds
           .map(id => interaction.guild.roles.cache.get(id).name)
@@ -1841,12 +1838,12 @@ module.exports = {
       if (interaction.customId === 'select_cargo_notificacoes') {
         const cargoIds = interaction.values;
 
-        const config = load(CONFIG_FILE, {});
+        const config = await serverService.getConfig(interaction.guild.id);
         config.notificacoes = {
           cargo_ids: cargoIds,
           ativado: true,
         };
-        save(CONFIG_FILE, config);
+        await serverService.saveConfig(interaction.guild.id, config);
 
         const cargosNomes = cargoIds
           .map(id => interaction.guild.roles.cache.get(id).name)
@@ -1861,12 +1858,12 @@ module.exports = {
       if (interaction.customId === 'select_cargo_aprovacoes') {
         const cargoIds = interaction.values;
 
-        const config = load(CONFIG_FILE, {});
+        const config = await serverService.getConfig(interaction.guild.id);
         config.aprovacoes = {
           cargo_ids: cargoIds,
           ativado: true,
         };
-        save(CONFIG_FILE, config);
+        await serverService.saveConfig(interaction.guild.id, config);
 
         const cargosNomes = cargoIds
           .map(id => interaction.guild.roles.cache.get(id).name)
@@ -1915,12 +1912,12 @@ module.exports = {
       if (interaction.customId === 'select_canal_registro') {
         const canalId = interaction.values[0];
 
-        const config = load(CONFIG_FILE, {});
+        const config = await serverService.getConfig(interaction.guild.id);
         config.registro = {
           ...config.registro,
           canal_id: canalId,
         };
-        save(CONFIG_FILE, config);
+        await serverService.saveConfig(interaction.guild.id, config);
 
         const canal = interaction.guild.channels.cache.get(canalId);
 
@@ -1985,10 +1982,10 @@ module.exports = {
         try {
           const canalId = interaction.values[0];
 
-          const config = load(CONFIG_FILE, {});
+          const config = await serverService.getConfig(interaction.guild.id);
           if (!config.farm) config.farm = {};
           config.farm.canal_aprovacoes_id = canalId;
-          save(CONFIG_FILE, config);
+          await serverService.saveConfig(interaction.guild.id, config);
 
           const canal = interaction.guild.channels.cache.get(canalId);
 
@@ -2072,7 +2069,7 @@ module.exports = {
         }
 
         if (valor === 'farm_criar_itens') {
-          const config = load(CONFIG_FILE, {});
+          const config = await serverService.getConfig(interaction.guild.id);
           const cargoIds = config.farm?.cargo_materiais || [];
 
           if (!cargoIds || cargoIds.length === 0) {
@@ -2118,7 +2115,7 @@ module.exports = {
         }
 
         if (valor === 'farm_criar_metas') {
-          const config = load(CONFIG_FILE, {});
+          const config = await serverService.getConfig(interaction.guild.id);
           const cargoIds = config.farm?.cargo_metas || [];
           const itens = config.farm?.itens || [];
           const metasExistentes = config.farm?.metas || {};
@@ -2273,7 +2270,7 @@ module.exports = {
         }
 
         if (valor === 'bv_cargo') {
-          const config = load(CONFIG_FILE, {});
+          const config = await serverService.getConfig(interaction.guild.id);
           const cargoIds = config.cargos_disponiveis || [];
 
           const cargos = cargoIds
@@ -2405,10 +2402,10 @@ module.exports = {
       if (interaction.customId === 'select_canal_farm_canal_bau') {
         const canalId = interaction.values[0];
 
-        const config = load(CONFIG_FILE, {});
+        const config = await serverService.getConfig(interaction.guild.id);
         if (!config.farm) config.farm = {};
         config.farm.canal_bau_id = canalId;
-        save(CONFIG_FILE, config);
+        await serverService.saveConfig(interaction.guild.id, config);
 
         const canal = interaction.guild.channels.cache.get(canalId);
 
@@ -2421,11 +2418,11 @@ module.exports = {
       if (interaction.customId === 'select_categoria_bau_farm') {
         const categoriaId = interaction.values[0];
 
-        const config = load(CONFIG_FILE, {});
+        const config = await serverService.getConfig(interaction.guild.id);
         if (!config.farm) config.farm = {};
 
         config.farm.categoria_bau_id = categoriaId;
-        save(CONFIG_FILE, config);
+        await serverService.saveConfig(interaction.guild.id, config);
 
         const categoria = interaction.guild.channels.cache.get(categoriaId);
 
@@ -2475,7 +2472,7 @@ module.exports = {
         const canalId = interaction.values[0];
         const isBau = interaction.customId === 'select_canal_bau';
 
-        const config = load(CONFIG_FILE, {});
+        const config = await serverService.getConfig(interaction.guild.id);
         if (!config.farm) config.farm = {};
 
         if (isBau) {
@@ -2484,7 +2481,7 @@ module.exports = {
           config.farm.canal_roupas_id = canalId;
         }
 
-        save(CONFIG_FILE, config);
+        await serverService.saveConfig(interaction.guild.id, config);
 
         const canal = interaction.guild.channels.cache.get(canalId);
         const titulo = isBau ? 'Baú' : 'Roupas';
@@ -2566,10 +2563,10 @@ module.exports = {
       if (interaction.customId === 'select_canal_bv_canal_saidas') {
         const canalId = interaction.values[0];
 
-        const config = load(CONFIG_FILE, {});
+        const config = await serverService.getConfig(interaction.guild.id);
         if (!config.boas_vindas) config.boas_vindas = {};
         config.boas_vindas.canal_saidas_id = canalId;
-        save(CONFIG_FILE, config);
+        await serverService.saveConfig(interaction.guild.id, config);
 
         const canal = interaction.guild.channels.cache.get(canalId);
 
@@ -2582,12 +2579,12 @@ module.exports = {
       if (interaction.customId === 'select_canal_boas_vindas') {
         const canalId = interaction.values[0];
 
-        const config = load(CONFIG_FILE, {});
+        const config = await serverService.getConfig(interaction.guild.id);
         config.boas_vindas = {
           ...config.boas_vindas,
           canal_id: canalId,
         };
-        save(CONFIG_FILE, config);
+        await serverService.saveConfig(interaction.guild.id, config);
 
         const canal = interaction.guild.channels.cache.get(canalId);
 
@@ -2634,10 +2631,10 @@ module.exports = {
       if (interaction.customId === 'select_canal_reg_canal_registro') {
         const canalId = interaction.values[0];
 
-        const config = load(CONFIG_FILE, {});
+        const config = await serverService.getConfig(interaction.guild.id);
         if (!config.boas_vindas) config.boas_vindas = {};
         config.boas_vindas.canal_registro_id = canalId;
-        save(CONFIG_FILE, config);
+        await serverService.saveConfig(interaction.guild.id, config);
 
         const canal = interaction.guild.channels.cache.get(canalId);
 
@@ -2684,10 +2681,10 @@ module.exports = {
       if (interaction.customId === 'select_canal_reg_canal_aprovacoes') {
         const canalId = interaction.values[0];
 
-        const config = load(CONFIG_FILE, {});
+        const config = await serverService.getConfig(interaction.guild.id);
         if (!config.boas_vindas) config.boas_vindas = {};
         config.boas_vindas.canal_aprovacoes_id = canalId;
-        save(CONFIG_FILE, config);
+        await serverService.saveConfig(interaction.guild.id, config);
 
         const canal = interaction.guild.channels.cache.get(canalId);
 
@@ -2701,7 +2698,7 @@ module.exports = {
         const cargoId = interaction.values[0];
         const userId = interaction.user.id;
 
-        const config = load(CONFIG_FILE, {});
+        const config = await serverService.getConfig(interaction.guild.id);
         const atualizacao = config.atualizacoes_pendentes?.[userId];
 
         if (!atualizacao) {
@@ -2713,7 +2710,7 @@ module.exports = {
 
         // Salvar cargo selecionado
         atualizacao.novo_cargo_id = cargoId;
-        save(CONFIG_FILE, config);
+        await serverService.saveConfig(interaction.guild.id, config);
 
         // Enviar para aprovação
         const canalAprovacaoId = config.boas_vindas?.canal_aprovacoes_id;
@@ -2764,12 +2761,12 @@ module.exports = {
       if (interaction.customId === 'select_cargo_boas_vindas') {
         const cargoIds = interaction.values;
 
-        const config = load(CONFIG_FILE, {});
+        const config = await serverService.getConfig(interaction.guild.id);
         config.boas_vindas = {
           ...config.boas_vindas,
           cargo_ids: cargoIds,
         };
-        save(CONFIG_FILE, config);
+        await serverService.saveConfig(interaction.guild.id, config);
 
         const cargosNomes = cargoIds
           .map(id => interaction.guild.roles.cache.get(id).name)
@@ -2856,7 +2853,7 @@ module.exports = {
 
         if (valor === 'config_notificacoes') {
           const { StringSelectMenuBuilder } = require('discord.js');
-          const config = load(CONFIG_FILE, {});
+          const config = await serverService.getConfig(interaction.guild.id);
           const cargoIds = config.cargos_disponiveis || [];
 
           const cargos = cargoIds
@@ -2957,7 +2954,7 @@ module.exports = {
 
         if (valor === 'config_aprovacoes') {
           const { StringSelectMenuBuilder } = require('discord.js');
-          const config = load(CONFIG_FILE, {});
+          const config = await serverService.getConfig(interaction.guild.id);
           const cargoIds = config.cargos_disponiveis || [];
 
           const cargos = cargoIds
@@ -2993,7 +2990,7 @@ module.exports = {
         }
 
         if (valor === 'config_status') {
-          const config = load(CONFIG_FILE, {});
+          const config = await serverService.getConfig(interaction.guild.id);
           const boasVindas = config.boas_vindas ? '✅ Configurado' : '❌ Não configurado';
           const registro = config.registro ? '✅ Configurado' : '❌ Não configurado';
           const notificacoes = config.notificacoes ? '✅ Configurado' : '❌ Não configurado';
@@ -3130,11 +3127,11 @@ module.exports = {
           const canalId = interaction.values[0];
           const tipo = interaction.customId.replace('select_canal_recrutamento_', '');
 
-          const config = load(CONFIG_FILE, {});
+          const config = await serverService.getConfig(interaction.guild.id);
           if (!config.recrutamento) config.recrutamento = {};
 
           config.recrutamento[tipo] = canalId;
-          save(CONFIG_FILE, config);
+          await serverService.saveConfig(interaction.guild.id, config);
 
           const canal = interaction.guild.channels.cache.get(canalId);
 
@@ -3239,7 +3236,7 @@ module.exports = {
       if (interaction.customId.startsWith('aprovar_registro_')) {
         const userId = interaction.customId.replace('aprovar_registro_', '');
         const guildId = interaction.guild.id;
-        const config = load(CONFIG_FILE, {});
+        const config = await serverService.getConfig(interaction.guild.id);
         const morador_role_id = config.cargo_morador_id;
 
         if (!morador_role_id) {
@@ -3302,7 +3299,7 @@ module.exports = {
             `Registr do membro ${membro.user.tag} aprovado`
           );
 
-          save(CONFIG_FILE, config);
+          await serverService.saveConfig(interaction.guild.id, config);
 
           // Enviar mensagem no canal de registro notificando aprovação
           const canalRegistroId = config.boas_vindas?.canal_registro_id;
@@ -3326,7 +3323,7 @@ module.exports = {
                 if (!config.membros_info) config.membros_info = {};
                 if (!config.membros_info[userId]) config.membros_info[userId] = {};
                 config.membros_info[userId].mensagem_aprovacao_id = msg.id;
-                save(CONFIG_FILE, config);
+                await serverService.saveConfig(interaction.guild.id, config);
               } catch (err) {
                 console.error('Erro ao enviar notificação no canal de registro:', err.message);
               }
@@ -3375,7 +3372,7 @@ module.exports = {
 
       if (interaction.customId.startsWith('aprovar_atualizacao_')) {
         const userId = interaction.customId.replace('aprovar_atualizacao_', '');
-        const config = load(CONFIG_FILE, {});
+        const config = await serverService.getConfig(interaction.guild.id);
         const atualizacao = config.atualizacoes_pendentes?.[userId];
 
         if (!atualizacao) {
@@ -3406,9 +3403,9 @@ module.exports = {
             }
           }
 
-          save(CONFIG_FILE, config);
+          await serverService.saveConfig(interaction.guild.id, config);
           delete config.atualizacoes_pendentes[userId];
-          save(CONFIG_FILE, config);
+          await serverService.saveConfig(interaction.guild.id, config);
 
           await member.send('✅ Sua atualização de registro foi aprovada!').catch(() => {});
 
@@ -3430,7 +3427,7 @@ module.exports = {
 
       if (interaction.customId.startsWith('recusar_atualizacao_')) {
         const userId = interaction.customId.replace('recusar_atualizacao_', '');
-        const config = load(CONFIG_FILE, {});
+        const config = await serverService.getConfig(interaction.guild.id);
 
         try {
           const user = await interaction.client.users.fetch(userId);
@@ -3445,7 +3442,7 @@ module.exports = {
           // Remover os botões da mensagem e dados
           await interaction.message.edit({ components: [] });
           delete config.atualizacoes_pendentes[userId];
-          save(CONFIG_FILE, config);
+          await serverService.saveConfig(interaction.guild.id, config);
         } catch (err) {
           console.error(err);
           await interaction.reply({
@@ -3457,7 +3454,7 @@ module.exports = {
 
       if (interaction.customId === 'abrir_bau') {
         try {
-          const config = load(CONFIG_FILE, {});
+          const config = await serverService.getConfig(interaction.guild.id);
           const guildId = interaction.guild.id;
 
           // Validar se está no servidor
@@ -3682,7 +3679,7 @@ module.exports = {
       }
 
       if (interaction.customId === 'entregar_meta') {
-        const config = load(CONFIG_FILE, {});
+        const config = await serverService.getConfig(interaction.guild.id);
         const itens = config.farm?.itens || [];
 
         if (itens.length === 0) {
@@ -3725,7 +3722,7 @@ module.exports = {
       // Handler para botões de aprovação de farm
       if (interaction.customId.startsWith('aprovar_farm_')) {
         const entrega_id = interaction.customId.replace('aprovar_farm_', '');
-        const config = load(CONFIG_FILE, {});
+        const config = await serverService.getConfig(interaction.guild.id);
 
         if (!config.farm?.entregas) {
           return await interaction.reply({
@@ -3757,7 +3754,7 @@ module.exports = {
             entrega.status = 'aprovada';
             entrega.data_aprovacao = new Date().toISOString();
             entrega.aprovador_id = interaction.user.id;
-            save(CONFIG_FILE, config);
+            await serverService.saveConfig(interaction.guild.id, config);
 
             await interaction.reply({
               content: `✅ Entrega de ${membro.user.tag} aprovada!\n\n(Gerente - isento do sistema de ADV)`,
@@ -3835,7 +3832,7 @@ module.exports = {
           entrega.status = 'aprovada';
           entrega.data_aprovacao = new Date().toISOString();
           entrega.aprovador_id = interaction.user.id;
-          save(CONFIG_FILE, config);
+          await serverService.saveConfig(interaction.guild.id, config);
 
           // Montar mensagem de feedback
           let mensagemFeedback = `✅ Entrega de ${membro.user.tag} aprovada!`;
@@ -3909,7 +3906,7 @@ module.exports = {
       // Handler para modal de rejeição
       if (interaction.customId.startsWith('modal_recusar_farm_')) {
         const entrega_id = interaction.customId.replace('modal_recusar_farm_', '');
-        const config = load(CONFIG_FILE, {});
+        const config = await serverService.getConfig(interaction.guild.id);
 
         if (!config.farm?.entregas) {
           return await interaction.reply({
@@ -3934,7 +3931,7 @@ module.exports = {
           entrega.data_rejeicao = new Date().toISOString();
           entrega.rejeitador_id = interaction.user.id;
           entrega.motivo_rejeicao = motivo;
-          save(CONFIG_FILE, config);
+          await serverService.saveConfig(interaction.guild.id, config);
 
           await interaction.reply({
             content: `❌ Entrega de ${membro.user.tag} rejeitada.`,
@@ -3961,7 +3958,7 @@ module.exports = {
       // Handlers de confirmação para metas
       if (interaction.customId === 'confirmar_sobrescrever_meta') {
         const { ModalBuilder, TextInputBuilder, TextInputStyle } = require('discord.js');
-        const config = load(CONFIG_FILE, {});
+        const config = await serverService.getConfig(interaction.guild.id);
         const itens = config.farm?.itens || [];
 
         const modal = new ModalBuilder()
@@ -3997,7 +3994,7 @@ module.exports = {
       // ===== HANDLERS DE ADV =====
 
       if (interaction.customId === 'registrar_adv') {
-        const config = load(CONFIG_FILE, {});
+        const config = await serverService.getConfig(interaction.guild.id);
         const guildId = interaction.guild.id;
 
         // Verificar se o usuário tem permissão para registrar ADV
@@ -4048,7 +4045,7 @@ module.exports = {
       }
 
       if (interaction.customId === 'remover_adv') {
-        const config = load(CONFIG_FILE, {});
+        const config = await serverService.getConfig(interaction.guild.id);
 
         // Verificar se o usuário tem permissão
         const cargosAdvIds = config.farm?.cargo_registro_adv || [];
@@ -4116,11 +4113,11 @@ module.exports = {
 
       // Confirmar limpeza de IDs
       if (interaction.customId === 'confirmar_limpar_ids') {
-        const config = load(CONFIG_FILE, {});
+        const config = await serverService.getConfig(interaction.guild.id);
         config.discord_token = '';
         config.client_id = '';
         config.guild_id = '';
-        save(CONFIG_FILE, config);
+        await serverService.saveConfig(interaction.guild.id, config);
 
         await interaction.reply({
           content: '✅ **IDs do Bot foram deletados!**\n\nO bot precisa ser reconfigurado para funcionar.',
@@ -4211,9 +4208,9 @@ module.exports = {
       }
 
       if (interaction.customId === 'confirmar_limpar_admin_cargos_bot') {
-        const config = load(CONFIG_FILE, {});
+        const config = await serverService.getConfig(interaction.guild.id);
         config.cargos_disponiveis = [];
-        save(CONFIG_FILE, config);
+        await serverService.saveConfig(interaction.guild.id, config);
 
         await interaction.reply({
           content: '✅ **Cargos Bot foram deletados!**',
@@ -4222,10 +4219,10 @@ module.exports = {
       }
 
       if (interaction.customId === 'confirmar_limpar_admin_cargos_sistema') {
-        const config = load(CONFIG_FILE, {});
+        const config = await serverService.getConfig(interaction.guild.id);
         config.cargo_morador_id = '';
         config.cargo_bau_aberto_id = '';
-        save(CONFIG_FILE, config);
+        await serverService.saveConfig(interaction.guild.id, config);
 
         await interaction.reply({
           content: '✅ **Cargos de Sistema foram deletados!**',
@@ -4234,13 +4231,13 @@ module.exports = {
       }
 
       if (interaction.customId === 'confirmar_limpar_admin_cargos_farm') {
-        const config = load(CONFIG_FILE, {});
+        const config = await serverService.getConfig(interaction.guild.id);
         config.farm = {
           itens: [],
           metas: {},
           entregas: [],
         };
-        save(CONFIG_FILE, config);
+        await serverService.saveConfig(interaction.guild.id, config);
 
         await interaction.reply({
           content: '✅ **Cargos Farm foram completamente deletados!**\n\n⚠️ O sistema de farm precisa ser reconfigurado.',
@@ -4249,9 +4246,9 @@ module.exports = {
       }
 
       if (interaction.customId === 'confirmar_limpar_bv') {
-        const config = load(CONFIG_FILE, {});
+        const config = await serverService.getConfig(interaction.guild.id);
         config.boas_vindas = {};
-        save(CONFIG_FILE, config);
+        await serverService.saveConfig(interaction.guild.id, config);
 
         await interaction.reply({
           content: '✅ **Boas-vindas foram deletadas!**',
@@ -4260,9 +4257,9 @@ module.exports = {
       }
 
       if (interaction.customId === 'confirmar_limpar_registro') {
-        const config = load(CONFIG_FILE, {});
+        const config = await serverService.getConfig(interaction.guild.id);
         config.registro = {};
-        save(CONFIG_FILE, config);
+        await serverService.saveConfig(interaction.guild.id, config);
 
         await interaction.reply({
           content: '✅ **Registro foi deletado!**',
@@ -4271,13 +4268,13 @@ module.exports = {
       }
 
       if (interaction.customId === 'confirmar_limpar_farm_painel') {
-        const config = load(CONFIG_FILE, {});
+        const config = await serverService.getConfig(interaction.guild.id);
         config.farm = {
           itens: [],
           metas: {},
           entregas: [],
         };
-        save(CONFIG_FILE, config);
+        await serverService.saveConfig(interaction.guild.id, config);
 
         await interaction.reply({
           content: '✅ **Farm foi deletado!**',
@@ -4286,7 +4283,7 @@ module.exports = {
       }
 
       if (interaction.customId === 'confirmar_limpar_painel_tudo') {
-        const config = load(CONFIG_FILE, {});
+        const config = await serverService.getConfig(interaction.guild.id);
         config.boas_vindas = {};
         config.registro = {};
         config.farm = {
@@ -4294,7 +4291,7 @@ module.exports = {
           metas: {},
           entregas: [],
         };
-        save(CONFIG_FILE, config);
+        await serverService.saveConfig(interaction.guild.id, config);
 
         await interaction.reply({
           content: '✅ **Tudo foi deletado!**\n\n⚠️ O painel precisa ser completamente reconfigurado.',
@@ -4303,7 +4300,7 @@ module.exports = {
       }
 
       if (interaction.customId === 'pegar_roupas') {
-        const config = load(CONFIG_FILE, {});
+        const config = await serverService.getConfig(interaction.guild.id);
         const canalRoupasId = config.farm?.canal_roupas_id;
 
         if (!canalRoupasId) {
@@ -4328,7 +4325,7 @@ module.exports = {
       }
 
       if (interaction.customId === 'pedir_registro') {
-        const config = load(CONFIG_FILE, {});
+        const config = await serverService.getConfig(interaction.guild.id);
         const userId = interaction.user.id;
 
         // Verificar se já tem registro aprovado
@@ -4463,7 +4460,7 @@ module.exports = {
       }
 
       if (interaction.customId === 'atualizar_registro') {
-        const config = load(CONFIG_FILE, {});
+        const config = await serverService.getConfig(interaction.guild.id);
         const userId = interaction.user.id;
 
         // Verificar se é visitante
