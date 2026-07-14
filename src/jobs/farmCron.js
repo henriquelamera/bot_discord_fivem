@@ -1,0 +1,135 @@
+const { load, save } = require('../store');
+
+const CONFIG_FILE = 'config.json';
+
+function isMonday() {
+  const agora = new Date();
+  return agora.getDay() === 1; // 1 = segunda-feira
+}
+
+function isMidnight() {
+  const agora = new Date();
+  return agora.getHours() === 0 && agora.getMinutes() < 1; // Entre 00:00 e 00:01
+}
+
+module.exports = {
+  initFarmCron(client) {
+    let jaExecutouHoje = false;
+
+    // Verificar a cada 1 minuto
+    setInterval(async () => {
+      // Executar apenas uma vez por dia (segunda-feira às 00:00)
+      if (isMonday() && isMidnight()) {
+        if (jaExecutouHoje) return;
+        jaExecutouHoje = true;
+
+        console.log('🌾 [Farm Cron] Atualizando status de farms...');
+
+        try {
+          const config = load(CONFIG_FILE, {});
+          const guild = client.guilds.cache.first();
+
+          if (!guild || !config.farm) {
+            console.warn('Guild ou configuração de farm não encontrada');
+            return;
+          }
+
+          const cargoEmDiaId = config.farm.cargo_em_dia_id;
+          const cargoAtrasadoId = config.farm.cargo_atrasado_id;
+          const cargoAdv1Id = config.farm.cargo_adv_1;
+          const cargoAdv2Id = config.farm.cargo_adv_2;
+          const cargoResponsaveisIds = config.farm.cargo_responsaveis_farm || [];
+
+          if (!cargoEmDiaId || !cargoAtrasadoId || !cargoAdv1Id) {
+            console.warn('Cargos de farm não configurados corretamente');
+            return;
+          }
+
+          // Buscar todos os membros com "Farm em Dia"
+          const roleEmDia = guild.roles.cache.get(cargoEmDiaId);
+          if (!roleEmDia) {
+            console.warn('Cargo Farm em Dia não encontrado');
+            return;
+          }
+
+          const membrosComFarmEmDia = await roleEmDia.members;
+
+          for (const [memberId, membro] of membrosComFarmEmDia) {
+            try {
+              // Verificar se há entregas aprovadas na semana passada
+              const agora = new Date();
+              const umaSemanAtrás = new Date(agora.getTime() - 7 * 24 * 60 * 60 * 1000);
+
+              const temEntregaRecente = config.farm.entregas?.some((e) => {
+                const dataEntrega = new Date(e.data_aprovacao || e.data_entrega);
+                return e.usuario_id === memberId && e.status === 'aprovada' && dataEntrega > umaSemanAtrás;
+              });
+
+              // Se NÃO tem entrega recente, remover Farm em Dia e adicionar atraso
+              if (!temEntregaRecente) {
+                await membro.roles.remove(cargoEmDiaId);
+                await membro.roles.add(cargoAtrasadoId);
+
+                // Contar quantos ADVs já tem
+                const temAdv1 = membro.roles.cache.has(cargoAdv1Id);
+                const temAdv2 = membro.roles.cache.has(cargoAdv2Id);
+
+                let mensagemADV = '';
+                let chegouMaximo = false;
+
+                // Adicionar ADV (respeitando limite de 2)
+                if (!temAdv1) {
+                  await membro.roles.add(cargoAdv1Id);
+                  mensagemADV = '⚠️ Adicionado: ADV Farm 1';
+                } else if (!temAdv2) {
+                  await membro.roles.add(cargoAdv2Id);
+                  mensagemADV = '⚠️ Adicionado: ADV Farm 2';
+                } else {
+                  // Já tem 2 ADVs, não adiciona mais
+                  chegouMaximo = true;
+                  mensagemADV = '🚨 LIMITE DE ADVs ATINGIDO (2/2) - SUJEITO A PD';
+                }
+
+                console.log(`⚠️ ${membro.user.tag}: Farm atrasou (semana de ${agora.toLocaleDateString('pt-BR')})`);
+
+                // Notificar o usuário
+                try {
+                  const conteudo = chegouMaximo
+                    ? `🚨 Sua meta de farm não foi entregue na semana de ${agora.toLocaleDateString('pt-BR')}!\n\n**Você atingiu o LIMITE de 2 ADVs!**\n\nVocê está **sujeito a PD (Punição da Organização)**.\n\nProcure imediatamente os responsáveis pelo farm para resolver sua situação!`
+                    : `⚠️ Sua meta de farm não foi entregue na semana de ${agora.toLocaleDateString('pt-BR')}!\n\n**Cargos atualizados:**\n❌ Removido: Farm em Dia\n✔️ Adicionado: Farm Atrasado\n${mensagemADV}`;
+
+                  await membro.user.send({
+                    content: conteudo,
+                  });
+                } catch (err) {
+                  console.warn(`Não foi possível notificar ${membro.user.tag}:`, err.message);
+                }
+
+                // Se atingiu máximo de ADVs, notificar responsáveis
+                if (chegouMaximo) {
+                  for (const cargoId of cargoResponsaveisIds) {
+                    const role = guild.roles.cache.get(cargoId);
+                    if (role && role.members.size > 0) {
+                      console.log(`📢 Notificando responsáveis (${role.name}) sobre ${membro.user.tag}`);
+                    }
+                  }
+                }
+              }
+            } catch (err) {
+              console.error(`Erro ao processar membro ${memberId}:`, err);
+            }
+          }
+
+          console.log('✅ Cron de farm concluído');
+        } catch (err) {
+          console.error('❌ Erro no cron de farm:', err);
+        }
+      } else {
+        // Resetar flag se não for mais segunda-feira
+        jaExecutouHoje = false;
+      }
+    }, 60 * 1000); // Verificar a cada 1 minuto
+
+    console.log('🌾 Farm cron job ativado (toda segunda às 00:00)');
+  },
+};

@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(npm install node-cron --save)",
+      "PowerShell(New-Item -ItemType File -Path \"c:\\\\bot rbk\\\\src\\\\events\\\\guildMemberRemove.js\" -Force)",
+      "PowerShell(New-Item -ItemType File -Path \"c:\\\\bot rbk\\\\src\\\\commands\\\\publicar_registro.js\" -Force)",
+      "PowerShell(New-Item -ItemType File -Path \"c:\\\\bot rbk\\\\src\\\\commands\\\\publicar_bau.js\" -Force)"
+    ]
+  }
+}

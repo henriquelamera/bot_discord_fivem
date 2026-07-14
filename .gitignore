@@ -1,0 +1,11 @@
+node_modules/
+.env
+.env.local
+config.json
+membros.json
+src/data/*.json
+!src/data/.gitkeep
+.DS_Store
+*.log
+.vscode/
+.idea/
