@@ -31,7 +31,9 @@
       "Bash(node -c src/utils/handlerRegistry.js)",
       "Bash(node -c src/handlers/registerAllHandlers.js)",
       "Bash(timeout 15 node index.js)",
-      "Bash(git commit -m 'fix: ensure dispatcher returns true when handler executes successfully *)"
+      "Bash(git commit -m 'fix: ensure dispatcher returns true when handler executes successfully *)",
+      "Bash(git commit -m 'fix: register primary select menu handlers to eliminate second timeout *)",
+      "Bash(git commit -m 'fix: register select_canal_* handlers to save config on final selection *)"
     ]
   }
 }

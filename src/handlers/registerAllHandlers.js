@@ -400,6 +400,79 @@ registerSelectMenu('select_categoria_farm_canal_bau', async (interaction) => {
   });
 });
 
+// Handlers para salvar canal selecionado
+registerSelectMenu('select_canal_boas_vindas', async (interaction) => {
+  try {
+    const canalId = interaction.values[0];
+    const config = await serverService.getConfig(interaction.guild.id);
+    config.boas_vindas = {
+      ...config.boas_vindas,
+      canal_id: canalId,
+    };
+    await serverService.saveConfig(interaction.guild.id, config);
+
+    const canal = interaction.guild.channels.cache.get(canalId);
+    await interaction.reply({
+      content: `✅ Canal de Boas-vindas configurado!\n**Canal:** #${canal.name}`,
+      ephemeral: true,
+    });
+  } catch (error) {
+    console.error('Erro ao configurar canal boas-vindas:', error);
+    await interaction.reply({
+      content: `❌ Erro: ${error.message}`,
+      ephemeral: true,
+    });
+  }
+});
+
+registerSelectMenu('select_canal_bv_canal_saidas', async (interaction) => {
+  try {
+    const canalId = interaction.values[0];
+    const config = await serverService.getConfig(interaction.guild.id);
+    config.boas_vindas = {
+      ...config.boas_vindas,
+      canal_saidas_id: canalId,
+    };
+    await serverService.saveConfig(interaction.guild.id, config);
+
+    const canal = interaction.guild.channels.cache.get(canalId);
+    await interaction.reply({
+      content: `✅ Canal de Saídas configurado!\n**Canal:** #${canal.name}`,
+      ephemeral: true,
+    });
+  } catch (error) {
+    console.error('Erro ao configurar canal saídas:', error);
+    await interaction.reply({
+      content: `❌ Erro: ${error.message}`,
+      ephemeral: true,
+    });
+  }
+});
+
+registerSelectMenu('select_canal_farm_canal_bau', async (interaction) => {
+  try {
+    const canalId = interaction.values[0];
+    const config = await serverService.getConfig(interaction.guild.id);
+    config.farm = {
+      ...config.farm,
+      canal_bau_id: canalId,
+    };
+    await serverService.saveConfig(interaction.guild.id, config);
+
+    const canal = interaction.guild.channels.cache.get(canalId);
+    await interaction.reply({
+      content: `✅ Canal de Baú configurado!\n**Canal:** #${canal.name}`,
+      ephemeral: true,
+    });
+  } catch (error) {
+    console.error('Erro ao configurar canal baú:', error);
+    await interaction.reply({
+      content: `❌ Erro: ${error.message}`,
+      ephemeral: true,
+    });
+  }
+});
+
 // Padrões para handlers que seguem nome comum
 registerPattern(/^select_.*/, 'selectMenu', async (interaction) => {
   // Fallback para select menus genéricos - será tratado por fallthrough
