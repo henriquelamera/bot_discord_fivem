@@ -1137,6 +1137,8 @@ module.exports = {
         try {
           const config = load(CONFIG_FILE, {});
 
+          const safeValue = (value) => value && value.trim() ? value : '❌ Não configurado';
+
           // Credenciais
           const token = config.discord_token ? '✅ Configurado' : '❌ Não configurado';
         const clientId = config.client_id ? '✅ Configurado' : '❌ Não configurado';
@@ -1204,22 +1206,26 @@ module.exports = {
           : '❌ Não configurado';
 
         // Cargos Permissões Farm
-        const cargosPagamento = config.farm?.cargo_pagamento?.length > 0
-          ? `✅ ${config.farm.cargo_pagamento.map(id => interaction.guild.roles.cache.get(id)?.name).filter(Boolean).join(', ')}`
-          : '❌ Não configurado';
+        const cargosPagamentoNomes = config.farm?.cargo_pagamento?.length > 0
+          ? config.farm.cargo_pagamento.map(id => interaction.guild.roles.cache.get(id)?.name).filter(Boolean).join(', ')
+          : '';
+        const cargosPagamento = safeValue(cargosPagamentoNomes);
 
-        const cargosResponsaveis = config.farm?.cargo_responsaveis_farm?.length > 0
-          ? `✅ ${config.farm.cargo_responsaveis_farm.map(id => interaction.guild.roles.cache.get(id)?.name).filter(Boolean).join(', ')}`
-          : '❌ Não configurado';
+        const cargosResponsaveisNomes = config.farm?.cargo_responsaveis_farm?.length > 0
+          ? config.farm.cargo_responsaveis_farm.map(id => interaction.guild.roles.cache.get(id)?.name).filter(Boolean).join(', ')
+          : '';
+        const cargosResponsaveis = safeValue(cargosResponsaveisNomes);
 
         // Cargos Permissões ADV
-        const cargosRegistroAdv = config.farm?.cargo_registro_adv?.length > 0
-          ? `✅ ${config.farm.cargo_registro_adv.map(id => interaction.guild.roles.cache.get(id)?.name).filter(Boolean).join(', ')}`
-          : '❌ Não configurado';
+        const cargosRegistroAdvNomes = config.farm?.cargo_registro_adv?.length > 0
+          ? config.farm.cargo_registro_adv.map(id => interaction.guild.roles.cache.get(id)?.name).filter(Boolean).join(', ')
+          : '';
+        const cargosRegistroAdv = safeValue(cargosRegistroAdvNomes);
 
-        const cargosAprovacaoAdv = config.farm?.cargo_aprovacao_adv?.length > 0
-          ? `✅ ${config.farm.cargo_aprovacao_adv.map(id => interaction.guild.roles.cache.get(id)?.name).filter(Boolean).join(', ')}`
-          : '❌ Não configurado';
+        const cargosAprovacaoAdvNomes = config.farm?.cargo_aprovacao_adv?.length > 0
+          ? config.farm.cargo_aprovacao_adv.map(id => interaction.guild.roles.cache.get(id)?.name).filter(Boolean).join(', ')
+          : '';
+        const cargosAprovacaoAdv = safeValue(cargosAprovacaoAdvNomes);
 
         const embed = new EmbedBuilder()
           .setTitle('✅ Status Completo do Bot')
@@ -1325,6 +1331,8 @@ module.exports = {
         try {
           const config = load(CONFIG_FILE, {});
 
+          const safeValue = (value) => value && value.trim() ? value : '❌ Não configurado';
+
           // Boas-vindas
           const boasVindasCanal = config.boas_vindas?.canal_id
           ? `✅ #${interaction.guild.channels.cache.get(config.boas_vindas.canal_id)?.name || 'ID Inválido'}`
@@ -1335,7 +1343,7 @@ module.exports = {
         const boasVindasAprovacoes = config.boas_vindas?.canal_aprovacoes_id
           ? `✅ #${interaction.guild.channels.cache.get(config.boas_vindas.canal_aprovacoes_id)?.name || 'ID Inválido'}`
           : '❌ Não configurado';
-        const boasVindas = `${boasVindasCanal}\n**📋 Registro:** ${boasVindasRegistro}\n**✅ Aprovações:** ${boasVindasAprovacoes}`;
+        const boasVindas = safeValue(`${boasVindasCanal}\n**📋 Registro:** ${boasVindasRegistro}\n**✅ Aprovações:** ${boasVindasAprovacoes}`);
 
         // Registro
         const registro = config.registro?.canal_id
@@ -1352,14 +1360,14 @@ module.exports = {
           : '❌ Não configurado';
 
         // Farm - Items
-        const farmItems = config.farm?.itens?.length > 0
+        const farmItems = safeValue(config.farm?.itens?.length > 0
           ? `✅ ${config.farm.itens.length} item(ns) cadastrado(s):\n${config.farm.itens.map(i => `  • ${i.nome}`).join('\n')}`
-          : '❌ Nenhum item cadastrado';
+          : '');
 
         // Farm - Metas
-        const farmMetas = config.farm?.metas && Object.keys(config.farm.metas).length > 0
+        const farmMetas = safeValue(config.farm?.metas && Object.keys(config.farm.metas).length > 0
           ? `✅ ${Object.keys(config.farm.metas).length} meta(s) definida(s):\n${Object.values(config.farm.metas).map(m => `  • ${m.nome}: ${m.meta_semanal}/semana`).join('\n')}`
-          : '❌ Nenhuma meta definida';
+          : '');
 
         // Recrutamento
         const recUniforme = config.recrutamento?.rec_canal_uniforme
