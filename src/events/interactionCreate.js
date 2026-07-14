@@ -4088,10 +4088,81 @@ module.exports = {
           });
         }
 
+        // ===== VALIDAÇÃO HIERÁRQUICA DE CARGOS =====
+        const cargoVisitantesIds = config.boas_vindas?.cargo_ids || [];
+        const cargoMoradorId = config.cargo_morador_id;
+        const cargoMembroId = config.cargo_membro_id;
+        const cargoGerenteId = config.cargo_gerente_id;
+
+        const temCargoVisitante = interaction.member.roles.cache.some(role =>
+          cargoVisitantesIds.includes(role.id)
+        );
+        const temCargoMorador = cargoMoradorId && interaction.member.roles.cache.has(cargoMoradorId);
+        const temCargoMembro = cargoMembroId && interaction.member.roles.cache.has(cargoMembroId);
+        const temCargoGerente = cargoGerenteId && interaction.member.roles.cache.has(cargoGerenteId);
+
+        // Determinar quais cargos a pessoa pode pedir
+        let podesPedir = [];
+        let mensagem = '';
+
+        if (temCargoGerente) {
+          // Gerente não pode pedir mais nada
+          return await interaction.reply({
+            content: '✅ Você já tem o cargo máximo (Gerente)! Não pode solicitar mais promoções.',
+            ephemeral: true,
+          });
+        } else if (temCargoMembro) {
+          // Membro pode pedir Gerente
+          podesPedir = [cargoGerenteId];
+          mensagem = '📋 Você pode solicitar promoção para **Gerente**';
+        } else if (temCargoMorador) {
+          // Morador pode pedir Membro
+          podesPedir = [cargoMembroId];
+          mensagem = '📋 Você pode solicitar promoção para **Membro**';
+        } else if (temCargoVisitante) {
+          // Visitante pode pedir Morador
+          podesPedir = [cargoMoradorId];
+          mensagem = '📋 Você pode solicitar promoção para **Morador**';
+        } else {
+          // Sem cargo reconhecido (erro)
+          return await interaction.reply({
+            content: '❌ Seu status não foi reconhecido. Contate um administrador.',
+            ephemeral: true,
+          });
+        }
+
+        // Verificar se os cargos estão configurados
+        if (podesPedir.some(id => !id)) {
+          return await interaction.reply({
+            content: '❌ Os cargos de promoção não foram configurados! Contate um administrador.',
+            ephemeral: true,
+          });
+        }
+
+        // Obter nome do cargo solicitado
+        let nomeCargo = 'Desconhecido';
+        if (temCargoVisitante && cargoMoradorId) {
+          const role = interaction.guild.roles.cache.get(cargoMoradorId);
+          nomeCargo = role?.name || 'Morador';
+        } else if (temCargoMorador && cargoMembroId) {
+          const role = interaction.guild.roles.cache.get(cargoMembroId);
+          nomeCargo = role?.name || 'Membro';
+        } else if (temCargoMembro && cargoGerenteId) {
+          const role = interaction.guild.roles.cache.get(cargoGerenteId);
+          nomeCargo = role?.name || 'Gerente';
+        }
+
         // Abrir modal de registro
         const modal = new ModalBuilder()
           .setCustomId('modal_registro_membro')
-          .setTitle('📋 REGISTRO BECKS');
+          .setTitle(`📋 Solicitação para ${nomeCargo}`);
+
+        const cargoInput = new TextInputBuilder()
+          .setCustomId('cargo_solicitado')
+          .setLabel('Cargo Solicitado')
+          .setStyle(TextInputStyle.Short)
+          .setValue(nomeCargo)
+          .setRequired(true);
 
         const nomeInput = new TextInputBuilder()
           .setCustomId('nome_in_game')
@@ -4122,6 +4193,7 @@ module.exports = {
           .setRequired(false);
 
         modal.addComponents(
+          new ActionRowBuilder().addComponents(cargoInput),
           new ActionRowBuilder().addComponents(nomeInput),
           new ActionRowBuilder().addComponents(idInput),
           new ActionRowBuilder().addComponents(telefoneInput),
@@ -4156,10 +4228,46 @@ module.exports = {
           });
         }
 
+        // ===== VALIDAÇÃO HIERÁRQUICA DE CARGOS (PARA ATUALIZAR) =====
+        const cargoMoradorId = config.cargo_morador_id;
+        const cargoMembroId = config.cargo_membro_id;
+        const cargoGerenteId = config.cargo_gerente_id;
+
+        const temCargoMorador = cargoMoradorId && interaction.member.roles.cache.has(cargoMoradorId);
+        const temCargoMembro = cargoMembroId && interaction.member.roles.cache.has(cargoMembroId);
+        const temCargoGerente = cargoGerenteId && interaction.member.roles.cache.has(cargoGerenteId);
+
+        // Determinar qual cargo pode atualizar
+        let cargoProximo = null;
+        let nomeCargoProximo = '';
+
+        if (temCargoGerente) {
+          // Gerente não pode pedir mais nada
+          return await interaction.reply({
+            content: '✅ Você já tem o cargo máximo (Gerente)! Não pode solicitar mais promoções.',
+            ephemeral: true,
+          });
+        } else if (temCargoMembro) {
+          // Membro pode pedir Gerente
+          cargoProximo = cargoGerenteId;
+          const role = interaction.guild.roles.cache.get(cargoGerenteId);
+          nomeCargoProximo = role?.name || 'Gerente';
+        } else if (temCargoMorador) {
+          // Morador pode pedir Membro
+          cargoProximo = cargoMembroId;
+          const role = interaction.guild.roles.cache.get(cargoMembroId);
+          nomeCargoProximo = role?.name || 'Membro';
+        } else {
+          return await interaction.reply({
+            content: '❌ Seu status não foi reconhecido. Contate um administrador.',
+            ephemeral: true,
+          });
+        }
+
         // Abrir modal de atualização (simplificado)
         const modal = new ModalBuilder()
           .setCustomId('modal_atualizar_registro_membro_generico')
-          .setTitle('📋 ATUALIZAR REGISTRO');
+          .setTitle(`📋 Atualizar para ${nomeCargoProximo}`);
 
         const nomeInput = new TextInputBuilder()
           .setCustomId('nome_in_game')
@@ -4175,11 +4283,11 @@ module.exports = {
           .setPlaceholder('Ex: 1202')
           .setRequired(true);
 
-        const atualizarCargoInput = new TextInputBuilder()
+        const cargoInput = new TextInputBuilder()
           .setCustomId('atualizar_cargo')
-          .setLabel('Deseja atualizar seu cargo? (sim/não)')
+          .setLabel('Cargo que deseja')
           .setStyle(TextInputStyle.Short)
-          .setPlaceholder('Digite: sim ou não')
+          .setValue(nomeCargoProximo)
           .setRequired(true);
 
         const solicitadoInput = new TextInputBuilder()
@@ -4192,7 +4300,7 @@ module.exports = {
         modal.addComponents(
           new ActionRowBuilder().addComponents(nomeInput),
           new ActionRowBuilder().addComponents(idInput),
-          new ActionRowBuilder().addComponents(atualizarCargoInput),
+          new ActionRowBuilder().addComponents(cargoInput),
           new ActionRowBuilder().addComponents(solicitadoInput)
         );
 
