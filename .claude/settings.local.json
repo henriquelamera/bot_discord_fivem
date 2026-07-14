@@ -19,7 +19,9 @@
       "Bash(git commit -m 'perf: parallelize role operations in delivery approval *)",
       "Bash(git commit -m 'perf: add aggregate functions for common member/delivery lookups *)",
       "Bash(git reset *)",
-      "Bash(git commit -m 'refactor: extract publish message logic into reusable utility *)"
+      "Bash(git commit -m 'refactor: extract publish message logic into reusable utility *)",
+      "Bash(git commit *)",
+      "Bash(git commit -m 'refactor: create component factory for buttons and embeds *)"
     ]
   }
 }
