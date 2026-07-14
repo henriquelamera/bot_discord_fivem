@@ -158,6 +158,34 @@ async function getLogs(guildId, limit = 100) {
   }
 }
 
+// Pegar senha do painel
+async function getSenhaPainel(guildId) {
+  try {
+    const result = await pool.query(
+      `SELECT config_json FROM config_servidor
+       WHERE servidor_id = (SELECT id FROM servidores WHERE guild_id = $1)`,
+      [guildId]
+    );
+    if (result.rows.length === 0) return null;
+    const config = result.rows[0].config_json;
+    return config?.senha_painel || null;
+  } catch (error) {
+    console.error('Erro ao pegar senha:', error);
+    throw error;
+  }
+}
+
+// Validar senha do painel
+async function validarSenhaPainel(guildId, senha) {
+  try {
+    const senhaCorreta = await getSenhaPainel(guildId);
+    return senhaCorreta === senha;
+  } catch (error) {
+    console.error('Erro ao validar senha:', error);
+    throw error;
+  }
+}
+
 module.exports = {
   registerServer,
   getServer,
@@ -167,4 +195,6 @@ module.exports = {
   deactivateAPIKey,
   logAction,
   getLogs,
+  getSenhaPainel,
+  validarSenhaPainel,
 };
