@@ -1229,31 +1229,31 @@ module.exports = {
             { name: 'Client ID', value: clientId, inline: true },
             { name: 'Guild ID', value: guildId, inline: true },
 
-            { name: '\n📋 CARGOS DE REGISTRO', value: '---', inline: false },
+            { name: '📋 CARGOS DE REGISTRO', value: '---', inline: false },
             { name: 'Morador', value: cargoMorador, inline: true },
             { name: 'Membro', value: cargoMembro, inline: true },
             { name: 'Gerente', value: cargoGerente, inline: true },
 
-            { name: '\n👋 CANAIS DE BOAS-VINDAS', value: '---', inline: false },
+            { name: '👋 CANAIS DE BOAS-VINDAS', value: '---', inline: false },
             { name: 'Canal Principal', value: canalBoasVindas, inline: true },
             { name: 'Canal de Registro', value: canalRegistro, inline: true },
             { name: 'Aprovações', value: canalAprovacoes, inline: true },
 
-            { name: '\n🌾 CARGOS DE FARM', value: '---', inline: false },
+            { name: '🌾 CARGOS DE FARM', value: '---', inline: false },
             { name: 'Farm em Dia', value: farmEmDia, inline: true },
             { name: 'Farm Atrasado', value: farmAtrasado, inline: true },
             { name: 'ADV Farm 1', value: advFarm1, inline: true },
             { name: 'ADV Farm 2', value: advFarm2, inline: true },
 
-            { name: '\n🌾 CANAIS DE FARM', value: '---', inline: false },
+            { name: '🌾 CANAIS DE FARM', value: '---', inline: false },
             { name: 'Abrir Baú', value: canalBau, inline: true },
             { name: 'Aprovações', value: canalAprovacoesFarm, inline: true },
 
-            { name: '\n⚠️ CANAIS DE ADV', value: '---', inline: false },
+            { name: '⚠️ CANAIS DE ADV', value: '---', inline: false },
             { name: 'Registro ADV', value: canalRegistroAdv, inline: true },
             { name: 'Aprovação ADV', value: canalAprovacaoAdv, inline: true },
 
-            { name: '\n👥 PERMISSÕES', value: '---', inline: false },
+            { name: '👥 PERMISSÕES', value: '---', inline: false },
             { name: 'Aprovam Pagamento', value: cargosPagamento, inline: false },
             { name: 'Responsáveis Farm', value: cargosResponsaveis, inline: false },
             { name: 'Podem Dar ADV', value: cargosRegistroAdv, inline: false },
@@ -1433,21 +1433,36 @@ module.exports = {
 
       if (interaction.customId === 'painel_advs') {
         const valor = interaction.values[0];
-        const { StringSelectMenuBuilder, ChannelSelectMenuBuilder } = require('discord.js');
+        const { StringSelectMenuBuilder } = require('discord.js');
         const config = load(CONFIG_FILE, {});
 
         if (valor === 'adv_canal_registro' || valor === 'adv_canal_aprovacao') {
-          // Seletor de canal
-          const selectMenu = new ChannelSelectMenuBuilder()
-            .setCustomId(`select_${valor}`)
-            .setPlaceholder('Selecione o canal...');
+          // Mostrar categorias de canais
+          const categorias = interaction.guild.channels.cache
+            .filter(ch => ch.type === 4) // 4 = GUILD_CATEGORY
+            .map(ch => ({
+              label: ch.name,
+              value: `cat_${ch.id}`,
+              description: `${ch.children.cache.size} canais`,
+            }));
+
+          if (categorias.length === 0) {
+            return await interaction.reply({
+              content: '❌ Nenhuma categoria encontrada no servidor.',
+              ephemeral: true,
+            });
+          }
+
+          const selectMenu = new StringSelectMenuBuilder()
+            .setCustomId(`select_cat_${valor}`)
+            .setPlaceholder('Selecione a categoria...')
+            .addOptions(categorias.slice(0, 25));
 
           const row = new ActionRowBuilder().addComponents(selectMenu);
-
           const titulo = valor === 'adv_canal_registro' ? 'Canal de Registro de ADV' : 'Canal de Aprovação de ADV';
 
           await interaction.reply({
-            content: `**${titulo}**\n\nSelecione qual canal será usado:`,
+            content: `**${titulo}**\n\nPrimeiro, selecione a categoria:`,
             components: [row],
             ephemeral: true,
           });
@@ -1688,6 +1703,51 @@ module.exports = {
             ephemeral: true,
           });
         }
+      }
+
+      // Handlers para seleção de categoria de ADV
+      if (interaction.customId === 'select_cat_adv_canal_registro' || interaction.customId === 'select_cat_adv_canal_aprovacao') {
+        const { StringSelectMenuBuilder } = require('discord.js');
+        const categoriaId = interaction.values[0].replace('cat_', '');
+        const tipoCanal = interaction.customId === 'select_cat_adv_canal_registro' ? 'adv_canal_registro' : 'adv_canal_aprovacao';
+
+        const categoria = interaction.guild.channels.cache.get(categoriaId);
+        if (!categoria) {
+          return await interaction.reply({
+            content: '❌ Categoria não encontrada.',
+            ephemeral: true,
+          });
+        }
+
+        // Mostrar canais da categoria
+        const canaisOpcoes = categoria.children.cache
+          .filter(ch => ch.type === 0) // 0 = GUILD_TEXT
+          .map(ch => ({
+            label: ch.name,
+            value: ch.id,
+            description: `Canal de texto`,
+          }));
+
+        if (canaisOpcoes.length === 0) {
+          return await interaction.reply({
+            content: `❌ Nenhum canal de texto encontrado em #${categoria.name}.`,
+            ephemeral: true,
+          });
+        }
+
+        const selectMenu = new StringSelectMenuBuilder()
+          .setCustomId(`select_${tipoCanal}`)
+          .setPlaceholder('Selecione o canal...')
+          .addOptions(canaisOpcoes.slice(0, 25));
+
+        const row = new ActionRowBuilder().addComponents(selectMenu);
+        const titulo = tipoCanal === 'adv_canal_registro' ? 'Canal de Registro de ADV' : 'Canal de Aprovação de ADV';
+
+        await interaction.reply({
+          content: `**${titulo}**\n**Categoria:** #${categoria.name}\n\nAgora selecione o canal:`,
+          components: [row],
+          ephemeral: true,
+        });
       }
 
       // Handlers para configuração de ADV - Canais
