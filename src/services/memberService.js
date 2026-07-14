@@ -98,10 +98,32 @@ async function deleteMember(guildId, discordId) {
   }
 }
 
+// Pegar membro com dados agregados (aprovação, ADVs, count)
+async function getMemberWithAggregates(guildId, discordId) {
+  try {
+    const result = await pool.query(
+      `SELECT
+        m.*,
+        COUNT(a.id) as adv_count
+       FROM membros m
+       LEFT JOIN advs a ON m.id = a.membro_id
+       WHERE m.discord_id = $1
+       AND m.servidor_id = (SELECT id FROM servidores WHERE guild_id = $2)
+       GROUP BY m.id`,
+      [discordId, guildId]
+    );
+    return result.rows[0] || null;
+  } catch (error) {
+    console.error('Erro ao pegar membro com agregados:', error);
+    throw error;
+  }
+}
+
 module.exports = {
   saveMember,
   approveMember,
   isMemberApproved,
   getMember,
+  getMemberWithAggregates,
   deleteMember,
 };

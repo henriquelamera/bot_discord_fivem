@@ -141,11 +141,29 @@ async function getApprovedDeliveries(guildId, discordId, days = 7) {
   }
 }
 
+// Pegar todas as entregas e detalhes completos
+async function getDeliveryWithItems(entregaId) {
+  try {
+    const entrega = await getDelivery(entregaId);
+    if (!entrega) return null;
+
+    const items = await getDeliveryItems(entregaId);
+    return {
+      ...entrega,
+      items,
+    };
+  } catch (error) {
+    console.error('Erro ao pegar entrega com items:', error);
+    throw error;
+  }
+}
+
 module.exports = {
   createDelivery,
   approveDelivery,
   rejectDelivery,
   getDelivery,
   getDeliveryItems,
+  getDeliveryWithItems,
   getApprovedDeliveries,
 };
