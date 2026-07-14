@@ -1,27 +1,29 @@
 const pool = require('../db');
 
+// Pegar server_id e member_id em uma query
+async function getServerAndMemberId(guildId, discordId) {
+  const result = await pool.query(
+    `SELECT s.id as servidor_id, m.id as membro_id
+     FROM servidores s
+     LEFT JOIN membros m ON m.servidor_id = s.id AND m.discord_id = $2
+     WHERE s.guild_id = $1`,
+    [guildId, discordId]
+  );
+  if (result.rows.length === 0) throw new Error('Servidor não encontrado');
+  if (!result.rows[0].membro_id) throw new Error('Membro não encontrado');
+  return {
+    servidorId: result.rows[0].servidor_id,
+    memberId: result.rows[0].membro_id,
+  };
+}
+
 // Criar entrega
 async function createDelivery(guildId, discordId, itens, printUrl) {
   const client = await pool.connect();
   try {
+    const { servidorId, memberId } = await getServerAndMemberId(guildId, discordId);
+
     await client.query('BEGIN');
-
-    // Pegar ID do membro
-    const memberResult = await client.query(
-      `SELECT id FROM membros
-       WHERE discord_id = $1
-       AND servidor_id = (SELECT id FROM servidores WHERE guild_id = $2)`,
-      [discordId, guildId]
-    );
-    if (memberResult.rows.length === 0) throw new Error('Membro não encontrado');
-    const memberId = memberResult.rows[0].id;
-
-    // Pegar servidor_id
-    const servidorResult = await client.query(
-      'SELECT id FROM servidores WHERE guild_id = $1',
-      [guildId]
-    );
-    const servidorId = servidorResult.rows[0].id;
 
     // Criar entrega
     const entregaResult = await client.query(

@@ -1,4 +1,6 @@
 const serverService = require('../services/serverService');
+const deliveryService = require('../services/deliveryService');
+const memberService = require('../services/memberService');
 
 function isMonday() {
   const agora = new Date();
@@ -62,19 +64,18 @@ module.exports = {
                 continue;
               }
 
-              // Verificar se há entregas aprovadas na semana passada
+              // Verificar se há entregas aprovadas na semana passada (consultar DB)
               const agora = new Date();
-              const umaSemanAtrás = new Date(agora.getTime() - 7 * 24 * 60 * 60 * 1000);
-
-              const temEntregaRecente = config.farm.entregas?.some((e) => {
-                const dataEntrega = new Date(e.data_aprovacao || e.data_entrega);
-                return e.usuario_id === memberId && e.status === 'aprovada' && dataEntrega > umaSemanAtrás;
-              });
+              const entregas = await deliveryService.getApprovedDeliveries(guildId, membro.id, 7);
+              const temEntregaRecente = entregas.length > 0;
 
               // Se NÃO tem entrega recente, remover Farm em Dia e adicionar atraso
               if (!temEntregaRecente) {
-                await membro.roles.remove(cargoEmDiaId);
-                await membro.roles.add(cargoAtrasadoId);
+                // Aplicar mudanças de role em paralelo
+                await Promise.all([
+                  membro.roles.remove(cargoEmDiaId),
+                  membro.roles.add(cargoAtrasadoId),
+                ]);
 
                 // Contar quantos ADVs já tem
                 const temAdv1 = membro.roles.cache.has(cargoAdv1Id);

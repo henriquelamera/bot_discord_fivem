@@ -1,6 +1,27 @@
 const pool = require('../db');
 const crypto = require('crypto');
 
+// Cache simples com TTL de 30 segundos
+const configCache = new Map();
+const CONFIG_CACHE_TTL = 30000; // 30 segundos
+
+function getFromCache(key) {
+  const cached = configCache.get(key);
+  if (!cached) return null;
+  if (Date.now() - cached.timestamp > CONFIG_CACHE_TTL) {
+    configCache.delete(key);
+    return null;
+  }
+  return cached.value;
+}
+
+function setInCache(key, value) {
+  configCache.set(key, {
+    value,
+    timestamp: Date.now(),
+  });
+}
+
 // Registrar novo servidor
 async function registerServer(guildId, nomeServidor, ownerId) {
   try {
@@ -186,17 +207,24 @@ async function validarSenhaPainel(guildId, senha) {
   }
 }
 
-// Pegar todas as configurações do servidor
+// Pegar todas as configurações do servidor (com cache)
 async function getConfig(guildId) {
   try {
+    // Verificar cache primeiro
+    const cached = getFromCache(`config:${guildId}`);
+    if (cached) return cached;
+
     const result = await pool.query(
       `SELECT cs.config_json FROM config_servidor cs
        JOIN servidores s ON cs.servidor_id = s.id
        WHERE s.guild_id = $1`,
       [guildId]
     );
-    if (result.rows.length === 0) return {};
-    return result.rows[0].config_json || {};
+    const config = result.rows.length > 0 ? (result.rows[0].config_json || {}) : {};
+
+    // Salvar em cache
+    setInCache(`config:${guildId}`, config);
+    return config;
   } catch (error) {
     console.error('Erro ao pegar configurações:', error);
     return {};
@@ -227,6 +255,9 @@ async function saveConfig(guildId, config) {
        DO UPDATE SET config_json = $2, data_atualizacao = NOW()`,
       [servidorId, JSON.stringify(config)]
     );
+
+    // Invalidar cache após salvar
+    configCache.delete(`config:${guildId}`);
   } catch (error) {
     console.error('Erro ao salvar configurações:', error);
     throw error;

@@ -1,15 +1,19 @@
 const pool = require('../db');
 
+// Pegar server_id pelo guildId (helper para evitar redundância)
+async function getServerId(guildId) {
+  const result = await pool.query(
+    'SELECT id FROM servidores WHERE guild_id = $1',
+    [guildId]
+  );
+  if (result.rows.length === 0) throw new Error('Servidor não encontrado');
+  return result.rows[0].id;
+}
+
 // Adicionar/atualizar membro em um servidor específico
 async function saveMember(guildId, discordId, nomeInGame, idInGame, nomeFormatado) {
   try {
-    // Pegar ID do servidor
-    const servidorResult = await pool.query(
-      'SELECT id FROM servidores WHERE guild_id = $1',
-      [guildId]
-    );
-    if (servidorResult.rows.length === 0) throw new Error('Servidor não encontrado');
-    const servidorId = servidorResult.rows[0].id;
+    const servidorId = await getServerId(guildId);
 
     const result = await pool.query(
       `INSERT INTO membros (servidor_id, discord_id, nome_ingame, id_ingame, nome_formatado, aprovado)
@@ -29,13 +33,13 @@ async function saveMember(guildId, discordId, nomeInGame, idInGame, nomeFormatad
 // Aprovar membro
 async function approveMember(guildId, discordId) {
   try {
+    const servidorId = await getServerId(guildId);
     const result = await pool.query(
       `UPDATE membros
        SET aprovado = true, data_aprovacao = NOW()
-       WHERE discord_id = $1
-       AND servidor_id = (SELECT id FROM servidores WHERE guild_id = $2)
+       WHERE discord_id = $1 AND servidor_id = $2
        RETURNING *`,
-      [discordId, guildId]
+      [discordId, servidorId]
     );
     return result.rows[0];
   } catch (error) {
@@ -47,11 +51,11 @@ async function approveMember(guildId, discordId) {
 // Verificar se membro foi aprovado
 async function isMemberApproved(guildId, discordId) {
   try {
+    const servidorId = await getServerId(guildId);
     const result = await pool.query(
       `SELECT aprovado FROM membros
-       WHERE discord_id = $1
-       AND servidor_id = (SELECT id FROM servidores WHERE guild_id = $2)`,
-      [discordId, guildId]
+       WHERE discord_id = $1 AND servidor_id = $2`,
+      [discordId, servidorId]
     );
     if (result.rows.length === 0) return false;
     return result.rows[0].aprovado;
@@ -64,11 +68,11 @@ async function isMemberApproved(guildId, discordId) {
 // Pegar info do membro
 async function getMember(guildId, discordId) {
   try {
+    const servidorId = await getServerId(guildId);
     const result = await pool.query(
       `SELECT * FROM membros
-       WHERE discord_id = $1
-       AND servidor_id = (SELECT id FROM servidores WHERE guild_id = $2)`,
-      [discordId, guildId]
+       WHERE discord_id = $1 AND servidor_id = $2`,
+      [discordId, servidorId]
     );
     return result.rows[0] || null;
   } catch (error) {
@@ -80,12 +84,12 @@ async function getMember(guildId, discordId) {
 // Deletar membro
 async function deleteMember(guildId, discordId) {
   try {
+    const servidorId = await getServerId(guildId);
     const result = await pool.query(
       `DELETE FROM membros
-       WHERE discord_id = $1
-       AND servidor_id = (SELECT id FROM servidores WHERE guild_id = $2)
+       WHERE discord_id = $1 AND servidor_id = $2
        RETURNING *`,
-      [discordId, guildId]
+      [discordId, servidorId]
     );
     return result.rows[0];
   } catch (error) {

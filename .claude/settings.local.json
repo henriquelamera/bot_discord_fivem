@@ -12,7 +12,9 @@
       "Bash(node index.js)",
       "Bash(pkill -f \"node index.js\")",
       "PowerShell(Get-Process node -ErrorAction SilentlyContinue)",
-      "PowerShell(Stop-Process -Force)"
+      "PowerShell(Stop-Process -Force)",
+      "Bash(git add *)",
+      "Bash(git commit -m 'perf: implement config caching and optimize database queries *)"
     ]
   }
 }
