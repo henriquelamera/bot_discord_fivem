@@ -1137,7 +1137,11 @@ module.exports = {
         try {
           const config = load(CONFIG_FILE, {});
 
-          const safeValue = (value) => value && value.trim() ? value : '❌ Não configurado';
+          const safeValue = (value) => {
+          if (!value || !value.trim()) return '❌ Não configurado';
+          // Limitar a 1024 caracteres (limite do Discord.js)
+          return value.length > 1024 ? value.substring(0, 1021) + '...' : value;
+        };
 
           // Credenciais
           const token = config.discord_token ? '✅ Configurado' : '❌ Não configurado';
@@ -1242,47 +1246,52 @@ module.exports = {
         console.log('EmbedBuilder criado com sucesso');
 
         // Adicionar fields de forma segura
+        const truncate = (str, max = 1024) => {
+          if (!str) return '❌';
+          return str.length > max ? str.substring(0, max - 3) + '...' : str;
+        };
+
         console.log('Adicionando field: CREDENCIAIS');
         embed.addFields({ name: '🔐 CREDENCIAIS', value: '---', inline: false });
-        embed.addFields({ name: 'Discord Token', value: token || '❌', inline: true });
-        embed.addFields({ name: 'Client ID', value: clientId || '❌', inline: true });
-        embed.addFields({ name: 'Guild ID', value: guildId || '❌', inline: true });
+        embed.addFields({ name: 'Discord Token', value: truncate(token), inline: true });
+        embed.addFields({ name: 'Client ID', value: truncate(clientId), inline: true });
+        embed.addFields({ name: 'Guild ID', value: truncate(guildId), inline: true });
 
         console.log('Adicionando field: CARGOS DE REGISTRO');
         embed.addFields({ name: '📋 CARGOS DE REGISTRO', value: '---', inline: false });
-        embed.addFields({ name: 'Morador', value: cargoMorador || '❌', inline: true });
-        embed.addFields({ name: 'Membro', value: cargoMembro || '❌', inline: true });
-        embed.addFields({ name: 'Gerente', value: cargoGerente || '❌', inline: true });
+        embed.addFields({ name: 'Morador', value: truncate(cargoMorador), inline: true });
+        embed.addFields({ name: 'Membro', value: truncate(cargoMembro), inline: true });
+        embed.addFields({ name: 'Gerente', value: truncate(cargoGerente), inline: true });
 
         console.log('Adicionando field: CANAIS DE BOAS-VINDAS');
         embed.addFields({ name: '👋 CANAIS DE BOAS-VINDAS', value: '---', inline: false });
-        embed.addFields({ name: 'Canal Principal', value: canalBoasVindas || '❌', inline: true });
-        embed.addFields({ name: 'Canal de Registro', value: canalRegistro || '❌', inline: true });
-        embed.addFields({ name: 'Aprovações', value: canalAprovacoes || '❌', inline: true });
+        embed.addFields({ name: 'Canal Principal', value: truncate(canalBoasVindas), inline: true });
+        embed.addFields({ name: 'Canal de Registro', value: truncate(canalRegistro), inline: true });
+        embed.addFields({ name: 'Aprovações', value: truncate(canalAprovacoes), inline: true });
 
         console.log('Adicionando field: CARGOS DE FARM');
         embed.addFields({ name: '🌾 CARGOS DE FARM', value: '---', inline: false });
-        embed.addFields({ name: 'Farm em Dia', value: farmEmDia || '❌', inline: true });
-        embed.addFields({ name: 'Farm Atrasado', value: farmAtrasado || '❌', inline: true });
-        embed.addFields({ name: 'ADV Farm 1', value: advFarm1 || '❌', inline: true });
-        embed.addFields({ name: 'ADV Farm 2', value: advFarm2 || '❌', inline: true });
+        embed.addFields({ name: 'Farm em Dia', value: truncate(farmEmDia), inline: true });
+        embed.addFields({ name: 'Farm Atrasado', value: truncate(farmAtrasado), inline: true });
+        embed.addFields({ name: 'ADV Farm 1', value: truncate(advFarm1), inline: true });
+        embed.addFields({ name: 'ADV Farm 2', value: truncate(advFarm2), inline: true });
 
         console.log('Adicionando field: CANAIS DE FARM');
         embed.addFields({ name: '🌾 CANAIS DE FARM', value: '---', inline: false });
-        embed.addFields({ name: 'Abrir Baú', value: canalBau || '❌', inline: true });
-        embed.addFields({ name: 'Aprovações', value: canalAprovacoesFarm || '❌', inline: true });
+        embed.addFields({ name: 'Abrir Baú', value: truncate(canalBau), inline: true });
+        embed.addFields({ name: 'Aprovações', value: truncate(canalAprovacoesFarm), inline: true });
 
         console.log('Adicionando field: CANAIS DE ADV');
         embed.addFields({ name: '⚠️ CANAIS DE ADV', value: '---', inline: false });
-        embed.addFields({ name: 'Registro ADV', value: canalRegistroAdv || '❌', inline: true });
-        embed.addFields({ name: 'Aprovação ADV', value: canalAprovacaoAdv || '❌', inline: true });
+        embed.addFields({ name: 'Registro ADV', value: truncate(canalRegistroAdv), inline: true });
+        embed.addFields({ name: 'Aprovação ADV', value: truncate(canalAprovacaoAdv), inline: true });
 
         console.log('Adicionando field: PERMISSÕES');
         embed.addFields({ name: '👥 PERMISSÕES', value: '---', inline: false });
-        embed.addFields({ name: 'Aprovam Pagamento', value: cargosPagamento || '❌', inline: false });
-        embed.addFields({ name: 'Responsáveis Farm', value: cargosResponsaveis || '❌', inline: false });
-        embed.addFields({ name: 'Podem Dar ADV', value: cargosRegistroAdv || '❌', inline: false });
-        embed.addFields({ name: 'Aprovam ADV', value: cargosAprovacaoAdv || '❌', inline: false });
+        embed.addFields({ name: 'Aprovam Pagamento', value: truncate(cargosPagamento), inline: false });
+        embed.addFields({ name: 'Responsáveis Farm', value: truncate(cargosResponsaveis), inline: false });
+        embed.addFields({ name: 'Podem Dar ADV', value: truncate(cargosRegistroAdv), inline: false });
+        embed.addFields({ name: 'Aprovam ADV', value: truncate(cargosAprovacaoAdv), inline: false });
 
         console.log('Embed criado com sucesso!');
 
@@ -1350,7 +1359,11 @@ module.exports = {
         try {
           const config = load(CONFIG_FILE, {});
 
-          const safeValue = (value) => value && value.trim() ? value : '❌ Não configurado';
+          const safeValue = (value) => {
+          if (!value || !value.trim()) return '❌ Não configurado';
+          // Limitar a 1024 caracteres (limite do Discord.js)
+          return value.length > 1024 ? value.substring(0, 1021) + '...' : value;
+        };
 
           // Boas-vindas
           const boasVindasCanal = config.boas_vindas?.canal_id
