@@ -207,7 +207,7 @@ async function getConfig(guildId) {
 async function saveConfig(guildId, config) {
   try {
     // Garantir que servidor está registrado (uma única query com ON CONFLICT)
-    await registerServer(guildId, `Servidor ${guildId}`, null);
+    await registerServer(guildId, `Servidor ${guildId}`, guildId);
 
     const servidorResult = await pool.query(
       'SELECT id FROM servidores WHERE guild_id = $1',
