@@ -189,10 +189,24 @@ async function validarSenhaPainel(guildId, senha) {
 // Pegar todas as configurações do servidor
 async function getConfig(guildId) {
   try {
+    // Garantir que o servidor está registrado
+    let servidorResult = await pool.query(
+      'SELECT id FROM servidores WHERE guild_id = $1',
+      [guildId]
+    );
+
+    if (servidorResult.rows.length === 0) {
+      await registerServer(guildId, `Servidor ${guildId}`, null);
+      servidorResult = await pool.query(
+        'SELECT id FROM servidores WHERE guild_id = $1',
+        [guildId]
+      );
+    }
+
     const result = await pool.query(
       `SELECT config_json FROM config_servidor
-       WHERE servidor_id = (SELECT id FROM servidores WHERE guild_id = $1)`,
-      [guildId]
+       WHERE servidor_id = $1`,
+      [servidorResult.rows[0].id]
     );
     if (result.rows.length === 0) return {};
     return result.rows[0].config_json || {};
@@ -205,13 +219,20 @@ async function getConfig(guildId) {
 // Salvar configurações do servidor
 async function saveConfig(guildId, config) {
   try {
-    const servidorResult = await pool.query(
+    let servidorResult = await pool.query(
       'SELECT id FROM servidores WHERE guild_id = $1',
       [guildId]
     );
+
+    // Se servidor não existe, registrar automaticamente
     if (servidorResult.rows.length === 0) {
-      throw new Error('Servidor não registrado');
+      await registerServer(guildId, `Servidor ${guildId}`, null);
+      servidorResult = await pool.query(
+        'SELECT id FROM servidores WHERE guild_id = $1',
+        [guildId]
+      );
     }
+
     const servidorId = servidorResult.rows[0].id;
 
     await pool.query(
