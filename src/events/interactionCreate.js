@@ -358,6 +358,178 @@ module.exports = {
         }
       }
 
+      if (interaction.customId === 'modal_registrar_adv') {
+        const config = load(CONFIG_FILE, {});
+        const guildId = interaction.guild.id;
+        const nomeMembro = interaction.fields.getTextInputValue('nome_membro');
+        const motivoAdv = interaction.fields.getTextInputValue('motivo_adv');
+        const tipoAdv = interaction.fields.getTextInputValue('tipo_adv');
+
+        try {
+          // Validar tipo de ADV
+          if (tipoAdv !== '1' && tipoAdv !== '2') {
+            return await interaction.reply({
+              content: '❌ Tipo de ADV deve ser 1 ou 2!',
+              ephemeral: true,
+            });
+          }
+
+          // Registrar ADV no banco (será enviado para aprovação)
+          const canalAprovacaoAdvId = config.farm?.canal_aprovacao_adv;
+          if (!canalAprovacaoAdvId) {
+            return await interaction.reply({
+              content: '❌ Canal de aprovação de ADV não foi configurado!',
+              ephemeral: true,
+            });
+          }
+
+          const canalAprovacao = interaction.guild.channels.cache.get(canalAprovacaoAdvId);
+          if (!canalAprovacao) {
+            return await interaction.reply({
+              content: '❌ Canal de aprovação de ADV não encontrado!',
+              ephemeral: true,
+            });
+          }
+
+          // Criar embed para aprovação
+          const advId = Date.now().toString();
+          const embed = new EmbedBuilder()
+            .setTitle('⚠️ Nova Solicitação de ADV')
+            .setColor(0xFF6B6B)
+            .addFields(
+              { name: '👤 Registrado por', value: interaction.user.tag, inline: true },
+              { name: '⏰ Data', value: new Date().toLocaleDateString('pt-BR'), inline: true },
+              { name: '🎯 Membro', value: nomeMembro, inline: true },
+              { name: '⚠️ Tipo ADV', value: `ADV ${tipoAdv}`, inline: true },
+              { name: '📝 Motivo', value: motivoAdv, inline: false }
+            );
+
+          const botaoAprovar = new (require('discord.js')).ButtonBuilder()
+            .setCustomId(`aprovar_adv_${advId}`)
+            .setLabel('✅ Aprovar')
+            .setStyle((require('discord.js')).ButtonStyle.Success);
+
+          const botaoRejeitar = new (require('discord.js')).ButtonBuilder()
+            .setCustomId(`rejeitar_adv_${advId}`)
+            .setLabel('❌ Rejeitar')
+            .setStyle((require('discord.js')).ButtonStyle.Danger);
+
+          const row = new ActionRowBuilder().addComponents(botaoAprovar, botaoRejeitar);
+
+          // Salvar info de ADV pendente
+          if (!config.farm.advs_pendentes) config.farm.advs_pendentes = {};
+          config.farm.advs_pendentes[advId] = {
+            nomeMembro,
+            tipoAdv: parseInt(tipoAdv),
+            motivo: motivoAdv,
+            registradoPor: interaction.user.id,
+            registradoPorTag: interaction.user.tag,
+            data: new Date().toISOString(),
+          };
+          save('config.json', config);
+
+          await canalAprovacao.send({
+            embeds: [embed],
+            components: [row],
+          });
+
+          await interaction.reply({
+            content: `✅ ADV registrado! Aguardando aprovação dos responsáveis.`,
+            ephemeral: true,
+          });
+        } catch (err) {
+          console.error(err);
+          await interaction.reply({
+            content: `❌ Erro ao registrar ADV: ${err.message}`,
+            ephemeral: true,
+          });
+        }
+      }
+
+      if (interaction.customId === 'modal_remover_adv') {
+        const config = load(CONFIG_FILE, {});
+        const guildId = interaction.guild.id;
+        const nomeMembro = interaction.fields.getTextInputValue('nome_membro_remover');
+        const tipoAdv = interaction.fields.getTextInputValue('tipo_adv_remover');
+
+        try {
+          // Validar tipo de ADV
+          if (tipoAdv !== '1' && tipoAdv !== '2') {
+            return await interaction.reply({
+              content: '❌ Tipo de ADV deve ser 1 ou 2!',
+              ephemeral: true,
+            });
+          }
+
+          const canalAprovacaoAdvId = config.farm?.canal_aprovacao_adv;
+          if (!canalAprovacaoAdvId) {
+            return await interaction.reply({
+              content: '❌ Canal de aprovação de ADV não foi configurado!',
+              ephemeral: true,
+            });
+          }
+
+          const canalAprovacao = interaction.guild.channels.cache.get(canalAprovacaoAdvId);
+          if (!canalAprovacao) {
+            return await interaction.reply({
+              content: '❌ Canal de aprovação de ADV não encontrado!',
+              ephemeral: true,
+            });
+          }
+
+          // Criar embed para aprovação de remoção
+          const advId = Date.now().toString();
+          const embed = new EmbedBuilder()
+            .setTitle('✅ Solicitação de Remoção de ADV')
+            .setColor(0x2ecc71)
+            .addFields(
+              { name: '👤 Solicitado por', value: interaction.user.tag, inline: true },
+              { name: '⏰ Data', value: new Date().toLocaleDateString('pt-BR'), inline: true },
+              { name: '🎯 Membro', value: nomeMembro, inline: true },
+              { name: '⚠️ ADV a Remover', value: `ADV ${tipoAdv}`, inline: true }
+            );
+
+          const botaoAprovar = new (require('discord.js')).ButtonBuilder()
+            .setCustomId(`confirmar_remover_adv_${advId}`)
+            .setLabel('✅ Confirmar Remoção')
+            .setStyle((require('discord.js')).ButtonStyle.Success);
+
+          const botaoRejeitar = new (require('discord.js')).ButtonBuilder()
+            .setCustomId(`cancelar_remover_adv_${advId}`)
+            .setLabel('❌ Cancelar')
+            .setStyle((require('discord.js')).ButtonStyle.Danger);
+
+          const row = new ActionRowBuilder().addComponents(botaoAprovar, botaoRejeitar);
+
+          // Salvar info de remoção pendente
+          if (!config.farm.remocoes_adv_pendentes) config.farm.remocoes_adv_pendentes = {};
+          config.farm.remocoes_adv_pendentes[advId] = {
+            nomeMembro,
+            tipoAdv: parseInt(tipoAdv),
+            solicitadoPor: interaction.user.id,
+            solicitadoPorTag: interaction.user.tag,
+            data: new Date().toISOString(),
+          };
+          save('config.json', config);
+
+          await canalAprovacao.send({
+            embeds: [embed],
+            components: [row],
+          });
+
+          await interaction.reply({
+            content: `✅ Solicitação de remoção enviada! Aguardando aprovação dos responsáveis.`,
+            ephemeral: true,
+          });
+        } catch (err) {
+          console.error(err);
+          await interaction.reply({
+            content: `❌ Erro ao solicitar remoção de ADV: ${err.message}`,
+            ephemeral: true,
+          });
+        }
+      }
+
       if (interaction.customId === 'modal_cadastro_item') {
         const nomesInput = interaction.fields.getTextInputValue('nome_item');
         const descricaoItem = interaction.fields.getTextInputValue('descricao_item') || '';
@@ -832,6 +1004,44 @@ module.exports = {
 
         await interaction.reply({
           content: '**🌾 Farm**\n\nSelecione a opção:',
+          components: [row],
+          ephemeral: true,
+        });
+      }
+
+      if (interaction.customId === 'cat_advs') {
+        const { StringSelectMenuBuilder } = require('discord.js');
+
+        const selectMenu = new StringSelectMenuBuilder()
+          .setCustomId('painel_advs')
+          .setPlaceholder('Escolha uma opção...')
+          .addOptions(
+            {
+              label: 'Canal de Registro de ADV',
+              description: 'Onde fica o botão para registrar/remover ADV',
+              value: 'adv_canal_registro',
+            },
+            {
+              label: 'Canal de Aprovação de ADV',
+              description: 'Onde aparecem os ADVs para aprovação',
+              value: 'adv_canal_aprovacao',
+            },
+            {
+              label: 'Cargos que Podem Dar ADV',
+              description: 'Quem pode registrar ADVs',
+              value: 'adv_cargos_registro',
+            },
+            {
+              label: 'Cargos que Podem Aprovar ADV',
+              description: 'Quem aprova os ADVs registrados',
+              value: 'adv_cargos_aprovacao',
+            }
+          );
+
+        const row = new ActionRowBuilder().addComponents(selectMenu);
+
+        await interaction.reply({
+          content: '**⚠️ Sistema de ADVs**\n\nSelecione a opção:',
           components: [row],
           ephemeral: true,
         });
@@ -3523,6 +3733,101 @@ module.exports = {
           content: '❌ Operação cancelada. Metas mantidas.',
           ephemeral: true,
         });
+      }
+
+      // ===== HANDLERS DE ADV =====
+
+      if (interaction.customId === 'registrar_adv') {
+        const config = load(CONFIG_FILE, {});
+        const guildId = interaction.guild.id;
+
+        // Verificar se o usuário tem permissão para registrar ADV
+        const cargosAdvIds = config.farm?.cargo_registro_adv || [];
+        const temPermissao = cargosAdvIds.length === 0 ||
+          interaction.member.roles.cache.some(role => cargosAdvIds.includes(role.id)) ||
+          interaction.memberPermissions.has('ADMINISTRATOR');
+
+        if (!temPermissao) {
+          return await interaction.reply({
+            content: '❌ Você não tem permissão para registrar ADVs!',
+            ephemeral: true,
+          });
+        }
+
+        const modal = new ModalBuilder()
+          .setCustomId('modal_registrar_adv')
+          .setTitle('⚠️ Registrar ADV');
+
+        const nomeInput = new TextInputBuilder()
+          .setCustomId('nome_membro')
+          .setLabel('Nome ou Menção do Membro')
+          .setStyle(TextInputStyle.Short)
+          .setPlaceholder('Ex: @Usuario ou ID')
+          .setRequired(true);
+
+        const motivoInput = new TextInputBuilder()
+          .setCustomId('motivo_adv')
+          .setLabel('Motivo do ADV')
+          .setStyle(TextInputStyle.Paragraph)
+          .setPlaceholder('Digite o motivo da advertência')
+          .setRequired(true);
+
+        const tipoInput = new TextInputBuilder()
+          .setCustomId('tipo_adv')
+          .setLabel('Tipo de ADV (1 ou 2)')
+          .setStyle(TextInputStyle.Short)
+          .setPlaceholder('1 ou 2')
+          .setRequired(true);
+
+        modal.addComponents(
+          new ActionRowBuilder().addComponents(nomeInput),
+          new ActionRowBuilder().addComponents(motivoInput),
+          new ActionRowBuilder().addComponents(tipoInput)
+        );
+
+        await interaction.showModal(modal);
+      }
+
+      if (interaction.customId === 'remover_adv') {
+        const config = load(CONFIG_FILE, {});
+
+        // Verificar se o usuário tem permissão
+        const cargosAdvIds = config.farm?.cargo_registro_adv || [];
+        const temPermissao = cargosAdvIds.length === 0 ||
+          interaction.member.roles.cache.some(role => cargosAdvIds.includes(role.id)) ||
+          interaction.memberPermissions.has('ADMINISTRATOR');
+
+        if (!temPermissao) {
+          return await interaction.reply({
+            content: '❌ Você não tem permissão para remover ADVs!',
+            ephemeral: true,
+          });
+        }
+
+        const modal = new ModalBuilder()
+          .setCustomId('modal_remover_adv')
+          .setTitle('✅ Remover ADV');
+
+        const nomeInput = new TextInputBuilder()
+          .setCustomId('nome_membro_remover')
+          .setLabel('Nome ou Menção do Membro')
+          .setStyle(TextInputStyle.Short)
+          .setPlaceholder('Ex: @Usuario ou ID')
+          .setRequired(true);
+
+        const tipoInput = new TextInputBuilder()
+          .setCustomId('tipo_adv_remover')
+          .setLabel('Tipo de ADV a Remover (1 ou 2)')
+          .setStyle(TextInputStyle.Short)
+          .setPlaceholder('1 ou 2')
+          .setRequired(true);
+
+        modal.addComponents(
+          new ActionRowBuilder().addComponents(nomeInput),
+          new ActionRowBuilder().addComponents(tipoInput)
+        );
+
+        await interaction.showModal(modal);
       }
 
       // ===== HANDLERS DE LIMPEZA DE CONFIGURAÇÕES =====

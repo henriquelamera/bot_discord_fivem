@@ -63,13 +63,20 @@ module.exports = {
 
     const botoes2 = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
+        .setCustomId('cat_advs')
+        .setLabel('⚠️ Sistema de ADVs')
+        .setStyle(ButtonStyle.Primary),
+      new ButtonBuilder()
         .setCustomId('cat_status_admin')
         .setLabel('✅ Status')
         .setStyle(ButtonStyle.Secondary),
       new ButtonBuilder()
         .setCustomId('limpar_config_bot_ids')
         .setLabel('🗑️ Limpar IDs')
-        .setStyle(ButtonStyle.Danger),
+        .setStyle(ButtonStyle.Danger)
+    );
+
+    const botoes3 = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
         .setCustomId('limpar_config_admin_menu')
         .setLabel('🗑️ Limpar Configurações')
@@ -78,7 +85,7 @@ module.exports = {
 
     await interaction.reply({
       embeds: [embed],
-      components: [botoes, botoes2],
+      components: [botoes, botoes2, botoes3],
       ephemeral: true,
     });
   },
