@@ -1333,77 +1333,73 @@ module.exports = {
         try {
           const config = load(CONFIG_FILE, {});
 
-          const safeValue = (value) => {
-          if (!value || !value.trim()) return '❌ Não configurado';
-          // Limitar a 1024 caracteres (limite do Discord.js)
-          return value.length > 1024 ? value.substring(0, 1021) + '...' : value;
-        };
+          const truncate = (str, max = 1024) => {
+            if (!str) return '❌';
+            return str.length > max ? str.substring(0, max - 3) + '...' : str;
+          };
 
           // Boas-vindas
           const boasVindasCanal = config.boas_vindas?.canal_id
-          ? `✅ #${interaction.guild.channels.cache.get(config.boas_vindas.canal_id)?.name || 'ID Inválido'}`
-          : '❌ Canal não configurado';
-        const boasVindasRegistro = config.boas_vindas?.canal_registro_id
-          ? `✅ #${interaction.guild.channels.cache.get(config.boas_vindas.canal_registro_id)?.name || 'ID Inválido'}`
-          : '❌ Não configurado';
-        const boasVindasAprovacoes = config.boas_vindas?.canal_aprovacoes_id
-          ? `✅ #${interaction.guild.channels.cache.get(config.boas_vindas.canal_aprovacoes_id)?.name || 'ID Inválido'}`
-          : '❌ Não configurado';
-        const boasVindas = safeValue(`${boasVindasCanal}\n**📋 Registro:** ${boasVindasRegistro}\n**✅ Aprovações:** ${boasVindasAprovacoes}`);
+            ? `✅ #${interaction.guild.channels.cache.get(config.boas_vindas.canal_id)?.name || 'ID Inválido'}`
+            : '❌';
+          const boasVindasRegistro = config.boas_vindas?.canal_registro_id
+            ? `✅ #${interaction.guild.channels.cache.get(config.boas_vindas.canal_registro_id)?.name || 'ID Inválido'}`
+            : '❌';
+          const boasVindasAprovacoes = config.boas_vindas?.canal_aprovacoes_id
+            ? `✅ #${interaction.guild.channels.cache.get(config.boas_vindas.canal_aprovacoes_id)?.name || 'ID Inválido'}`
+            : '❌';
 
-        // Registro
-        const registro = config.registro?.canal_id
-          ? `✅ Canal: ${interaction.guild.channels.cache.get(config.registro.canal_id)?.name || 'ID Inválido'}`
-          : '❌ Não configurado';
+          // Registro
+          const registro = config.registro?.canal_id
+            ? `✅ #${interaction.guild.channels.cache.get(config.registro.canal_id)?.name || 'ID Inválido'}`
+            : '❌';
 
-        // Farm - Configurações Gerais
-        const farmCategoria = config.farm?.categoria_bau_id
-          ? `✅ ${interaction.guild.channels.cache.get(config.farm.categoria_bau_id)?.name || 'ID Inválido'}`
-          : '❌ Não configurado';
+          // Farm
+          const farmCategoria = config.farm?.categoria_bau_id
+            ? `✅ ${interaction.guild.channels.cache.get(config.farm.categoria_bau_id)?.name || 'ID Inválido'}`
+            : '❌';
 
-        const farmCanal = config.farm?.canal_aprovacoes_id
-          ? `✅ ${interaction.guild.channels.cache.get(config.farm.canal_aprovacoes_id)?.name || 'ID Inválido'}`
-          : '❌ Não configurado';
+          const farmCanal = config.farm?.canal_aprovacoes_id
+            ? `✅ ${interaction.guild.channels.cache.get(config.farm.canal_aprovacoes_id)?.name || 'ID Inválido'}`
+            : '❌';
 
-        // Farm - Items
-        const farmItems = safeValue(config.farm?.itens?.length > 0
-          ? `✅ ${config.farm.itens.length} item(ns) cadastrado(s):\n${config.farm.itens.map(i => `  • ${i.nome}`).join('\n')}`
-          : '');
+          const farmItems = config.farm?.itens?.length > 0
+            ? `✅ ${config.farm.itens.length} item(ns)`
+            : '❌';
 
-        // Farm - Metas
-        const farmMetas = safeValue(config.farm?.metas && Object.keys(config.farm.metas).length > 0
-          ? `✅ ${Object.keys(config.farm.metas).length} meta(s) definida(s):\n${Object.values(config.farm.metas).map(m => `  • ${m.nome}: ${m.meta_semanal}/semana`).join('\n')}`
-          : '');
+          const farmMetas = config.farm?.metas && Object.keys(config.farm.metas).length > 0
+            ? `✅ ${Object.keys(config.farm.metas).length} meta(s)`
+            : '❌';
 
-        // Recrutamento
-        const recUniforme = config.recrutamento?.rec_canal_uniforme
-          ? `✅ ${interaction.guild.channels.cache.get(config.recrutamento.rec_canal_uniforme)?.name || 'ID Inválido'}`
-          : '❌ Não configurado';
+          // Recrutamento
+          const recUniforme = config.recrutamento?.rec_canal_uniforme
+            ? `✅ ${interaction.guild.channels.cache.get(config.recrutamento.rec_canal_uniforme)?.name || 'ID Inválido'}`
+            : '❌';
 
-        const recRegrasFac = config.recrutamento?.rec_canal_regras_fac
-          ? `✅ ${interaction.guild.channels.cache.get(config.recrutamento.rec_canal_regras_fac)?.name || 'ID Inválido'}`
-          : '❌ Não configurado';
+          const recRegrasFac = config.recrutamento?.rec_canal_regras_fac
+            ? `✅ ${interaction.guild.channels.cache.get(config.recrutamento.rec_canal_regras_fac)?.name || 'ID Inválido'}`
+            : '❌';
 
-        const recRegrasCidade = config.recrutamento?.rec_canal_regras_cidade
-          ? `✅ ${interaction.guild.channels.cache.get(config.recrutamento.rec_canal_regras_cidade)?.name || 'ID Inválido'}`
-          : '❌ Não configurado';
+          const recRegrasCidade = config.recrutamento?.rec_canal_regras_cidade
+            ? `✅ ${interaction.guild.channels.cache.get(config.recrutamento.rec_canal_regras_cidade)?.name || 'ID Inválido'}`
+            : '❌';
 
-        const embed = new EmbedBuilder()
-          .setTitle('✅ Status das Configurações')
-          .setColor(0x2ecc71)
-          .addFields(
-            { name: '👋 Boas-vindas', value: boasVindas, inline: false },
-            { name: '📋 Registro', value: registro, inline: false },
-            { name: '🌾 FARM', value: '---', inline: false },
-            { name: '📁 Categoria de Baús', value: farmCategoria, inline: false },
-            { name: '📢 Canal de Aprovações', value: farmCanal, inline: false },
-            { name: '📦 Items', value: farmItems, inline: false },
-            { name: '🎯 Metas', value: farmMetas, inline: false },
-            { name: '👥 RECRUTAMENTO', value: '---', inline: false },
-            { name: '👕 Uniforme', value: recUniforme, inline: false },
-            { name: '📜 Regras da Fac', value: recRegrasFac, inline: false },
-            { name: '🏙️ Regras da Cidade', value: recRegrasCidade, inline: false }
-          );
+          const embed = new EmbedBuilder()
+            .setTitle('✅ Status das Configurações')
+            .setColor(0x2ecc71)
+            .addFields(
+              { name: '👋 Canal Principal', value: truncate(boasVindasCanal), inline: true },
+              { name: '📋 Canal Registro', value: truncate(boasVindasRegistro), inline: true },
+              { name: '✅ Aprovações BV', value: truncate(boasVindasAprovacoes), inline: true },
+              { name: '📋 Canal Registro', value: truncate(registro), inline: true },
+              { name: '📁 Farm Categoria', value: truncate(farmCategoria), inline: true },
+              { name: '📢 Farm Aprovações', value: truncate(farmCanal), inline: true },
+              { name: '📦 Items', value: truncate(farmItems), inline: true },
+              { name: '🎯 Metas', value: truncate(farmMetas), inline: true },
+              { name: '👕 Uniforme', value: truncate(recUniforme), inline: true },
+              { name: '📜 Regras Fac', value: truncate(recRegrasFac), inline: true },
+              { name: '🏙️ Regras Cidade', value: truncate(recRegrasCidade), inline: true }
+            );
 
         await interaction.reply({
           embeds: [embed],
