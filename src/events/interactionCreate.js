@@ -1227,9 +1227,19 @@ module.exports = {
           : '';
         const cargosAprovacaoAdv = safeValue(cargosAprovacaoAdvNomes);
 
+        console.log('=== DEBUG cat_status_admin ===');
+        console.log('token:', typeof token, token);
+        console.log('clientId:', typeof clientId, clientId);
+        console.log('guildId:', typeof guildId, guildId);
+        console.log('cargoMorador:', typeof cargoMorador, cargoMorador);
+        console.log('cargoMembro:', typeof cargoMembro, cargoMembro);
+        console.log('cargoGerente:', typeof cargoGerente, cargoGerente);
+
+        console.log('Criando EmbedBuilder...');
         const embed = new EmbedBuilder()
           .setTitle('✅ Status Completo do Bot')
           .setColor(0x2ecc71);
+        console.log('EmbedBuilder criado com sucesso');
 
         // Adicionar fields de forma segura
         console.log('Adicionando field: CREDENCIAIS');
