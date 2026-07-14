@@ -3,6 +3,10 @@ const serverService = require('../services/serverService');
 const memberService = require('../services/memberService');
 const deliveryService = require('../services/deliveryService');
 const advService = require('../services/advService');
+const { dispatchButton, dispatchSelectMenu, dispatchModal } = require('../utils/handlerRegistry');
+
+// Carregar todos os handlers registrados
+require('../handlers/registerAllHandlers');
 
 module.exports = {
   name: 'interactionCreate',
@@ -25,6 +29,11 @@ module.exports = {
     }
 
     if (interaction.isModalSubmit()) {
+      // Tentar dispatcher de handlers registrados primeiro
+      if (await dispatchModal(interaction)) {
+        return; // Handler foi executado com sucesso
+      }
+
       // Handler para validar senha do painel_configuracao
       if (interaction.customId === 'modal_senha_painel') {
         const senhaInput = interaction.fields.getTextInputValue('senha_input');
@@ -886,6 +895,11 @@ module.exports = {
     }
 
     if (interaction.isButton()) {
+      // Tentar dispatcher de handlers registrados (O(1) complexity com Map)
+      if (await dispatchButton(interaction)) {
+        return; // Handler foi executado com sucesso
+      }
+
       // Mapeamento rápido de handlers para evitar iteração sequencial de 4600 linhas
       // Dispatch prioritário para categorias principais
       if (interaction.customId.startsWith('cat_')) {
@@ -1386,6 +1400,11 @@ module.exports = {
     }
 
     if (interaction.isStringSelectMenu()) {
+      // Tentar dispatcher de handlers registrados primeiro
+      if (await dispatchSelectMenu(interaction)) {
+        return; // Handler foi executado com sucesso
+      }
+
       if (interaction.customId === 'painel_credenciais') {
         const valor = interaction.values[0];
 

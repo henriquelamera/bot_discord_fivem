@@ -24,7 +24,8 @@
       "Bash(git commit -m 'refactor: create component factory for buttons and embeds *)",
       "Bash(git commit -m 'refactor: add utilities for modal handling and validation *)",
       "Bash(git commit -m 'refactor: add panel factory for configuration UI *)",
-      "Bash(git commit -m 'fix: optimize button handler response time by adding fast path for common categories *)"
+      "Bash(git commit -m 'fix: optimize button handler response time by adding fast path for common categories *)",
+      "Bash(git commit -m 'refactor: add handler registry system for O\\(1\\) dispatch instead of O\\(n\\) if statements *)"
     ]
   }
 }
