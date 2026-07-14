@@ -1251,47 +1251,36 @@ module.exports = {
           return str.length > max ? str.substring(0, max - 3) + '...' : str;
         };
 
-        console.log('Adicionando field: CREDENCIAIS');
-        embed.addFields({ name: '🔐 CREDENCIAIS', value: '---', inline: false });
-        embed.addFields({ name: 'Discord Token', value: truncate(token), inline: true });
-        embed.addFields({ name: 'Client ID', value: truncate(clientId), inline: true });
-        embed.addFields({ name: 'Guild ID', value: truncate(guildId), inline: true });
+        console.log('Adicionando fields...');
+        embed.addFields(
+          { name: '🔐 Discord Token', value: truncate(token), inline: true },
+          { name: '🆔 Client ID', value: truncate(clientId), inline: true },
+          { name: '🏢 Guild ID', value: truncate(guildId), inline: true },
 
-        console.log('Adicionando field: CARGOS DE REGISTRO');
-        embed.addFields({ name: '📋 CARGOS DE REGISTRO', value: '---', inline: false });
-        embed.addFields({ name: 'Morador', value: truncate(cargoMorador), inline: true });
-        embed.addFields({ name: 'Membro', value: truncate(cargoMembro), inline: true });
-        embed.addFields({ name: 'Gerente', value: truncate(cargoGerente), inline: true });
+          { name: '👥 Morador', value: truncate(cargoMorador), inline: true },
+          { name: '👤 Membro', value: truncate(cargoMembro), inline: true },
+          { name: '👨‍💼 Gerente', value: truncate(cargoGerente), inline: true },
 
-        console.log('Adicionando field: CANAIS DE BOAS-VINDAS');
-        embed.addFields({ name: '👋 CANAIS DE BOAS-VINDAS', value: '---', inline: false });
-        embed.addFields({ name: 'Canal Principal', value: truncate(canalBoasVindas), inline: true });
-        embed.addFields({ name: 'Canal de Registro', value: truncate(canalRegistro), inline: true });
-        embed.addFields({ name: 'Aprovações', value: truncate(canalAprovacoes), inline: true });
+          { name: '👋 Canal Principal', value: truncate(canalBoasVindas), inline: true },
+          { name: '📋 Canal Registro', value: truncate(canalRegistro), inline: true },
+          { name: '✅ Aprovações', value: truncate(canalAprovacoes), inline: true },
 
-        console.log('Adicionando field: CARGOS DE FARM');
-        embed.addFields({ name: '🌾 CARGOS DE FARM', value: '---', inline: false });
-        embed.addFields({ name: 'Farm em Dia', value: truncate(farmEmDia), inline: true });
-        embed.addFields({ name: 'Farm Atrasado', value: truncate(farmAtrasado), inline: true });
-        embed.addFields({ name: 'ADV Farm 1', value: truncate(advFarm1), inline: true });
-        embed.addFields({ name: 'ADV Farm 2', value: truncate(advFarm2), inline: true });
+          { name: '✅ Farm em Dia', value: truncate(farmEmDia), inline: true },
+          { name: '⏸️ Farm Atrasado', value: truncate(farmAtrasado), inline: true },
+          { name: '⚠️ ADV 1', value: truncate(advFarm1), inline: true },
+          { name: '🚨 ADV 2', value: truncate(advFarm2), inline: true },
 
-        console.log('Adicionando field: CANAIS DE FARM');
-        embed.addFields({ name: '🌾 CANAIS DE FARM', value: '---', inline: false });
-        embed.addFields({ name: 'Abrir Baú', value: truncate(canalBau), inline: true });
-        embed.addFields({ name: 'Aprovações', value: truncate(canalAprovacoesFarm), inline: true });
+          { name: '📦 Abrir Baú', value: truncate(canalBau), inline: true },
+          { name: '📢 Farm Aprovações', value: truncate(canalAprovacoesFarm), inline: true },
 
-        console.log('Adicionando field: CANAIS DE ADV');
-        embed.addFields({ name: '⚠️ CANAIS DE ADV', value: '---', inline: false });
-        embed.addFields({ name: 'Registro ADV', value: truncate(canalRegistroAdv), inline: true });
-        embed.addFields({ name: 'Aprovação ADV', value: truncate(canalAprovacaoAdv), inline: true });
+          { name: '⚠️ Registro ADV', value: truncate(canalRegistroAdv), inline: true },
+          { name: '✔️ Aprovação ADV', value: truncate(canalAprovacaoAdv), inline: true },
 
-        console.log('Adicionando field: PERMISSÕES');
-        embed.addFields({ name: '👥 PERMISSÕES', value: '---', inline: false });
-        embed.addFields({ name: 'Aprovam Pagamento', value: truncate(cargosPagamento), inline: false });
-        embed.addFields({ name: 'Responsáveis Farm', value: truncate(cargosResponsaveis), inline: false });
-        embed.addFields({ name: 'Podem Dar ADV', value: truncate(cargosRegistroAdv), inline: false });
-        embed.addFields({ name: 'Aprovam ADV', value: truncate(cargosAprovacaoAdv), inline: false });
+          { name: '💰 Podem Pagar', value: truncate(cargosPagamento), inline: false },
+          { name: '👨‍🌾 Responsáveis', value: truncate(cargosResponsaveis), inline: false },
+          { name: '⚠️ Podem Dar ADV', value: truncate(cargosRegistroAdv), inline: false },
+          { name: '✅ Aprovam ADV', value: truncate(cargosAprovacaoAdv), inline: false }
+        );
 
         console.log('Embed criado com sucesso!');
 
