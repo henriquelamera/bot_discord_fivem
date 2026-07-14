@@ -2,6 +2,7 @@ require('dotenv').config();
 const fs = require('fs');
 const path = require('path');
 const { Client, GatewayIntentBits, Collection } = require('discord.js');
+const { initializeDatabase } = require('./src/initDb');
 
 const client = new Client({
   intents: [
@@ -29,4 +30,8 @@ for (const file of fs.readdirSync(eventsPath).filter((f) => f.endsWith('.js'))) 
   }
 }
 
-client.login(process.env.DISCORD_TOKEN);
+// Inicializar banco de dados antes de fazer login
+(async () => {
+  await initializeDatabase();
+  client.login(process.env.DISCORD_TOKEN);
+})();
