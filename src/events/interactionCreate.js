@@ -1690,6 +1690,11 @@ module.exports = {
                     label: 'Canal de Aprovações',
                     description: 'Onde aparecem registros para aprovar/rejeitar',
                     value: 'config_reg_canal_aprovacoes',
+                  },
+                  {
+                    label: 'Cargos que Podem Aprovar',
+                    description: 'Quem pode aprovar/rejeitar registros e promoções',
+                    value: 'config_aprovacoes',
                   }
                 );
               const row = new ActionRowBuilder().addComponents(selectMenu);
@@ -4583,6 +4588,18 @@ module.exports = {
         const guildId = interaction.guild.id;
         const config = await serverService.getConfig(interaction.guild.id);
 
+        const cargosAprovacaoIds = config.aprovacoes?.cargo_ids || [];
+        const temPermissaoAprovar = cargosAprovacaoIds.length === 0 ||
+          interaction.member.roles.cache.some(role => cargosAprovacaoIds.includes(role.id)) ||
+          interaction.memberPermissions.has('ADMINISTRATOR');
+
+        if (!temPermissaoAprovar) {
+          return await interaction.reply({
+            content: '❌ Você não tem permissão para aprovar registros!',
+            ephemeral: true,
+          });
+        }
+
         try {
           // 1. Registrar servidor no banco
           await serverService.registerServer(
@@ -4685,6 +4702,19 @@ module.exports = {
 
       if (interaction.customId.startsWith('rejeitar_registro_')) {
         const userId = interaction.customId.replace('rejeitar_registro_', '');
+        const config = await serverService.getConfig(interaction.guild.id);
+
+        const cargosAprovacaoIds = config.aprovacoes?.cargo_ids || [];
+        const temPermissaoAprovar = cargosAprovacaoIds.length === 0 ||
+          interaction.member.roles.cache.some(role => cargosAprovacaoIds.includes(role.id)) ||
+          interaction.memberPermissions.has('ADMINISTRATOR');
+
+        if (!temPermissaoAprovar) {
+          return await interaction.reply({
+            content: '❌ Você não tem permissão para rejeitar registros!',
+            ephemeral: true,
+          });
+        }
 
         try {
           const user = await interaction.client.users.fetch(userId);
@@ -4792,6 +4822,19 @@ module.exports = {
       if (interaction.customId.startsWith('aprovar_promocao_')) {
         const userId = interaction.customId.replace('aprovar_promocao_', '');
         const config = await serverService.getConfig(interaction.guild.id);
+
+        const cargosAprovacaoIds = config.aprovacoes?.cargo_ids || [];
+        const temPermissaoAprovar = cargosAprovacaoIds.length === 0 ||
+          interaction.member.roles.cache.some(role => cargosAprovacaoIds.includes(role.id)) ||
+          interaction.memberPermissions.has('ADMINISTRATOR');
+
+        if (!temPermissaoAprovar) {
+          return await interaction.reply({
+            content: '❌ Você não tem permissão para aprovar essa solicitação!',
+            ephemeral: true,
+          });
+        }
+
         const solicitacao = config.atualizacoes_hierarquia_pendentes?.[userId];
 
         if (!solicitacao) {
@@ -4895,6 +4938,18 @@ module.exports = {
       if (interaction.customId.startsWith('recusar_promocao_')) {
         const userId = interaction.customId.replace('recusar_promocao_', '');
         const config = await serverService.getConfig(interaction.guild.id);
+
+        const cargosAprovacaoIds = config.aprovacoes?.cargo_ids || [];
+        const temPermissaoAprovar = cargosAprovacaoIds.length === 0 ||
+          interaction.member.roles.cache.some(role => cargosAprovacaoIds.includes(role.id)) ||
+          interaction.memberPermissions.has('ADMINISTRATOR');
+
+        if (!temPermissaoAprovar) {
+          return await interaction.reply({
+            content: '❌ Você não tem permissão para recusar essa solicitação!',
+            ephemeral: true,
+          });
+        }
 
         try {
           if (config.atualizacoes_hierarquia_pendentes?.[userId]) {
