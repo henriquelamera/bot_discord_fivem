@@ -217,6 +217,27 @@ function buscarCanalFarmDoUsuario(guild, config, userId) {
   return categoria?.children.cache.find((ch) => ch.permissionOverwrites.cache.has(userId)) || null;
 }
 
+// Transforma um nome em um slug válido de canal do Discord. Nomes com fontes
+// estilizadas (ex: gerador de "fancy text") não são letras a-z normais e
+// seriam todas removidas, sobrando só o ID (ex: "-1177") - o normalize()
+// converte a maioria dessas variações Unicode pro equivalente ASCII antes de
+// filtrar. Se mesmo assim não sobrar nenhuma letra, usa um nome de reserva.
+function slugificarNomeCanal(nome, fallbackId) {
+  const semAcentos = nome.normalize('NFKD').replace(/[̀-ͯ]/g, '');
+
+  const slug = semAcentos
+    .toLowerCase()
+    .replace(/[^a-z0-9-|]/g, '-')
+    .replace(/--+/g, '-')
+    .replace(/^-|-$/g, '');
+
+  if (!/[a-z]/.test(slug)) {
+    return `membro-${fallbackId.slice(-6)}`;
+  }
+
+  return slug;
+}
+
 // Cria (ou recria) o canal privado de farm de um usuário na categoria de
 // baú configurada, com o botão de Entregar Meta. Retorna o canal criado,
 // ou null se a categoria não estiver configurada/for inválida.
@@ -228,11 +249,7 @@ async function criarCanalPrivadoFarm(guild, config, userId, categoriaBauId, embe
 
   const membro = await guild.members.fetch(userId);
   const nomeFormatado = config.membros_info?.[userId]?.nomeFormatado;
-  const nomeCanal = (nomeFormatado || membro.displayName)
-    .toLowerCase()
-    .replace(/[^a-z0-9-|]/g, '-')
-    .replace(/--+/g, '-')
-    .replace(/^-|-$/g, '');
+  const nomeCanal = slugificarNomeCanal(nomeFormatado || membro.displayName, userId);
 
   const responsaveisFarmIds = config.farm?.cargo_responsaveis_farm || [];
 

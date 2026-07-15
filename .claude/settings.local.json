@@ -54,7 +54,8 @@
       "Bash(node -c src/events/guildMemberRemove.js)",
       "Bash(node -c src/events/guildMemberUpdate.js)",
       "Bash(grep -n \"replace\\(/\\\\\\\\\\\\\\\\{usuario\\\\\\\\\\\\\\\\}/g, interaction.user.tag\\)\" src/events/interactionCreate.js)",
-      "Bash(node -c src/services/deliveryService.js)"
+      "Bash(node -c src/services/deliveryService.js)",
+      "Bash(node -e ' *)"
     ]
   }
 }
