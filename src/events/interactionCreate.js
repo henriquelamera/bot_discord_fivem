@@ -85,6 +85,64 @@ async function processarPagamentoFarm(config, guild, entrega, aprovadorId) {
   return entrega.pagamento;
 }
 
+// Concede uma promoção da hierarquia (Morador/Membro/Gerente/Liderança):
+// atualiza nickname, remove qualquer cargo antigo da hierarquia, adiciona o
+// cargo novo e limpa a solicitação pendente. `solicitacao` vem de
+// config.atualizacoes_hierarquia_pendentes[userId].
+async function concederPromocaoHierarquia(config, guild, userId, solicitacao, cargoNovoId, aprovadorId) {
+  const membro = await guild.members.fetch(userId);
+  const cargoNovo = guild.roles.cache.get(cargoNovoId);
+  if (!cargoNovo) throw new Error('Cargo não encontrado no servidor.');
+
+  const nomeFormatado = `${solicitacao.nomeInGame} | ${solicitacao.id}`;
+  await membro.setNickname(nomeFormatado).catch(() => {});
+
+  // Remover qualquer cargo antigo da hierarquia (de qualquer tier) antes de
+  // adicionar o novo, já que Gerente/Liderança podem ter vários cargos possíveis.
+  const cargosDaHierarquia = [
+    config.cargo_morador_id,
+    config.cargo_membro_id,
+    ...(config.cargo_gerente_ids || []),
+    ...(config.cargo_lideranca_ids || []),
+  ].filter(Boolean);
+
+  const cargosParaRemover = membro.roles.cache
+    .filter(role => cargosDaHierarquia.includes(role.id) && role.id !== cargoNovoId)
+    .map(role => role.id);
+
+  if (cargosParaRemover.length > 0) {
+    await membro.roles.remove(cargosParaRemover).catch(err => {
+      console.warn('Erro ao remover cargo(s) antigo(s) da hierarquia:', err.message);
+    });
+  }
+
+  await membro.roles.add(cargoNovo);
+
+  if (!config.membros_info) config.membros_info = {};
+  config.membros_info[userId] = {
+    ...config.membros_info[userId],
+    nomeInGame: solicitacao.nomeInGame,
+    id: solicitacao.id,
+  };
+
+  await memberService.saveMember(guild.id, userId, solicitacao.nomeInGame, solicitacao.id, nomeFormatado).catch(err => {
+    console.warn('Erro ao sincronizar membro no banco:', err.message);
+  });
+
+  await serverService.logAction(
+    guild.id,
+    aprovadorId,
+    'promocao_hierarquia',
+    `${membro.user.tag} promovido para ${cargoNovo.name}`
+  );
+
+  if (config.atualizacoes_hierarquia_pendentes) {
+    delete config.atualizacoes_hierarquia_pendentes[userId];
+  }
+
+  await membro.user.send(`✅ Sua promoção para **${cargoNovo.name}** foi aprovada!`).catch(() => {});
+}
+
 module.exports = {
   name: 'interactionCreate',
   async execute(interaction, client) {
@@ -1036,6 +1094,78 @@ module.exports = {
           ephemeral: true,
         });
       }
+
+      if (interaction.customId.startsWith('modal_atualizar_registro_hierarquia_')) {
+        const tierAlvo = interaction.customId.replace('modal_atualizar_registro_hierarquia_', '');
+        const nomeInGame = interaction.fields.getTextInputValue('nome_in_game');
+        const id = interaction.fields.getTextInputValue('id_registro');
+        const solicitadoPor = interaction.fields.getTextInputValue('solicitado_por');
+        const userId = interaction.user.id;
+
+        const config = await serverService.getConfig(interaction.guild.id);
+
+        if (!config.atualizacoes_hierarquia_pendentes) config.atualizacoes_hierarquia_pendentes = {};
+        config.atualizacoes_hierarquia_pendentes[userId] = {
+          nomeInGame,
+          id,
+          solicitadoPor,
+          tierAlvo,
+          data: new Date().toISOString(),
+        };
+        await serverService.saveConfig(interaction.guild.id, config);
+
+        const canalAprovacaoId = config.boas_vindas?.canal_aprovacoes_id;
+        const canalAprovacao = canalAprovacaoId
+          ? interaction.guild.channels.cache.get(canalAprovacaoId)
+          : null;
+
+        if (!canalAprovacao) {
+          return await interaction.reply({
+            content: '❌ Canal de aprovações não configurado. Contate um administrador.',
+            ephemeral: true,
+          });
+        }
+
+        const nomesTier = { membro: 'Membro', gerente: 'Gerente', lideranca: 'Liderança' };
+
+        const embed = new EmbedBuilder()
+          .setTitle(`📋 SOLICITAÇÃO DE PROMOÇÃO — ${nomesTier[tierAlvo] || tierAlvo}`)
+          .setColor(0xf39c12)
+          .addFields(
+            { name: '🔗 Discord', value: `<@${userId}>`, inline: false },
+            { name: 'NOME IN-GAME', value: nomeInGame, inline: true },
+            { name: 'ID', value: id, inline: true },
+            { name: 'SOLICITADO POR', value: solicitadoPor, inline: false }
+          )
+          .setFooter({ text: `ID do Discord: ${userId}` })
+          .setTimestamp();
+
+        const botoes = new ActionRowBuilder().addComponents(
+          new (require('discord.js')).ButtonBuilder()
+            .setCustomId(`aprovar_promocao_${userId}`)
+            .setLabel('✅ Aprovar')
+            .setStyle((require('discord.js')).ButtonStyle.Success),
+          new (require('discord.js')).ButtonBuilder()
+            .setCustomId(`recusar_promocao_${userId}`)
+            .setLabel('❌ Recusar')
+            .setStyle((require('discord.js')).ButtonStyle.Danger)
+        );
+
+        try {
+          await canalAprovacao.send({ embeds: [embed], components: [botoes] });
+        } catch (err) {
+          console.error('Erro ao enviar atualização de registro no canal:', err.message);
+          return await interaction.reply({
+            content: `❌ Erro ao enviar solicitação (canal sem permissão): ${err.message}. Contate um administrador.`,
+            ephemeral: true,
+          });
+        }
+
+        await interaction.reply({
+          content: '✅ Solicitação de promoção enviada! Aguarde a análise da administração.',
+          ephemeral: true,
+        });
+      }
     }
 
     if (interaction.isButton()) {
@@ -1478,12 +1608,12 @@ module.exports = {
           ? `✅ ${interaction.guild.roles.cache.get(config.cargo_membro_id)?.name || 'ID Inválido'}`
           : '❌ Não configurado';
 
-        const cargoGerente = config.cargo_gerente_id
-          ? `✅ ${interaction.guild.roles.cache.get(config.cargo_gerente_id)?.name || 'ID Inválido'}`
+        const cargoGerente = config.cargo_gerente_ids?.length > 0
+          ? `✅ ${config.cargo_gerente_ids.map(id => interaction.guild.roles.cache.get(id)?.name || 'ID Inválido').join(', ')}`
           : '❌ Não configurado';
 
-        const cargoLideranca = config.cargo_lideranca_id
-          ? `✅ ${interaction.guild.roles.cache.get(config.cargo_lideranca_id)?.name || 'ID Inválido'}`
+        const cargoLideranca = config.cargo_lideranca_ids?.length > 0
+          ? `✅ ${config.cargo_lideranca_ids.map(id => interaction.guild.roles.cache.get(id)?.name || 'ID Inválido').join(', ')}`
           : '❌ Não configurado';
 
 
@@ -1801,15 +1931,20 @@ module.exports = {
           cargo_bau_nao_aberto: 'Cargo Sem Baú Aberto',
         };
 
+        // Gerente e Liderança aceitam vários cargos (ex: múltiplos cargos de gerência)
+        const ehMultiplo = valor === 'cargo_gerente' || valor === 'cargo_lideranca';
+
         const selectMenu = new StringSelectMenuBuilder()
           .setCustomId(customIdsPorValor[valor])
-          .setPlaceholder('Selecione o cargo...')
+          .setPlaceholder(ehMultiplo ? 'Selecione os cargos...' : 'Selecione o cargo...')
+          .setMinValues(1)
+          .setMaxValues(ehMultiplo ? Math.min(cargos.length, 25) : 1)
           .addOptions(cargos.slice(0, 25));
 
         const row = new ActionRowBuilder().addComponents(selectMenu);
 
         await interaction.reply({
-          content: `**${titulosPorValor[valor]}**\n\nSelecione qual cargo será atribuído:`,
+          content: `**${titulosPorValor[valor]}**\n\nSelecione qual(is) cargo(s) será(ão) atribuído(s):`,
           components: [row],
           ephemeral: true,
         });
@@ -2011,10 +2146,73 @@ module.exports = {
         });
       }
 
+      if (interaction.customId === 'select_cargo_gerente' ||
+          interaction.customId === 'select_cargo_lideranca') {
+        const cargoIds = interaction.values;
+        const campo = interaction.customId === 'select_cargo_gerente' ? 'cargo_gerente_ids' : 'cargo_lideranca_ids';
+        const titulo = interaction.customId === 'select_cargo_gerente' ? 'Gerente' : 'Liderança';
+
+        const config = await serverService.getConfig(interaction.guild.id);
+        config[campo] = cargoIds;
+        await serverService.saveConfig(interaction.guild.id, config);
+
+        const cargosNomes = cargoIds
+          .map(id => interaction.guild.roles.cache.get(id)?.name || 'ID Inválido')
+          .join(', ');
+
+        await interaction.reply({
+          content: `✅ Cargo(s) ${titulo} configurado(s)!\n**Cargos:** ${cargosNomes}`,
+          ephemeral: true,
+        });
+      }
+
+      if (interaction.customId.startsWith('select_grantrole_promocao_')) {
+        const userId = interaction.customId.replace('select_grantrole_promocao_', '');
+        const cargoEscolhidoId = interaction.values[0];
+
+        const config = await serverService.getConfig(interaction.guild.id);
+        const solicitacao = config.atualizacoes_hierarquia_pendentes?.[userId];
+
+        if (!solicitacao) {
+          return await interaction.reply({
+            content: '❌ Solicitação não encontrada (pode já ter sido processada).',
+            ephemeral: true,
+          });
+        }
+
+        try {
+          const canalId = solicitacao.canal_id;
+          const mensagemId = solicitacao.mensagem_id;
+
+          await concederPromocaoHierarquia(config, interaction.guild, userId, solicitacao, cargoEscolhidoId, interaction.user.id);
+          await serverService.saveConfig(interaction.guild.id, config);
+
+          await interaction.reply({
+            content: `✅ Promoção de <@${userId}> aprovada!`,
+            ephemeral: true,
+          });
+
+          // Limpar os botões da mensagem original de aprovação
+          if (canalId && mensagemId) {
+            try {
+              const canalOriginal = interaction.guild.channels.cache.get(canalId);
+              const mensagemOriginal = await canalOriginal?.messages.fetch(mensagemId);
+              await mensagemOriginal?.edit({ components: [] });
+            } catch (err) {
+              console.warn('Não foi possível atualizar mensagem original:', err.message);
+            }
+          }
+        } catch (err) {
+          console.error('Erro ao conceder promoção:', err);
+          await interaction.reply({
+            content: `❌ Erro ao aprovar: ${err.message}`,
+            ephemeral: true,
+          });
+        }
+      }
+
       if (interaction.customId === 'select_cargo_morador' ||
           interaction.customId === 'select_cargo_membro' ||
-          interaction.customId === 'select_cargo_gerente' ||
-          interaction.customId === 'select_cargo_lideranca' ||
           interaction.customId === 'select_cargo_bau_aberto' ||
           interaction.customId === 'select_cargo_bau_nao_aberto') {
         const cargoId = interaction.values[0];
@@ -2022,8 +2220,6 @@ module.exports = {
         const camposPorCustomId = {
           select_cargo_morador: { campo: 'cargo_morador_id', titulo: 'Morador' },
           select_cargo_membro: { campo: 'cargo_membro_id', titulo: 'Membro' },
-          select_cargo_gerente: { campo: 'cargo_gerente_id', titulo: 'Gerente' },
-          select_cargo_lideranca: { campo: 'cargo_lideranca_id', titulo: 'Liderança' },
           select_cargo_bau_aberto: { campo: 'cargo_bau_aberto_id', titulo: 'Baú Aberto' },
           select_cargo_bau_nao_aberto: { campo: 'cargo_bau_nao_aberto_id', titulo: 'Sem Baú Aberto' },
         };
@@ -2660,8 +2856,8 @@ module.exports = {
           const cargoBauNaoAbertoId = config.cargo_bau_nao_aberto_id;
           const cargoMoradorId = config.cargo_morador_id;
           const cargoMembroId = config.cargo_membro_id;
-          const cargoGerenteId = config.cargo_gerente_id;
-          const cargoLiderancaId = config.cargo_lideranca_id;
+          const cargoGerenteIds = config.cargo_gerente_ids || [];
+          const cargoLiderancaIds = config.cargo_lideranca_ids || [];
 
           if (!cargoBauNaoAbertoId) {
             return await interaction.reply({
@@ -2670,7 +2866,7 @@ module.exports = {
             });
           }
 
-          if (!cargoBauAbertoId || (!cargoMoradorId && !cargoMembroId && !cargoGerenteId && !cargoLiderancaId)) {
+          if (!cargoBauAbertoId || (!cargoMoradorId && !cargoMembroId && cargoGerenteIds.length === 0 && cargoLiderancaIds.length === 0)) {
             return await interaction.reply({
               content: '❌ Cargos do sistema (Baú Aberto / Morador / Membro / Gerente / Liderança) não foram configurados.',
               ephemeral: true,
@@ -2695,8 +2891,8 @@ module.exports = {
               const temHierarquiaMoradorOuMais =
                 (cargoMoradorId && membro.roles.cache.has(cargoMoradorId)) ||
                 (cargoMembroId && membro.roles.cache.has(cargoMembroId)) ||
-                (cargoGerenteId && membro.roles.cache.has(cargoGerenteId)) ||
-                (cargoLiderancaId && membro.roles.cache.has(cargoLiderancaId));
+                cargoGerenteIds.some(id => membro.roles.cache.has(id)) ||
+                cargoLiderancaIds.some(id => membro.roles.cache.has(id));
 
               const jaTemBauAberto = membro.roles.cache.has(cargoBauAbertoId);
               const jaTemSemBau = membro.roles.cache.has(cargoBauNaoAbertoId);
@@ -3942,6 +4138,115 @@ module.exports = {
         }
       }
 
+      if (interaction.customId.startsWith('aprovar_promocao_')) {
+        const userId = interaction.customId.replace('aprovar_promocao_', '');
+        const config = await serverService.getConfig(interaction.guild.id);
+        const solicitacao = config.atualizacoes_hierarquia_pendentes?.[userId];
+
+        if (!solicitacao) {
+          return await interaction.reply({
+            content: '❌ Solicitação não encontrada (pode já ter sido processada).',
+            ephemeral: true,
+          });
+        }
+
+        const candidatosPorTier = {
+          membro: config.cargo_membro_id ? [config.cargo_membro_id] : [],
+          gerente: config.cargo_gerente_ids || [],
+          lideranca: config.cargo_lideranca_ids || [],
+        };
+        const candidatos = candidatosPorTier[solicitacao.tierAlvo] || [];
+
+        if (candidatos.length === 0) {
+          return await interaction.reply({
+            content: '❌ Nenhum cargo configurado para esse tier. Contate um administrador.',
+            ephemeral: true,
+          });
+        }
+
+        try {
+          if (candidatos.length === 1) {
+            // Só há um cargo possível: conceder direto
+            await concederPromocaoHierarquia(config, interaction.guild, userId, solicitacao, candidatos[0], interaction.user.id);
+            await serverService.saveConfig(interaction.guild.id, config);
+
+            await interaction.reply({
+              content: `✅ Promoção de <@${userId}> aprovada!`,
+              ephemeral: true,
+            });
+
+            await interaction.message.edit({ components: [] });
+            return;
+          }
+
+          // Múltiplos cargos possíveis para esse tier: aprovador escolhe qual conceder
+          const { StringSelectMenuBuilder } = require('discord.js');
+          const opcoes = candidatos
+            .map(id => interaction.guild.roles.cache.get(id))
+            .filter(Boolean)
+            .map(role => ({ label: role.name, value: role.id }));
+
+          if (opcoes.length === 0) {
+            return await interaction.reply({
+              content: '❌ Os cargos configurados não foram encontrados no servidor.',
+              ephemeral: true,
+            });
+          }
+
+          // Guardar referência da mensagem original para limpar os botões depois
+          solicitacao.canal_id = interaction.channel.id;
+          solicitacao.mensagem_id = interaction.message.id;
+          await serverService.saveConfig(interaction.guild.id, config);
+
+          const selectMenu = new StringSelectMenuBuilder()
+            .setCustomId(`select_grantrole_promocao_${userId}`)
+            .setPlaceholder('Selecione qual cargo conceder...')
+            .addOptions(opcoes);
+
+          const row = new ActionRowBuilder().addComponents(selectMenu);
+
+          await interaction.reply({
+            content: `Esse tier tem mais de um cargo configurado. Selecione qual conceder a <@${userId}>:`,
+            components: [row],
+            ephemeral: true,
+          });
+        } catch (err) {
+          console.error('Erro ao aprovar promoção:', err);
+          await interaction.reply({
+            content: `❌ Erro ao aprovar: ${err.message}`,
+            ephemeral: true,
+          });
+        }
+      }
+
+      if (interaction.customId.startsWith('recusar_promocao_')) {
+        const userId = interaction.customId.replace('recusar_promocao_', '');
+        const config = await serverService.getConfig(interaction.guild.id);
+
+        try {
+          if (config.atualizacoes_hierarquia_pendentes?.[userId]) {
+            delete config.atualizacoes_hierarquia_pendentes[userId];
+            await serverService.saveConfig(interaction.guild.id, config);
+          }
+
+          const user = await interaction.client.users.fetch(userId);
+          await user.send('❌ Sua solicitação de promoção foi recusada.').catch(() => {});
+
+          await interaction.reply({
+            content: `✅ Solicitação de <@${userId}> recusada!`,
+            ephemeral: true,
+          });
+
+          await interaction.message.edit({ components: [] });
+        } catch (err) {
+          console.error(err);
+          await interaction.reply({
+            content: `❌ Erro ao recusar: ${err.message}`,
+            ephemeral: true,
+          });
+        }
+      }
+
       if (interaction.customId === 'abrir_bau') {
         try {
           const config = await serverService.getConfig(interaction.guild.id);
@@ -3960,8 +4265,8 @@ module.exports = {
           const cargo_bau_nao_aberto_id = config.cargo_bau_nao_aberto_id;
           const cargo_morador_id = config.cargo_morador_id;
           const cargo_membro_id = config.cargo_membro_id;
-          const cargo_gerente_id = config.cargo_gerente_id;
-          const cargo_lideranca_id = config.cargo_lideranca_id;
+          const cargo_gerente_ids = config.cargo_gerente_ids || [];
+          const cargo_lideranca_ids = config.cargo_lideranca_ids || [];
           const cargo_farm_em_dia_id = config.farm?.cargo_em_dia_id;
           const rec_uniforme = config.recrutamento?.rec_canal_uniforme;
           const rec_regras_cidade = config.recrutamento?.rec_canal_regras_cidade;
@@ -3974,8 +4279,8 @@ module.exports = {
           const jaTemCargoHierarquia =
             (cargo_morador_id && interaction.member.roles.cache.has(cargo_morador_id)) ||
             (cargo_membro_id && interaction.member.roles.cache.has(cargo_membro_id)) ||
-            (cargo_gerente_id && interaction.member.roles.cache.has(cargo_gerente_id)) ||
-            (cargo_lideranca_id && interaction.member.roles.cache.has(cargo_lideranca_id));
+            cargo_gerente_ids.some(id => interaction.member.roles.cache.has(id)) ||
+            cargo_lideranca_ids.some(id => interaction.member.roles.cache.has(id));
 
           if (!registroAprovado && !jaTemCargoHierarquia) {
             return await interaction.reply({
@@ -4255,12 +4560,12 @@ module.exports = {
           const cargoAdv2Id = config.farm?.cargo_adv_2;
           const cargoAtrasadoId = config.farm?.cargo_atrasado_id;
           const cargoEmDiaId = config.farm?.cargo_em_dia_id;
-          const cargoGerenteId = config.cargo_gerente_id;
-          const cargoLiderancaId = config.cargo_lideranca_id;
+          const cargoGerenteIds = config.cargo_gerente_ids || [];
+          const cargoLiderancaIds = config.cargo_lideranca_ids || [];
 
           // Verificar se é Gerente ou Liderança (exempt de farm delivery e ADV system)
-          const temCargoGerente = (cargoGerenteId && membro.roles.cache.has(cargoGerenteId)) ||
-            (cargoLiderancaId && membro.roles.cache.has(cargoLiderancaId));
+          const temCargoGerente = cargoGerenteIds.some(id => membro.roles.cache.has(id)) ||
+            cargoLiderancaIds.some(id => membro.roles.cache.has(id));
           if (temCargoGerente) {
             entrega.status = 'aprovada';
             entrega.data_aprovacao = new Date().toISOString();
@@ -4990,77 +5295,45 @@ module.exports = {
         }
 
         // ===== VALIDAÇÃO HIERÁRQUICA DE CARGOS =====
+        // "Pedir Registro" é só para o primeiro registro (Visitante -> Morador).
+        // Quem já tem qualquer cargo da hierarquia usa "Atualizar Registro" para
+        // pedir a próxima promoção.
         const cargoVisitantesIds = config.boas_vindas?.cargo_ids || [];
         const cargoMoradorId = config.cargo_morador_id;
         const cargoMembroId = config.cargo_membro_id;
-        const cargoGerenteId = config.cargo_gerente_id;
-        const cargoLiderancaId = config.cargo_lideranca_id;
+        const cargoGerenteIds = config.cargo_gerente_ids || [];
+        const cargoLiderancaIds = config.cargo_lideranca_ids || [];
 
         const temCargoVisitante = interaction.member.roles.cache.some(role =>
           cargoVisitantesIds.includes(role.id)
         );
         const temCargoMorador = cargoMoradorId && interaction.member.roles.cache.has(cargoMoradorId);
         const temCargoMembro = cargoMembroId && interaction.member.roles.cache.has(cargoMembroId);
-        const temCargoGerente = cargoGerenteId && interaction.member.roles.cache.has(cargoGerenteId);
-        const temCargoLideranca = cargoLiderancaId && interaction.member.roles.cache.has(cargoLiderancaId);
+        const temCargoGerente = cargoGerenteIds.some(id => interaction.member.roles.cache.has(id));
+        const temCargoLideranca = cargoLiderancaIds.some(id => interaction.member.roles.cache.has(id));
 
-        // Determinar quais cargos a pessoa pode pedir
-        let podesPedir = [];
-        let mensagem = '';
-
-        if (temCargoLideranca) {
-          // Liderança não pode pedir mais nada
+        if (temCargoMorador || temCargoMembro || temCargoGerente || temCargoLideranca) {
           return await interaction.reply({
-            content: '✅ Você já tem o cargo máximo (Liderança)! Não pode solicitar mais promoções.',
-            ephemeral: true,
-          });
-        } else if (temCargoGerente) {
-          // Gerente pode pedir Liderança
-          podesPedir = [cargoLiderancaId];
-          mensagem = '📋 Você pode solicitar promoção para **Liderança**';
-        } else if (temCargoMembro) {
-          // Membro pode pedir Gerente
-          podesPedir = [cargoGerenteId];
-          mensagem = '📋 Você pode solicitar promoção para **Gerente**';
-        } else if (temCargoMorador) {
-          // Morador pode pedir Membro
-          podesPedir = [cargoMembroId];
-          mensagem = '📋 Você pode solicitar promoção para **Membro**';
-        } else if (temCargoVisitante) {
-          // Visitante pode pedir Morador
-          podesPedir = [cargoMoradorId];
-          mensagem = '📋 Você pode solicitar promoção para **Morador**';
-        } else {
-          // Sem cargo da hierarquia de registro
-          return await interaction.reply({
-            content: '❌ Você não possui um cargo elegível para solicitar registro. Você já possui outros cargos no servidor que não fazem parte dessa hierarquia (Visitante/Morador/Membro/Gerente/Liderança).',
+            content: '❌ Você já tem um cargo da hierarquia! Use **Atualizar Registro** para solicitar a próxima promoção.',
             ephemeral: true,
           });
         }
 
-        // Verificar se os cargos estão configurados
-        if (podesPedir.some(id => !id)) {
+        if (!temCargoVisitante) {
           return await interaction.reply({
-            content: '❌ Os cargos de promoção não foram configurados! Contate um administrador.',
+            content: '❌ Você não possui um cargo elegível para solicitar registro. Contate um administrador.',
             ephemeral: true,
           });
         }
 
-        // Obter nome do cargo solicitado
-        let nomeCargo = 'Desconhecido';
-        if (temCargoVisitante && cargoMoradorId) {
-          const role = interaction.guild.roles.cache.get(cargoMoradorId);
-          nomeCargo = role?.name || 'Morador';
-        } else if (temCargoMorador && cargoMembroId) {
-          const role = interaction.guild.roles.cache.get(cargoMembroId);
-          nomeCargo = role?.name || 'Membro';
-        } else if (temCargoMembro && cargoGerenteId) {
-          const role = interaction.guild.roles.cache.get(cargoGerenteId);
-          nomeCargo = role?.name || 'Gerente';
-        } else if (temCargoGerente && cargoLiderancaId) {
-          const role = interaction.guild.roles.cache.get(cargoLiderancaId);
-          nomeCargo = role?.name || 'Liderança';
+        if (!cargoMoradorId) {
+          return await interaction.reply({
+            content: '❌ O cargo de promoção (Morador) não foi configurado! Contate um administrador.',
+            ephemeral: true,
+          });
         }
+
+        const nomeCargo = interaction.guild.roles.cache.get(cargoMoradorId)?.name || 'Morador';
 
         // Abrir modal de registro
         const modal = new ModalBuilder()
@@ -5141,16 +5414,18 @@ module.exports = {
         // ===== VALIDAÇÃO HIERÁRQUICA DE CARGOS (PARA ATUALIZAR) =====
         const cargoMoradorId = config.cargo_morador_id;
         const cargoMembroId = config.cargo_membro_id;
-        const cargoGerenteId = config.cargo_gerente_id;
-        const cargoLiderancaId = config.cargo_lideranca_id;
+        const cargoGerenteIds = config.cargo_gerente_ids || [];
+        const cargoLiderancaIds = config.cargo_lideranca_ids || [];
 
         const temCargoMorador = cargoMoradorId && interaction.member.roles.cache.has(cargoMoradorId);
         const temCargoMembro = cargoMembroId && interaction.member.roles.cache.has(cargoMembroId);
-        const temCargoGerente = cargoGerenteId && interaction.member.roles.cache.has(cargoGerenteId);
-        const temCargoLideranca = cargoLiderancaId && interaction.member.roles.cache.has(cargoLiderancaId);
+        const temCargoGerente = cargoGerenteIds.some(id => interaction.member.roles.cache.has(id));
+        const temCargoLideranca = cargoLiderancaIds.some(id => interaction.member.roles.cache.has(id));
 
-        // Determinar qual cargo pode atualizar
-        let cargoProximo = null;
+        // Determinar qual tier a pessoa pode solicitar em seguida.
+        // Gerente/Liderança podem ter vários cargos possíveis - o cargo
+        // específico só é escolhido pelo aprovador no momento da aprovação.
+        let tierAlvo = null;
         let nomeCargoProximo = '';
 
         if (temCargoLideranca) {
@@ -5161,17 +5436,15 @@ module.exports = {
           });
         } else if (temCargoGerente) {
           // Gerente pode pedir Liderança
-          cargoProximo = cargoLiderancaId;
-          const role = interaction.guild.roles.cache.get(cargoLiderancaId);
-          nomeCargoProximo = role?.name || 'Liderança';
+          tierAlvo = 'lideranca';
+          nomeCargoProximo = 'Liderança';
         } else if (temCargoMembro) {
           // Membro pode pedir Gerente
-          cargoProximo = cargoGerenteId;
-          const role = interaction.guild.roles.cache.get(cargoGerenteId);
-          nomeCargoProximo = role?.name || 'Gerente';
+          tierAlvo = 'gerente';
+          nomeCargoProximo = 'Gerente';
         } else if (temCargoMorador) {
           // Morador pode pedir Membro
-          cargoProximo = cargoMembroId;
+          tierAlvo = 'membro';
           const role = interaction.guild.roles.cache.get(cargoMembroId);
           nomeCargoProximo = role?.name || 'Membro';
         } else {
@@ -5181,9 +5454,22 @@ module.exports = {
           });
         }
 
-        // Abrir modal de atualização (simplificado)
+        // Verificar se o próximo tier tem pelo menos um cargo configurado
+        const temCargoConfiguradoParaTier =
+          (tierAlvo === 'membro' && cargoMembroId) ||
+          (tierAlvo === 'gerente' && cargoGerenteIds.length > 0) ||
+          (tierAlvo === 'lideranca' && cargoLiderancaIds.length > 0);
+
+        if (!temCargoConfiguradoParaTier) {
+          return await interaction.reply({
+            content: `❌ O cargo de **${nomeCargoProximo}** não foi configurado! Contate um administrador.`,
+            ephemeral: true,
+          });
+        }
+
+        // Abrir modal de atualização (o tier alvo vai no customId)
         const modal = new ModalBuilder()
-          .setCustomId('modal_atualizar_registro_membro_generico')
+          .setCustomId(`modal_atualizar_registro_hierarquia_${tierAlvo}`)
           .setTitle(`📋 Atualizar para ${nomeCargoProximo}`);
 
         const nomeInput = new TextInputBuilder()
@@ -5200,13 +5486,6 @@ module.exports = {
           .setPlaceholder('Ex: 1202')
           .setRequired(true);
 
-        const cargoInput = new TextInputBuilder()
-          .setCustomId('atualizar_cargo')
-          .setLabel('Cargo que deseja')
-          .setStyle(TextInputStyle.Short)
-          .setValue(nomeCargoProximo)
-          .setRequired(true);
-
         const solicitadoInput = new TextInputBuilder()
           .setCustomId('solicitado_por')
           .setLabel('Quem solicitou esta atualização?')
@@ -5217,7 +5496,6 @@ module.exports = {
         modal.addComponents(
           new ActionRowBuilder().addComponents(nomeInput),
           new ActionRowBuilder().addComponents(idInput),
-          new ActionRowBuilder().addComponents(cargoInput),
           new ActionRowBuilder().addComponents(solicitadoInput)
         );
 
