@@ -211,6 +211,41 @@ async function getEstatisticasEntregas(guildId, desde = null) {
   }
 }
 
+// Ranking de quem mais entregou (por unidades), com o total de entregas de
+// cada um. Passe `desde` pra filtrar (ex: início da semana vigente); sem
+// isso, ranqueia o histórico inteiro.
+async function getRankingEntregas(guildId, desde = null, limite = 15) {
+  try {
+    const condicaoData = desde ? 'AND e.data_aprovacao >= $2' : '';
+    const params = desde ? [guildId, desde, limite] : [guildId, limite];
+    const limiteParam = desde ? '$3' : '$2';
+
+    const result = await pool.query(
+      `SELECT m.discord_id, COUNT(DISTINCT e.id) AS total_entregas, COALESCE(SUM(ie.quantidade), 0) AS total_itens
+       FROM entregas_farm e
+       JOIN membros m ON e.membro_id = m.id
+       JOIN itens_entregues ie ON ie.entrega_id = e.id
+       JOIN servidores s ON e.servidor_id = s.id
+       WHERE s.guild_id = $1
+         AND e.status = 'aprovada'
+         ${condicaoData}
+       GROUP BY m.discord_id
+       ORDER BY total_itens DESC
+       LIMIT ${limiteParam}`,
+      params
+    );
+
+    return result.rows.map((row) => ({
+      discordId: row.discord_id,
+      totalEntregas: parseInt(row.total_entregas, 10),
+      totalItens: parseInt(row.total_itens, 10),
+    }));
+  } catch (error) {
+    console.error('Erro ao pegar ranking de entregas:', error);
+    throw error;
+  }
+}
+
 // Pegar todas as entregas e detalhes completos
 async function getDeliveryWithItems(entregaId) {
   try {
@@ -238,5 +273,6 @@ module.exports = {
   getApprovedDeliveries,
   getQuantidadeEntregueSemanaAtual,
   getEstatisticasEntregas,
+  getRankingEntregas,
   inicioDaSemanaAtual,
 };

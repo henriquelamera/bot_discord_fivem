@@ -13,43 +13,57 @@ function formatarMoeda(valor) {
   return `R$ ${valor.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-// Conta quantos membros têm um cargo (null se o cargo não estiver configurado
-// ou não existir mais no servidor)
-function contarMembrosComCargo(guild, cargoId) {
-  if (!cargoId) return null;
-  const role = guild.roles.cache.get(cargoId);
-  return role ? role.members.size : null;
-}
-
-// Soma pagamentos (pagos e pendentes) a partir de config.farm.entregas.
-// Passe `desde` pra filtrar só pagamentos feitos a partir de uma data
-// (ex: início da semana vigente); sem isso, soma o histórico inteiro.
-// Pendentes não são filtrados por data (o que importa é o que está em
-// aberto agora, não quando a entrega foi aprovada).
-function calcularEstatisticasPagamento(config, desde = null) {
+// Agrupa pagamentos de config.farm.entregas por usuário, somando o valor e
+// contando quantos pagamentos cada um teve. `filtro` recebe o objeto
+// `pagamento` de cada entrega e decide se ele entra na conta (ex: só
+// "pago" na semana, ou só "pendente"). Retorna ordenado do maior pro menor.
+function calcularPagamentosPorMembro(config, filtro) {
   const entregas = config.farm?.entregas || [];
-  let totalPago = 0;
-  let qtdPago = 0;
-  let totalPendente = 0;
-  let qtdPendente = 0;
+  const porMembro = new Map();
 
   for (const entrega of entregas) {
     const pagamento = entrega.pagamento;
-    if (!pagamento) continue;
+    if (!pagamento || !filtro(pagamento)) continue;
 
-    if (pagamento.status === 'pago') {
-      const dataPagamento = pagamento.data_pagamento ? new Date(pagamento.data_pagamento) : null;
-      if (!desde || (dataPagamento && dataPagamento >= desde)) {
-        totalPago += pagamento.valor_total || 0;
-        qtdPago++;
-      }
-    } else if (pagamento.status === 'pendente') {
-      totalPendente += pagamento.valor_total || 0;
-      qtdPendente++;
-    }
+    const atual = porMembro.get(entrega.usuario_id) || { total: 0, qtd: 0 };
+    atual.total += pagamento.valor_total || 0;
+    atual.qtd++;
+    porMembro.set(entrega.usuario_id, atual);
   }
 
-  return { totalPago, qtdPago, totalPendente, qtdPendente };
+  return [...porMembro.entries()]
+    .map(([discordId, dados]) => ({ discordId, ...dados }))
+    .sort((a, b) => b.total - a.total);
+}
+
+// Lista os IDs dos membros que têm um cargo (null se não configurado/não existir)
+function listarIdsComCargo(guild, cargoId) {
+  if (!cargoId) return null;
+  const role = guild.roles.cache.get(cargoId);
+  return role ? [...role.members.keys()] : null;
+}
+
+// Monta uma lista de menções pronta pra mandar numa mensagem, cortando antes
+// de estourar o limite de caracteres do embed (com "e mais X" no final)
+function formatarListaMembros(ids) {
+  if (ids.length === 0) return 'Nenhum membro.';
+
+  const LIMITE_CHARS = 3800;
+  let texto = '';
+  let contados = 0;
+
+  for (const id of ids) {
+    const linha = `<@${id}>\n`;
+    if (texto.length + linha.length > LIMITE_CHARS) break;
+    texto += linha;
+    contados++;
+  }
+
+  if (contados < ids.length) {
+    texto += `\n*... e mais ${ids.length - contados}*`;
+  }
+
+  return texto;
 }
 
 // Extrai o ID de um membro a partir de texto digitado (menção "<@id>" gerada
@@ -5767,71 +5781,109 @@ module.exports = {
 
       if (interaction.customId === 'ger_farm_sem_bau') {
         const config = await serverService.getConfig(interaction.guild.id);
-        const total = contarMembrosComCargo(interaction.guild, config.cargo_bau_nao_aberto_id);
-        await interaction.reply({
-          content: total === null
-            ? '❌ Cargo "Sem Baú Aberto" não foi configurado.'
-            : `👥 **Sem Baú Aberto:** ${total} membro(s)`,
-          ephemeral: true,
-        });
+        const ids = listarIdsComCargo(interaction.guild, config.cargo_bau_nao_aberto_id);
+
+        if (ids === null) {
+          return await interaction.reply({ content: '❌ Cargo "Sem Baú Aberto" não foi configurado.', ephemeral: true });
+        }
+
+        const embed = new EmbedBuilder()
+          .setTitle(`👥 Sem Baú Aberto (${ids.length})`)
+          .setColor(0xe67e22)
+          .setDescription(formatarListaMembros(ids));
+
+        await interaction.reply({ embeds: [embed], ephemeral: true });
       }
 
       if (interaction.customId === 'ger_farm_bau_aberto') {
         const config = await serverService.getConfig(interaction.guild.id);
-        const total = contarMembrosComCargo(interaction.guild, config.cargo_bau_aberto_id);
-        await interaction.reply({
-          content: total === null
-            ? '❌ Cargo "Baú Aberto" não foi configurado.'
-            : `📦 **Baú Aberto:** ${total} membro(s)`,
-          ephemeral: true,
-        });
+        const ids = listarIdsComCargo(interaction.guild, config.cargo_bau_aberto_id);
+
+        if (ids === null) {
+          return await interaction.reply({ content: '❌ Cargo "Baú Aberto" não foi configurado.', ephemeral: true });
+        }
+
+        const embed = new EmbedBuilder()
+          .setTitle(`📦 Baú Aberto (${ids.length})`)
+          .setColor(0xFFD700)
+          .setDescription(formatarListaMembros(ids));
+
+        await interaction.reply({ embeds: [embed], ephemeral: true });
       }
 
       if (interaction.customId === 'ger_farm_em_dia') {
         const config = await serverService.getConfig(interaction.guild.id);
-        const total = contarMembrosComCargo(interaction.guild, config.farm?.cargo_em_dia_id);
-        await interaction.reply({
-          content: total === null
-            ? '❌ Cargo "Farm em Dia" não foi configurado.'
-            : `✅ **Farm em Dia:** ${total} membro(s)`,
-          ephemeral: true,
-        });
+        const ids = listarIdsComCargo(interaction.guild, config.farm?.cargo_em_dia_id);
+
+        if (ids === null) {
+          return await interaction.reply({ content: '❌ Cargo "Farm em Dia" não foi configurado.', ephemeral: true });
+        }
+
+        const embed = new EmbedBuilder()
+          .setTitle(`✅ Farm em Dia (${ids.length})`)
+          .setColor(0x2ecc71)
+          .setDescription(formatarListaMembros(ids));
+
+        await interaction.reply({ embeds: [embed], ephemeral: true });
       }
 
       if (interaction.customId === 'ger_farm_atrasado') {
         const config = await serverService.getConfig(interaction.guild.id);
-        const total = contarMembrosComCargo(interaction.guild, config.farm?.cargo_atrasado_id);
-        await interaction.reply({
-          content: total === null
-            ? '❌ Cargo "Farm Atrasado" não foi configurado.'
-            : `⏸️ **Farm Atrasado:** ${total} membro(s)`,
-          ephemeral: true,
-        });
+        const ids = listarIdsComCargo(interaction.guild, config.farm?.cargo_atrasado_id);
+
+        if (ids === null) {
+          return await interaction.reply({ content: '❌ Cargo "Farm Atrasado" não foi configurado.', ephemeral: true });
+        }
+
+        const embed = new EmbedBuilder()
+          .setTitle(`⏸️ Farm Atrasado (${ids.length})`)
+          .setColor(0xe74c3c)
+          .setDescription(formatarListaMembros(ids));
+
+        await interaction.reply({ embeds: [embed], ephemeral: true });
       }
 
       if (interaction.customId === 'ger_farm_adv') {
         const config = await serverService.getConfig(interaction.guild.id);
-        const adv1 = contarMembrosComCargo(interaction.guild, config.farm?.cargo_adv_1);
-        const adv2 = contarMembrosComCargo(interaction.guild, config.farm?.cargo_adv_2);
+        const idsAdv1 = listarIdsComCargo(interaction.guild, config.farm?.cargo_adv_1);
+        const idsAdv2 = listarIdsComCargo(interaction.guild, config.farm?.cargo_adv_2);
 
-        const linhas = [
-          `ADV 1: ${adv1 === null ? '❌ não configurado' : `${adv1} membro(s)`}`,
-          `ADV 2: ${adv2 === null ? '❌ não configurado' : `${adv2} membro(s)`}`,
-        ];
+        const embed = new EmbedBuilder()
+          .setTitle('⚠️ ADV Farm')
+          .setColor(0xe74c3c)
+          .addFields(
+            {
+              name: `ADV 1 (${idsAdv1?.length ?? 0})`,
+              value: idsAdv1 === null ? '❌ não configurado' : formatarListaMembros(idsAdv1),
+              inline: false,
+            },
+            {
+              name: `ADV 2 (${idsAdv2?.length ?? 0})`,
+              value: idsAdv2 === null ? '❌ não configurado' : formatarListaMembros(idsAdv2),
+              inline: false,
+            }
+          );
 
-        await interaction.reply({
-          content: `⚠️ **ADV Farm:**\n${linhas.join('\n')}`,
-          ephemeral: true,
-        });
+        await interaction.reply({ embeds: [embed], ephemeral: true });
       }
 
       if (interaction.customId === 'ger_farm_metas_semanal') {
         await interaction.deferReply({ ephemeral: true });
         try {
           const stats = await deliveryService.getEstatisticasEntregas(interaction.guild.id, deliveryService.inicioDaSemanaAtual());
-          await interaction.editReply({
-            content: `🎯 **Metas Entregues (Semana):**\n${stats.totalEntregas} entrega(s) aprovada(s)\n${stats.totalItens.toLocaleString('pt-BR')} unidade(s) no total`,
-          });
+          const ranking = await deliveryService.getRankingEntregas(interaction.guild.id, deliveryService.inicioDaSemanaAtual());
+
+          const medalhas = ['🥇', '🥈', '🥉'];
+          const listaRanking = ranking.length === 0
+            ? 'Nenhuma entrega aprovada essa semana.'
+            : ranking.map((r, i) => `${medalhas[i] || `${i + 1}.`} <@${r.discordId}> — ${r.totalItens.toLocaleString('pt-BR')} unidade(s) (${r.totalEntregas} entrega(s))`).join('\n');
+
+          const embed = new EmbedBuilder()
+            .setTitle('🎯 Metas Entregues (Semana)')
+            .setColor(0x3498db)
+            .setDescription(`**Total:** ${stats.totalEntregas} entrega(s) aprovada(s), ${stats.totalItens.toLocaleString('pt-BR')} unidade(s)\n\n**Ranking:**\n${listaRanking}`);
+
+          await interaction.editReply({ embeds: [embed] });
         } catch (err) {
           console.error(err);
           await interaction.editReply({ content: `❌ Erro ao buscar estatísticas: ${err.message}` });
@@ -5842,9 +5894,19 @@ module.exports = {
         await interaction.deferReply({ ephemeral: true });
         try {
           const stats = await deliveryService.getEstatisticasEntregas(interaction.guild.id);
-          await interaction.editReply({
-            content: `📊 **Metas Entregues (Total):**\n${stats.totalEntregas} entrega(s) aprovada(s)\n${stats.totalItens.toLocaleString('pt-BR')} unidade(s) no total`,
-          });
+          const ranking = await deliveryService.getRankingEntregas(interaction.guild.id);
+
+          const medalhas = ['🥇', '🥈', '🥉'];
+          const listaRanking = ranking.length === 0
+            ? 'Nenhuma entrega aprovada ainda.'
+            : ranking.map((r, i) => `${medalhas[i] || `${i + 1}.`} <@${r.discordId}> — ${r.totalItens.toLocaleString('pt-BR')} unidade(s) (${r.totalEntregas} entrega(s))`).join('\n');
+
+          const embed = new EmbedBuilder()
+            .setTitle('📊 Metas Entregues (Total)')
+            .setColor(0x3498db)
+            .setDescription(`**Total:** ${stats.totalEntregas} entrega(s) aprovada(s), ${stats.totalItens.toLocaleString('pt-BR')} unidade(s)\n\n**Ranking:**\n${listaRanking}`);
+
+          await interaction.editReply({ embeds: [embed] });
         } catch (err) {
           console.error(err);
           await interaction.editReply({ content: `❌ Erro ao buscar estatísticas: ${err.message}` });
@@ -5853,29 +5915,54 @@ module.exports = {
 
       if (interaction.customId === 'ger_farm_valor_semanal') {
         const config = await serverService.getConfig(interaction.guild.id);
-        const stats = calcularEstatisticasPagamento(config, deliveryService.inicioDaSemanaAtual());
-        await interaction.reply({
-          content: `💰 **Valor Pago (Semana):**\n${formatarMoeda(stats.totalPago)}\n${stats.qtdPago} pagamento(s) registrado(s)`,
-          ephemeral: true,
-        });
+        const inicioSemana = deliveryService.inicioDaSemanaAtual();
+        const porMembro = calcularPagamentosPorMembro(config, (p) => p.status === 'pago' && p.data_pagamento && new Date(p.data_pagamento) >= inicioSemana);
+        const totalGeral = porMembro.reduce((soma, m) => soma + m.total, 0);
+
+        const lista = porMembro.length === 0
+          ? 'Nenhum pagamento essa semana.'
+          : porMembro.map((m) => `<@${m.discordId}> — ${formatarMoeda(m.total)} (${m.qtd} pagamento(s))`).join('\n');
+
+        const embed = new EmbedBuilder()
+          .setTitle('💰 Valor Pago (Semana)')
+          .setColor(0x2ecc71)
+          .setDescription(`**Total geral:** ${formatarMoeda(totalGeral)}\n\n${lista}`);
+
+        await interaction.reply({ embeds: [embed], ephemeral: true });
       }
 
       if (interaction.customId === 'ger_farm_valor_total') {
         const config = await serverService.getConfig(interaction.guild.id);
-        const stats = calcularEstatisticasPagamento(config);
-        await interaction.reply({
-          content: `💵 **Valor Pago (Total):**\n${formatarMoeda(stats.totalPago)}\n${stats.qtdPago} pagamento(s) registrado(s)`,
-          ephemeral: true,
-        });
+        const porMembro = calcularPagamentosPorMembro(config, (p) => p.status === 'pago');
+        const totalGeral = porMembro.reduce((soma, m) => soma + m.total, 0);
+
+        const lista = porMembro.length === 0
+          ? 'Nenhum pagamento registrado ainda.'
+          : porMembro.map((m) => `<@${m.discordId}> — ${formatarMoeda(m.total)} (${m.qtd} pagamento(s))`).join('\n');
+
+        const embed = new EmbedBuilder()
+          .setTitle('💵 Valor Pago (Total)')
+          .setColor(0x2ecc71)
+          .setDescription(`**Total geral:** ${formatarMoeda(totalGeral)}\n\n${lista}`);
+
+        await interaction.reply({ embeds: [embed], ephemeral: true });
       }
 
       if (interaction.customId === 'ger_farm_pendente') {
         const config = await serverService.getConfig(interaction.guild.id);
-        const stats = calcularEstatisticasPagamento(config);
-        await interaction.reply({
-          content: `⏳ **Pagamentos Pendentes:**\n${formatarMoeda(stats.totalPendente)}\n${stats.qtdPendente} pagamento(s) aguardando`,
-          ephemeral: true,
-        });
+        const porMembro = calcularPagamentosPorMembro(config, (p) => p.status === 'pendente');
+        const totalGeral = porMembro.reduce((soma, m) => soma + m.total, 0);
+
+        const lista = porMembro.length === 0
+          ? 'Nenhum pagamento pendente.'
+          : porMembro.map((m) => `<@${m.discordId}> — ${formatarMoeda(m.total)} (${m.qtd} pagamento(s))`).join('\n');
+
+        const embed = new EmbedBuilder()
+          .setTitle('⏳ Pagamentos Pendentes')
+          .setColor(0xe74c3c)
+          .setDescription(`**Total geral:** ${formatarMoeda(totalGeral)}\n\n${lista}`);
+
+        await interaction.reply({ embeds: [embed], ephemeral: true });
       }
 
       // ===== HANDLERS DE LIMPEZA DE CONFIGURAÇÕES =====
