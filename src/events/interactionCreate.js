@@ -4102,14 +4102,6 @@ module.exports = {
         const userId = interaction.customId.replace('aprovar_registro_', '');
         const guildId = interaction.guild.id;
         const config = await serverService.getConfig(interaction.guild.id);
-        const morador_role_id = config.cargo_morador_id;
-
-        if (!morador_role_id) {
-          return await interaction.reply({
-            content: '❌ Cargo "Morador" não foi configurado.',
-            ephemeral: true,
-          });
-        }
 
         try {
           // 1. Registrar servidor no banco
@@ -4120,14 +4112,6 @@ module.exports = {
           );
 
           const membro = await interaction.guild.members.fetch(userId);
-          const cargo = interaction.guild.roles.cache.get(morador_role_id);
-
-          if (!cargo) {
-            return await interaction.reply({
-              content: '❌ Cargo "Morador" não encontrado no servidor.',
-              ephemeral: true,
-            });
-          }
 
           // Pegar dados do registro
           const registroDados = config.registros_pendentes?.[userId];
@@ -4153,8 +4137,8 @@ module.exports = {
             delete config.registros_pendentes[userId];
           }
 
-          // Adicionar cargo Morador no Discord
-          await membro.roles.add(cargo);
+          // O cargo Morador só é dado quando a pessoa abre o baú (abrir_bau),
+          // não aqui na aprovação do registro
 
           // 4. Registrar ação no log
           await serverService.logAction(
