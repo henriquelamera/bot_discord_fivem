@@ -5807,6 +5807,13 @@ module.exports = {
           });
         }
 
+        if (entrega.usuario_id === interaction.user.id) {
+          return await interaction.reply({
+            content: '❌ Você não pode marcar como pago o seu próprio farm! Peça pra outro responsável registrar.',
+            ephemeral: true,
+          });
+        }
+
         try {
           await marcarEntregaComoPaga(interaction.guild, config, entrega, interaction.user.id);
 
@@ -5862,6 +5869,13 @@ module.exports = {
         if (!lote) {
           return await interaction.reply({
             content: '❌ Esse lançamento não foi encontrado (pode já ter sido processado).',
+            ephemeral: true,
+          });
+        }
+
+        if (lote.discordId === interaction.user.id) {
+          return await interaction.reply({
+            content: '❌ Você não pode confirmar o pagamento do seu próprio farm! Peça pra outro responsável registrar.',
             ephemeral: true,
           });
         }
