@@ -62,7 +62,8 @@
       "Bash(node -e \"const { UserSelectMenuBuilder } = require\\('discord.js'\\); console.log\\(typeof UserSelectMenuBuilder\\);\")",
       "Bash(node -c src/utils/farmPagamentos.js)",
       "Bash(node -c src/jobs/farmCron.js)",
-      "Bash(node -c src/utils/fechamentoSemanal.js)"
+      "Bash(node -c src/utils/fechamentoSemanal.js)",
+      "Bash(node -c src/commands/publicar_fechamento_farm.js)"
     ]
   }
 }
