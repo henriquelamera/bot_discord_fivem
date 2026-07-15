@@ -10,6 +10,9 @@ module.exports = {
     .setDefaultMemberPermissions(0x8), // ADMINISTRATOR
 
   async execute(interaction) {
+    // Avisar ao Discord que vai processar (evita timeout)
+    await interaction.deferReply({ ephemeral: true });
+
     const config = await serverService.getConfig(interaction.guild.id);
     const canalRegistroId = config.boas_vindas?.canal_registro_id;
 
@@ -27,6 +30,33 @@ module.exports = {
 
     const row = rowFactory.registro();
 
-    await publishMessage(interaction, canalRegistroId, 'Canal de Registro', embed, [row]);
+    // Validar canal
+    if (!canalRegistroId) {
+      return await interaction.editReply({
+        content: '❌ Canal de Registro não foi configurado!',
+      });
+    }
+
+    const canal = interaction.guild.channels.cache.get(canalRegistroId);
+    if (!canal) {
+      return await interaction.editReply({
+        content: '❌ Canal de Registro não encontrado!',
+      });
+    }
+
+    try {
+      await canal.send({
+        embeds: [embed],
+        components: [row],
+      });
+
+      await interaction.editReply({
+        content: `✅ Botões publicados em <#${canalRegistroId}>!`,
+      });
+    } catch (err) {
+      await interaction.editReply({
+        content: `❌ Erro ao publicar: ${err.message}`,
+      });
+    }
   },
 };

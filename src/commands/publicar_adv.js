@@ -10,6 +10,9 @@ module.exports = {
     .setDefaultMemberPermissions(0x8), // ADMINISTRATOR
 
   async execute(interaction) {
+    // Avisar ao Discord que vai processar (evita timeout)
+    await interaction.deferReply({ ephemeral: true });
+
     const config = await serverService.getConfig(interaction.guild.id);
     const canalAdvId = config.farm?.canal_registro_adv;
 
@@ -27,6 +30,33 @@ module.exports = {
 
     const row = rowFactory.advs();
 
-    await publishMessage(interaction, canalAdvId, 'Canal de Registro de ADV', embed, [row]);
+    // Validar canal
+    if (!canalAdvId) {
+      return await interaction.editReply({
+        content: '❌ Canal de Registro de ADV não foi configurado!',
+      });
+    }
+
+    const canal = interaction.guild.channels.cache.get(canalAdvId);
+    if (!canal) {
+      return await interaction.editReply({
+        content: '❌ Canal de Registro de ADV não encontrado!',
+      });
+    }
+
+    try {
+      await canal.send({
+        embeds: [embed],
+        components: [row],
+      });
+
+      await interaction.editReply({
+        content: `✅ Botões de ADV publicados em <#${canalAdvId}>!`,
+      });
+    } catch (err) {
+      await interaction.editReply({
+        content: `❌ Erro ao publicar: ${err.message}`,
+      });
+    }
   },
 };

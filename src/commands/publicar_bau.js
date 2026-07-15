@@ -10,6 +10,9 @@ module.exports = {
     .setDefaultMemberPermissions(0x8), // ADMINISTRATOR
 
   async execute(interaction) {
+    // Avisar ao Discord que vai processar (evita timeout)
+    await interaction.deferReply({ ephemeral: true });
+
     const config = await serverService.getConfig(interaction.guild.id);
     const canalBauId = config.farm?.canal_bau_id;
 
@@ -27,6 +30,33 @@ module.exports = {
 
     const row = rowFactory.bau();
 
-    await publishMessage(interaction, canalBauId, 'Canal de Abrir Baú', embed, [row]);
+    // Validar canal
+    if (!canalBauId) {
+      return await interaction.editReply({
+        content: '❌ Canal de Abrir Baú não foi configurado!',
+      });
+    }
+
+    const canal = interaction.guild.channels.cache.get(canalBauId);
+    if (!canal) {
+      return await interaction.editReply({
+        content: '❌ Canal de Abrir Baú não encontrado!',
+      });
+    }
+
+    try {
+      await canal.send({
+        embeds: [embed],
+        components: [row],
+      });
+
+      await interaction.editReply({
+        content: `✅ Botão de Abrir Baú publicado em <#${canalBauId}>!`,
+      });
+    } catch (err) {
+      await interaction.editReply({
+        content: `❌ Erro ao publicar: ${err.message}`,
+      });
+    }
   },
 };
