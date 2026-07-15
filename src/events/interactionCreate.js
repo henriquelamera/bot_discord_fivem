@@ -1425,8 +1425,13 @@ module.exports = {
             },
             {
               label: 'Cargo Gerente',
-              description: 'Cargo máximo da hierarquia (acima de Membro)',
+              description: 'Cargo acima de Membro',
               value: 'cargo_gerente',
+            },
+            {
+              label: 'Cargo Liderança',
+              description: 'Cargo máximo da hierarquia (acima de Gerente)',
+              value: 'cargo_lideranca',
             },
             {
               label: 'Cargo Baú Aberto',
@@ -1475,6 +1480,10 @@ module.exports = {
 
         const cargoGerente = config.cargo_gerente_id
           ? `✅ ${interaction.guild.roles.cache.get(config.cargo_gerente_id)?.name || 'ID Inválido'}`
+          : '❌ Não configurado';
+
+        const cargoLideranca = config.cargo_lideranca_id
+          ? `✅ ${interaction.guild.roles.cache.get(config.cargo_lideranca_id)?.name || 'ID Inválido'}`
           : '❌ Não configurado';
 
 
@@ -1551,6 +1560,7 @@ module.exports = {
           { name: '👥 Morador', value: truncate(cargoMorador), inline: true },
           { name: '👤 Membro', value: truncate(cargoMembro), inline: true },
           { name: '👨‍💼 Gerente', value: truncate(cargoGerente), inline: true },
+          { name: '🎖️ Liderança', value: truncate(cargoLideranca), inline: true },
 
           { name: '✅ Farm em Dia', value: truncate(farmEmDia), inline: true },
           { name: '⏸️ Farm Atrasado', value: truncate(farmAtrasado), inline: true },
@@ -1778,6 +1788,7 @@ module.exports = {
           cargo_morador: 'select_cargo_morador',
           cargo_membro: 'select_cargo_membro',
           cargo_gerente: 'select_cargo_gerente',
+          cargo_lideranca: 'select_cargo_lideranca',
           cargo_bau_aberto: 'select_cargo_bau_aberto',
           cargo_bau_nao_aberto: 'select_cargo_bau_nao_aberto',
         };
@@ -1785,6 +1796,7 @@ module.exports = {
           cargo_morador: 'Cargo Morador',
           cargo_membro: 'Cargo Membro',
           cargo_gerente: 'Cargo Gerente',
+          cargo_lideranca: 'Cargo Liderança',
           cargo_bau_aberto: 'Cargo Baú Aberto',
           cargo_bau_nao_aberto: 'Cargo Sem Baú Aberto',
         };
@@ -2002,6 +2014,7 @@ module.exports = {
       if (interaction.customId === 'select_cargo_morador' ||
           interaction.customId === 'select_cargo_membro' ||
           interaction.customId === 'select_cargo_gerente' ||
+          interaction.customId === 'select_cargo_lideranca' ||
           interaction.customId === 'select_cargo_bau_aberto' ||
           interaction.customId === 'select_cargo_bau_nao_aberto') {
         const cargoId = interaction.values[0];
@@ -2010,6 +2023,7 @@ module.exports = {
           select_cargo_morador: { campo: 'cargo_morador_id', titulo: 'Morador' },
           select_cargo_membro: { campo: 'cargo_membro_id', titulo: 'Membro' },
           select_cargo_gerente: { campo: 'cargo_gerente_id', titulo: 'Gerente' },
+          select_cargo_lideranca: { campo: 'cargo_lideranca_id', titulo: 'Liderança' },
           select_cargo_bau_aberto: { campo: 'cargo_bau_aberto_id', titulo: 'Baú Aberto' },
           select_cargo_bau_nao_aberto: { campo: 'cargo_bau_nao_aberto_id', titulo: 'Sem Baú Aberto' },
         };
@@ -2647,6 +2661,7 @@ module.exports = {
           const cargoMoradorId = config.cargo_morador_id;
           const cargoMembroId = config.cargo_membro_id;
           const cargoGerenteId = config.cargo_gerente_id;
+          const cargoLiderancaId = config.cargo_lideranca_id;
 
           if (!cargoBauNaoAbertoId) {
             return await interaction.reply({
@@ -2655,9 +2670,9 @@ module.exports = {
             });
           }
 
-          if (!cargoBauAbertoId || (!cargoMoradorId && !cargoMembroId && !cargoGerenteId)) {
+          if (!cargoBauAbertoId || (!cargoMoradorId && !cargoMembroId && !cargoGerenteId && !cargoLiderancaId)) {
             return await interaction.reply({
-              content: '❌ Cargos do sistema (Baú Aberto / Morador / Membro / Gerente) não foram configurados.',
+              content: '❌ Cargos do sistema (Baú Aberto / Morador / Membro / Gerente / Liderança) não foram configurados.',
               ephemeral: true,
             });
           }
@@ -2680,7 +2695,8 @@ module.exports = {
               const temHierarquiaMoradorOuMais =
                 (cargoMoradorId && membro.roles.cache.has(cargoMoradorId)) ||
                 (cargoMembroId && membro.roles.cache.has(cargoMembroId)) ||
-                (cargoGerenteId && membro.roles.cache.has(cargoGerenteId));
+                (cargoGerenteId && membro.roles.cache.has(cargoGerenteId)) ||
+                (cargoLiderancaId && membro.roles.cache.has(cargoLiderancaId));
 
               const jaTemBauAberto = membro.roles.cache.has(cargoBauAbertoId);
               const jaTemSemBau = membro.roles.cache.has(cargoBauNaoAbertoId);
@@ -3945,19 +3961,21 @@ module.exports = {
           const cargo_morador_id = config.cargo_morador_id;
           const cargo_membro_id = config.cargo_membro_id;
           const cargo_gerente_id = config.cargo_gerente_id;
+          const cargo_lideranca_id = config.cargo_lideranca_id;
           const cargo_farm_em_dia_id = config.farm?.cargo_em_dia_id;
           const rec_uniforme = config.recrutamento?.rec_canal_uniforme;
           const rec_regras_cidade = config.recrutamento?.rec_canal_regras_cidade;
 
           // Verificar se o registro foi aprovado (via banco PostgreSQL)
-          // OU se já possui um cargo da hierarquia (Morador/Membro/Gerente) -
+          // OU se já possui um cargo da hierarquia (Morador/Membro/Gerente/Liderança) -
           // nesses casos o registro já passou por aprovação em algum momento,
           // mesmo que o registro formal no banco não exista (ex: cargo atribuído manualmente)
           const registroAprovado = await memberService.isMemberApproved(guildId, interaction.user.id);
           const jaTemCargoHierarquia =
             (cargo_morador_id && interaction.member.roles.cache.has(cargo_morador_id)) ||
             (cargo_membro_id && interaction.member.roles.cache.has(cargo_membro_id)) ||
-            (cargo_gerente_id && interaction.member.roles.cache.has(cargo_gerente_id));
+            (cargo_gerente_id && interaction.member.roles.cache.has(cargo_gerente_id)) ||
+            (cargo_lideranca_id && interaction.member.roles.cache.has(cargo_lideranca_id));
 
           if (!registroAprovado && !jaTemCargoHierarquia) {
             return await interaction.reply({
@@ -4238,9 +4256,11 @@ module.exports = {
           const cargoAtrasadoId = config.farm?.cargo_atrasado_id;
           const cargoEmDiaId = config.farm?.cargo_em_dia_id;
           const cargoGerenteId = config.cargo_gerente_id;
+          const cargoLiderancaId = config.cargo_lideranca_id;
 
-          // Verificar se é Gerente (exempt de farm delivery e ADV system)
-          const temCargoGerente = cargoGerenteId && membro.roles.cache.has(cargoGerenteId);
+          // Verificar se é Gerente ou Liderança (exempt de farm delivery e ADV system)
+          const temCargoGerente = (cargoGerenteId && membro.roles.cache.has(cargoGerenteId)) ||
+            (cargoLiderancaId && membro.roles.cache.has(cargoLiderancaId));
           if (temCargoGerente) {
             entrega.status = 'aprovada';
             entrega.data_aprovacao = new Date().toISOString();
@@ -4974,6 +4994,7 @@ module.exports = {
         const cargoMoradorId = config.cargo_morador_id;
         const cargoMembroId = config.cargo_membro_id;
         const cargoGerenteId = config.cargo_gerente_id;
+        const cargoLiderancaId = config.cargo_lideranca_id;
 
         const temCargoVisitante = interaction.member.roles.cache.some(role =>
           cargoVisitantesIds.includes(role.id)
@@ -4981,17 +5002,22 @@ module.exports = {
         const temCargoMorador = cargoMoradorId && interaction.member.roles.cache.has(cargoMoradorId);
         const temCargoMembro = cargoMembroId && interaction.member.roles.cache.has(cargoMembroId);
         const temCargoGerente = cargoGerenteId && interaction.member.roles.cache.has(cargoGerenteId);
+        const temCargoLideranca = cargoLiderancaId && interaction.member.roles.cache.has(cargoLiderancaId);
 
         // Determinar quais cargos a pessoa pode pedir
         let podesPedir = [];
         let mensagem = '';
 
-        if (temCargoGerente) {
-          // Gerente não pode pedir mais nada
+        if (temCargoLideranca) {
+          // Liderança não pode pedir mais nada
           return await interaction.reply({
-            content: '✅ Você já tem o cargo máximo (Gerente)! Não pode solicitar mais promoções.',
+            content: '✅ Você já tem o cargo máximo (Liderança)! Não pode solicitar mais promoções.',
             ephemeral: true,
           });
+        } else if (temCargoGerente) {
+          // Gerente pode pedir Liderança
+          podesPedir = [cargoLiderancaId];
+          mensagem = '📋 Você pode solicitar promoção para **Liderança**';
         } else if (temCargoMembro) {
           // Membro pode pedir Gerente
           podesPedir = [cargoGerenteId];
@@ -5007,7 +5033,7 @@ module.exports = {
         } else {
           // Sem cargo da hierarquia de registro
           return await interaction.reply({
-            content: '❌ Você não possui um cargo elegível para solicitar registro. Você já possui outros cargos no servidor que não fazem parte dessa hierarquia (Visitante/Morador/Membro/Gerente).',
+            content: '❌ Você não possui um cargo elegível para solicitar registro. Você já possui outros cargos no servidor que não fazem parte dessa hierarquia (Visitante/Morador/Membro/Gerente/Liderança).',
             ephemeral: true,
           });
         }
@@ -5031,6 +5057,9 @@ module.exports = {
         } else if (temCargoMembro && cargoGerenteId) {
           const role = interaction.guild.roles.cache.get(cargoGerenteId);
           nomeCargo = role?.name || 'Gerente';
+        } else if (temCargoGerente && cargoLiderancaId) {
+          const role = interaction.guild.roles.cache.get(cargoLiderancaId);
+          nomeCargo = role?.name || 'Liderança';
         }
 
         // Abrir modal de registro
@@ -5113,21 +5142,28 @@ module.exports = {
         const cargoMoradorId = config.cargo_morador_id;
         const cargoMembroId = config.cargo_membro_id;
         const cargoGerenteId = config.cargo_gerente_id;
+        const cargoLiderancaId = config.cargo_lideranca_id;
 
         const temCargoMorador = cargoMoradorId && interaction.member.roles.cache.has(cargoMoradorId);
         const temCargoMembro = cargoMembroId && interaction.member.roles.cache.has(cargoMembroId);
         const temCargoGerente = cargoGerenteId && interaction.member.roles.cache.has(cargoGerenteId);
+        const temCargoLideranca = cargoLiderancaId && interaction.member.roles.cache.has(cargoLiderancaId);
 
         // Determinar qual cargo pode atualizar
         let cargoProximo = null;
         let nomeCargoProximo = '';
 
-        if (temCargoGerente) {
-          // Gerente não pode pedir mais nada
+        if (temCargoLideranca) {
+          // Liderança não pode pedir mais nada
           return await interaction.reply({
-            content: '✅ Você já tem o cargo máximo (Gerente)! Não pode solicitar mais promoções.',
+            content: '✅ Você já tem o cargo máximo (Liderança)! Não pode solicitar mais promoções.',
             ephemeral: true,
           });
+        } else if (temCargoGerente) {
+          // Gerente pode pedir Liderança
+          cargoProximo = cargoLiderancaId;
+          const role = interaction.guild.roles.cache.get(cargoLiderancaId);
+          nomeCargoProximo = role?.name || 'Liderança';
         } else if (temCargoMembro) {
           // Membro pode pedir Gerente
           cargoProximo = cargoGerenteId;
@@ -5140,7 +5176,7 @@ module.exports = {
           nomeCargoProximo = role?.name || 'Membro';
         } else {
           return await interaction.reply({
-            content: '❌ Você não possui um cargo elegível para atualizar registro. Você já possui outros cargos no servidor que não fazem parte dessa hierarquia (Visitante/Morador/Membro/Gerente).',
+            content: '❌ Você não possui um cargo elegível para atualizar registro. Você já possui outros cargos no servidor que não fazem parte dessa hierarquia (Visitante/Morador/Membro/Gerente/Liderança).',
             ephemeral: true,
           });
         }
