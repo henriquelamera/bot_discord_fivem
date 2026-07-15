@@ -182,6 +182,35 @@ async function getQuantidadeEntregueSemanaAtual(guildId, discordId) {
   }
 }
 
+// Estatísticas de entregas aprovadas: total de entregas e soma de unidades
+// entregues. Passe `desde` pra filtrar (ex: início da semana vigente); sem
+// isso, conta o histórico inteiro.
+async function getEstatisticasEntregas(guildId, desde = null) {
+  try {
+    const condicaoData = desde ? 'AND e.data_aprovacao >= $2' : '';
+    const params = desde ? [guildId, desde] : [guildId];
+
+    const result = await pool.query(
+      `SELECT COUNT(DISTINCT e.id) AS total_entregas, COALESCE(SUM(ie.quantidade), 0) AS total_itens
+       FROM entregas_farm e
+       JOIN itens_entregues ie ON ie.entrega_id = e.id
+       JOIN servidores s ON e.servidor_id = s.id
+       WHERE s.guild_id = $1
+         AND e.status = 'aprovada'
+         ${condicaoData}`,
+      params
+    );
+
+    return {
+      totalEntregas: parseInt(result.rows[0].total_entregas, 10),
+      totalItens: parseInt(result.rows[0].total_itens, 10),
+    };
+  } catch (error) {
+    console.error('Erro ao pegar estatísticas de entregas:', error);
+    throw error;
+  }
+}
+
 // Pegar todas as entregas e detalhes completos
 async function getDeliveryWithItems(entregaId) {
   try {
@@ -208,4 +237,6 @@ module.exports = {
   getDeliveryWithItems,
   getApprovedDeliveries,
   getQuantidadeEntregueSemanaAtual,
+  getEstatisticasEntregas,
+  inicioDaSemanaAtual,
 };

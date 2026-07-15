@@ -13,6 +13,45 @@ function formatarMoeda(valor) {
   return `R$ ${valor.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
+// Conta quantos membros têm um cargo (null se o cargo não estiver configurado
+// ou não existir mais no servidor)
+function contarMembrosComCargo(guild, cargoId) {
+  if (!cargoId) return null;
+  const role = guild.roles.cache.get(cargoId);
+  return role ? role.members.size : null;
+}
+
+// Soma pagamentos (pagos e pendentes) a partir de config.farm.entregas.
+// Passe `desde` pra filtrar só pagamentos feitos a partir de uma data
+// (ex: início da semana vigente); sem isso, soma o histórico inteiro.
+// Pendentes não são filtrados por data (o que importa é o que está em
+// aberto agora, não quando a entrega foi aprovada).
+function calcularEstatisticasPagamento(config, desde = null) {
+  const entregas = config.farm?.entregas || [];
+  let totalPago = 0;
+  let qtdPago = 0;
+  let totalPendente = 0;
+  let qtdPendente = 0;
+
+  for (const entrega of entregas) {
+    const pagamento = entrega.pagamento;
+    if (!pagamento) continue;
+
+    if (pagamento.status === 'pago') {
+      const dataPagamento = pagamento.data_pagamento ? new Date(pagamento.data_pagamento) : null;
+      if (!desde || (dataPagamento && dataPagamento >= desde)) {
+        totalPago += pagamento.valor_total || 0;
+        qtdPago++;
+      }
+    } else if (pagamento.status === 'pendente') {
+      totalPendente += pagamento.valor_total || 0;
+      qtdPendente++;
+    }
+  }
+
+  return { totalPago, qtdPago, totalPendente, qtdPendente };
+}
+
 // Extrai o ID de um membro a partir de texto digitado (menção "<@id>" gerada
 // pelo autocomplete do "@" do Discord, ou o ID numérico colado direto).
 // Retorna null se não conseguir identificar - texto solto (nome/apelido)
@@ -1732,6 +1771,11 @@ module.exports = {
               label: 'Limite Semanal por Item',
               description: 'Máximo que cada pessoa pode entregar de um item por semana',
               value: 'farm_limite_semanal',
+            },
+            {
+              label: 'Canal de Gerenciamento',
+              description: 'Canal onde o painel de estatísticas é publicado',
+              value: 'farm_canal_gerenciamento',
             }
           );
 
@@ -2848,6 +2892,79 @@ module.exports = {
         }
       }
 
+      if (interaction.customId === 'select_categoria_canal_gerenciamento') {
+        try {
+          const categoriaId = interaction.values[0];
+          const { ChannelType, StringSelectMenuBuilder } = require('discord.js');
+
+          const categoria = interaction.guild.channels.cache.get(categoriaId);
+          if (!categoria) {
+            return await interaction.reply({
+              content: '❌ Categoria não encontrada.',
+              ephemeral: true,
+            });
+          }
+
+          const canais = categoria.children.cache
+            .filter(ch => ch.type === ChannelType.GuildText)
+            .map(canal => ({
+              label: `#${canal.name}`,
+              value: canal.id,
+              description: canal.topic || 'Sem descrição',
+            }));
+
+          if (canais.length === 0) {
+            return await interaction.reply({
+              content: '❌ Nenhum canal de texto encontrado nesta categoria.',
+              ephemeral: true,
+            });
+          }
+
+          const selectMenu = new StringSelectMenuBuilder()
+            .setCustomId('select_canal_gerenciamento')
+            .setPlaceholder('Selecione o canal...')
+            .addOptions(canais.slice(0, 25));
+
+          const row = new ActionRowBuilder().addComponents(selectMenu);
+
+          await interaction.reply({
+            content: `**Passo 2:** Canal de Gerenciamento\n\nSelecione o canal em **${categoria.name}**:`,
+            components: [row],
+            ephemeral: true,
+          });
+        } catch (err) {
+          console.error('Erro em select_categoria_canal_gerenciamento:', err);
+          await interaction.reply({
+            content: '❌ Erro ao selecionar categoria',
+            ephemeral: true,
+          });
+        }
+      }
+
+      if (interaction.customId === 'select_canal_gerenciamento') {
+        try {
+          const canalId = interaction.values[0];
+
+          const config = await serverService.getConfig(interaction.guild.id);
+          if (!config.farm) config.farm = {};
+          config.farm.canal_gerenciamento_id = canalId;
+          await serverService.saveConfig(interaction.guild.id, config);
+
+          const canal = interaction.guild.channels.cache.get(canalId);
+
+          await interaction.reply({
+            content: `✅ Canal de gerenciamento configurado!\n**Canal:** #${canal.name}\n\nUse \`/publicar_ger_farm\` para publicar o painel lá.`,
+            ephemeral: true,
+          });
+        } catch (err) {
+          console.error('Erro em select_canal_gerenciamento:', err);
+          await interaction.reply({
+            content: '❌ Erro ao configurar canal de gerenciamento',
+            ephemeral: true,
+          });
+        }
+      }
+
       if (interaction.customId === 'painel_farm') {
         const valor = interaction.values[0];
         const { StringSelectMenuBuilder, ChannelType } = require('discord.js');
@@ -3197,6 +3314,38 @@ module.exports = {
 
           await interaction.reply({
             content: '**Passo 1:** Canal de Controle de Pagamento\n\nSelecione a categoria:',
+            components: [row],
+            ephemeral: true,
+          });
+        }
+
+        if (valor === 'farm_canal_gerenciamento') {
+          const { ChannelType, StringSelectMenuBuilder } = require('discord.js');
+
+          const categorias = interaction.guild.channels.cache
+            .filter(ch => ch.type === ChannelType.GuildCategory)
+            .map(cat => ({
+              label: cat.name,
+              value: cat.id,
+              description: `${cat.children.cache.size} canais`,
+            }));
+
+          if (categorias.length === 0) {
+            return await interaction.reply({
+              content: '❌ Nenhuma categoria encontrada.',
+              ephemeral: true,
+            });
+          }
+
+          const selectMenu = new StringSelectMenuBuilder()
+            .setCustomId('select_categoria_canal_gerenciamento')
+            .setPlaceholder('Selecione a categoria...')
+            .addOptions(categorias);
+
+          const row = new ActionRowBuilder().addComponents(selectMenu);
+
+          await interaction.reply({
+            content: '**Passo 1:** Canal de Gerenciamento\n\nSelecione a categoria:',
             components: [row],
             ephemeral: true,
           });
@@ -5612,6 +5761,121 @@ module.exports = {
             ephemeral: true,
           });
         }
+      }
+
+      // ===== PAINEL DE GERENCIAMENTO DE FARM =====
+
+      if (interaction.customId === 'ger_farm_sem_bau') {
+        const config = await serverService.getConfig(interaction.guild.id);
+        const total = contarMembrosComCargo(interaction.guild, config.cargo_bau_nao_aberto_id);
+        await interaction.reply({
+          content: total === null
+            ? '❌ Cargo "Sem Baú Aberto" não foi configurado.'
+            : `👥 **Sem Baú Aberto:** ${total} membro(s)`,
+          ephemeral: true,
+        });
+      }
+
+      if (interaction.customId === 'ger_farm_bau_aberto') {
+        const config = await serverService.getConfig(interaction.guild.id);
+        const total = contarMembrosComCargo(interaction.guild, config.cargo_bau_aberto_id);
+        await interaction.reply({
+          content: total === null
+            ? '❌ Cargo "Baú Aberto" não foi configurado.'
+            : `📦 **Baú Aberto:** ${total} membro(s)`,
+          ephemeral: true,
+        });
+      }
+
+      if (interaction.customId === 'ger_farm_em_dia') {
+        const config = await serverService.getConfig(interaction.guild.id);
+        const total = contarMembrosComCargo(interaction.guild, config.farm?.cargo_em_dia_id);
+        await interaction.reply({
+          content: total === null
+            ? '❌ Cargo "Farm em Dia" não foi configurado.'
+            : `✅ **Farm em Dia:** ${total} membro(s)`,
+          ephemeral: true,
+        });
+      }
+
+      if (interaction.customId === 'ger_farm_atrasado') {
+        const config = await serverService.getConfig(interaction.guild.id);
+        const total = contarMembrosComCargo(interaction.guild, config.farm?.cargo_atrasado_id);
+        await interaction.reply({
+          content: total === null
+            ? '❌ Cargo "Farm Atrasado" não foi configurado.'
+            : `⏸️ **Farm Atrasado:** ${total} membro(s)`,
+          ephemeral: true,
+        });
+      }
+
+      if (interaction.customId === 'ger_farm_adv') {
+        const config = await serverService.getConfig(interaction.guild.id);
+        const adv1 = contarMembrosComCargo(interaction.guild, config.farm?.cargo_adv_1);
+        const adv2 = contarMembrosComCargo(interaction.guild, config.farm?.cargo_adv_2);
+
+        const linhas = [
+          `ADV 1: ${adv1 === null ? '❌ não configurado' : `${adv1} membro(s)`}`,
+          `ADV 2: ${adv2 === null ? '❌ não configurado' : `${adv2} membro(s)`}`,
+        ];
+
+        await interaction.reply({
+          content: `⚠️ **ADV Farm:**\n${linhas.join('\n')}`,
+          ephemeral: true,
+        });
+      }
+
+      if (interaction.customId === 'ger_farm_metas_semanal') {
+        await interaction.deferReply({ ephemeral: true });
+        try {
+          const stats = await deliveryService.getEstatisticasEntregas(interaction.guild.id, deliveryService.inicioDaSemanaAtual());
+          await interaction.editReply({
+            content: `🎯 **Metas Entregues (Semana):**\n${stats.totalEntregas} entrega(s) aprovada(s)\n${stats.totalItens.toLocaleString('pt-BR')} unidade(s) no total`,
+          });
+        } catch (err) {
+          console.error(err);
+          await interaction.editReply({ content: `❌ Erro ao buscar estatísticas: ${err.message}` });
+        }
+      }
+
+      if (interaction.customId === 'ger_farm_metas_total') {
+        await interaction.deferReply({ ephemeral: true });
+        try {
+          const stats = await deliveryService.getEstatisticasEntregas(interaction.guild.id);
+          await interaction.editReply({
+            content: `📊 **Metas Entregues (Total):**\n${stats.totalEntregas} entrega(s) aprovada(s)\n${stats.totalItens.toLocaleString('pt-BR')} unidade(s) no total`,
+          });
+        } catch (err) {
+          console.error(err);
+          await interaction.editReply({ content: `❌ Erro ao buscar estatísticas: ${err.message}` });
+        }
+      }
+
+      if (interaction.customId === 'ger_farm_valor_semanal') {
+        const config = await serverService.getConfig(interaction.guild.id);
+        const stats = calcularEstatisticasPagamento(config, deliveryService.inicioDaSemanaAtual());
+        await interaction.reply({
+          content: `💰 **Valor Pago (Semana):**\n${formatarMoeda(stats.totalPago)}\n${stats.qtdPago} pagamento(s) registrado(s)`,
+          ephemeral: true,
+        });
+      }
+
+      if (interaction.customId === 'ger_farm_valor_total') {
+        const config = await serverService.getConfig(interaction.guild.id);
+        const stats = calcularEstatisticasPagamento(config);
+        await interaction.reply({
+          content: `💵 **Valor Pago (Total):**\n${formatarMoeda(stats.totalPago)}\n${stats.qtdPago} pagamento(s) registrado(s)`,
+          ephemeral: true,
+        });
+      }
+
+      if (interaction.customId === 'ger_farm_pendente') {
+        const config = await serverService.getConfig(interaction.guild.id);
+        const stats = calcularEstatisticasPagamento(config);
+        await interaction.reply({
+          content: `⏳ **Pagamentos Pendentes:**\n${formatarMoeda(stats.totalPendente)}\n${stats.qtdPendente} pagamento(s) aguardando`,
+          ephemeral: true,
+        });
       }
 
       // ===== HANDLERS DE LIMPEZA DE CONFIGURAÇÕES =====
