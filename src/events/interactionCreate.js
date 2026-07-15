@@ -4150,22 +4150,30 @@ module.exports = {
 
           await serverService.saveConfig(interaction.guild.id, config);
 
-          // Enviar mensagem no canal de registro notificando aprovação
+          // Notificar aprovação: por DM (só a pessoa vê), com fallback pro
+          // canal de registro caso a DM esteja bloqueada
           const canalRegistroId = config.boas_vindas?.canal_registro_id;
           const canalBauId = config.farm?.canal_bau_id;
 
-          if (canalRegistroId) {
+          let conteudoAprovacao = `✅ Seu registro em **${interaction.guild.name}** foi **APROVADO**!\n\n`;
+          conteudoAprovacao += `🎯 **Próximo passo:** vá até `;
+          conteudoAprovacao += canalBauId ? `<#${canalBauId}>` : 'o canal de baú';
+          conteudoAprovacao += ` e clique no botão **📦 Abrir Baú** para abrir seu baú de farm!\n`;
+
+          let dmEnviada = false;
+          try {
+            await membro.user.send({ content: conteudoAprovacao });
+            dmEnviada = true;
+          } catch (err) {
+            console.warn('Não foi possível notificar aprovação por DM:', err.message);
+          }
+
+          if (!dmEnviada && canalRegistroId) {
             const canalRegistro = interaction.guild.channels.cache.get(canalRegistroId);
             if (canalRegistro) {
-              let conteudo = `✅ <@${userId}>, seu registro foi **APROVADO**!\n\n`;
-              conteudo += `🎯 **Próximo passo:** Clique no botão abaixo para **abrir seu baú de farm**!\n\n`;
-              if (canalBauId) {
-                conteudo += `📍 Você também pode ir até <#${canalBauId}> para abrir o baú.\n`;
-              }
-
               try {
                 const msg = await canalRegistro.send({
-                  content: conteudo,
+                  content: `✅ <@${userId}>, ${conteudoAprovacao}`,
                 });
 
                 // Guardar ID da mensagem para deletar depois (ainda em JSON por enquanto)
