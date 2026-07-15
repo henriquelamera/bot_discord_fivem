@@ -4290,14 +4290,6 @@ module.exports = {
             });
           }
 
-          // Verificar se já tem o cargo "Baú Aberto"
-          if (cargo_bau_aberto_id && interaction.member.roles.cache.has(cargo_bau_aberto_id)) {
-            return await interaction.reply({
-              content: '✅ Você já abriu seu baú!',
-              ephemeral: true,
-            });
-          }
-
           if (!cargo_bau_aberto_id || !cargo_morador_id) {
             return await interaction.reply({
               content: '❌ Cargos do sistema não foram configurados.',
@@ -4307,8 +4299,20 @@ module.exports = {
 
           // Verificar se já tem o cargo "Baú Aberto"
           if (interaction.member.roles.cache.has(cargo_bau_aberto_id)) {
+            // Tentar achar o canal privado dela na categoria de baú, pra marcar/linkar
+            let canalDoBauMsg = '';
+            if (categoria_bau_id) {
+              const categoria = interaction.guild.channels.cache.get(categoria_bau_id);
+              const canalDoBau = categoria?.children.cache.find(ch =>
+                ch.permissionOverwrites.cache.has(interaction.user.id)
+              );
+              if (canalDoBau) {
+                canalDoBauMsg = `\n\n📍 Seu canal de farm: <#${canalDoBau.id}>`;
+              }
+            }
+
             return await interaction.reply({
-              content: '✅ Você já abriu seu baú!',
+              content: `✅ Você já abriu seu baú!${canalDoBauMsg}`,
               ephemeral: true,
             });
           }
