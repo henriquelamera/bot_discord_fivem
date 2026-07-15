@@ -66,6 +66,34 @@ function formatarListaMembros(ids) {
   return texto;
 }
 
+// Junta linhas de texto (ex: ranking) num bloco só, cortando antes de
+// estourar o limite de caracteres do embed (com "e mais X" no final)
+function formatarListaTruncada(linhas, limiteChars = 3500) {
+  if (linhas.length === 0) return null;
+
+  let texto = '';
+  let contadas = 0;
+
+  for (const linha of linhas) {
+    const linhaComQuebra = `${linha}\n`;
+    if (texto.length + linhaComQuebra.length > limiteChars) break;
+    texto += linhaComQuebra;
+    contadas++;
+  }
+
+  if (contadas < linhas.length) {
+    texto += `\n*... e mais ${linhas.length - contadas}*`;
+  }
+
+  return texto;
+}
+
+// Monta o texto "Nome: quantidade" por item, um por linha
+function formatarTotaisPorItem(totais) {
+  if (totais.length === 0) return 'Nenhum item entregue ainda.';
+  return totais.map((t) => `**${t.itemNome}:** ${t.total.toLocaleString('pt-BR')}`).join('\n');
+}
+
 // Extrai o ID de um membro a partir de texto digitado (menção "<@id>" gerada
 // pelo autocomplete do "@" do Discord, ou o ID numérico colado direto).
 // Retorna null se não conseguir identificar - texto solto (nome/apelido)
@@ -5870,18 +5898,22 @@ module.exports = {
       if (interaction.customId === 'ger_farm_metas_semanal') {
         await interaction.deferReply({ ephemeral: true });
         try {
-          const stats = await deliveryService.getEstatisticasEntregas(interaction.guild.id, deliveryService.inicioDaSemanaAtual());
-          const ranking = await deliveryService.getRankingEntregas(interaction.guild.id, deliveryService.inicioDaSemanaAtual());
+          const desde = deliveryService.inicioDaSemanaAtual();
+          const stats = await deliveryService.getEstatisticasEntregas(interaction.guild.id, desde);
+          const totaisPorItem = await deliveryService.getTotaisPorItem(interaction.guild.id, desde);
+          const ranking = await deliveryService.getRankingEntregas(interaction.guild.id, desde);
 
           const medalhas = ['🥇', '🥈', '🥉'];
-          const listaRanking = ranking.length === 0
-            ? 'Nenhuma entrega aprovada essa semana.'
-            : ranking.map((r, i) => `${medalhas[i] || `${i + 1}.`} <@${r.discordId}> — ${r.totalItens.toLocaleString('pt-BR')} unidade(s) (${r.totalEntregas} entrega(s))`).join('\n');
+          const linhasRanking = ranking.map((r, i) =>
+            `${medalhas[i] || `${i + 1}.`} <@${r.discordId}> — ${r.totalItens.toLocaleString('pt-BR')} unidade(s) (${r.totalEntregas} entrega(s))`
+          );
+          const listaRanking = formatarListaTruncada(linhasRanking) || 'Nenhuma entrega aprovada essa semana.';
 
           const embed = new EmbedBuilder()
             .setTitle('🎯 Metas Entregues (Semana)')
             .setColor(0x3498db)
-            .setDescription(`**Total:** ${stats.totalEntregas} entrega(s) aprovada(s), ${stats.totalItens.toLocaleString('pt-BR')} unidade(s)\n\n**Ranking:**\n${listaRanking}`);
+            .setDescription(`**Total:** ${stats.totalEntregas} entrega(s) aprovada(s), ${stats.totalItens.toLocaleString('pt-BR')} unidade(s)\n\n**Ranking:**\n${listaRanking}`)
+            .addFields({ name: '📦 Total por Item', value: formatarTotaisPorItem(totaisPorItem), inline: false });
 
           await interaction.editReply({ embeds: [embed] });
         } catch (err) {
@@ -5894,17 +5926,20 @@ module.exports = {
         await interaction.deferReply({ ephemeral: true });
         try {
           const stats = await deliveryService.getEstatisticasEntregas(interaction.guild.id);
+          const totaisPorItem = await deliveryService.getTotaisPorItem(interaction.guild.id);
           const ranking = await deliveryService.getRankingEntregas(interaction.guild.id);
 
           const medalhas = ['🥇', '🥈', '🥉'];
-          const listaRanking = ranking.length === 0
-            ? 'Nenhuma entrega aprovada ainda.'
-            : ranking.map((r, i) => `${medalhas[i] || `${i + 1}.`} <@${r.discordId}> — ${r.totalItens.toLocaleString('pt-BR')} unidade(s) (${r.totalEntregas} entrega(s))`).join('\n');
+          const linhasRanking = ranking.map((r, i) =>
+            `${medalhas[i] || `${i + 1}.`} <@${r.discordId}> — ${r.totalItens.toLocaleString('pt-BR')} unidade(s) (${r.totalEntregas} entrega(s))`
+          );
+          const listaRanking = formatarListaTruncada(linhasRanking) || 'Nenhuma entrega aprovada ainda.';
 
           const embed = new EmbedBuilder()
             .setTitle('📊 Metas Entregues (Total)')
             .setColor(0x3498db)
-            .setDescription(`**Total:** ${stats.totalEntregas} entrega(s) aprovada(s), ${stats.totalItens.toLocaleString('pt-BR')} unidade(s)\n\n**Ranking:**\n${listaRanking}`);
+            .setDescription(`**Total:** ${stats.totalEntregas} entrega(s) aprovada(s), ${stats.totalItens.toLocaleString('pt-BR')} unidade(s)\n\n**Ranking:**\n${listaRanking}`)
+            .addFields({ name: '📦 Total por Item', value: formatarTotaisPorItem(totaisPorItem), inline: false });
 
           await interaction.editReply({ embeds: [embed] });
         } catch (err) {

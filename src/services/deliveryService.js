@@ -211,14 +211,46 @@ async function getEstatisticasEntregas(guildId, desde = null) {
   }
 }
 
-// Ranking de quem mais entregou (por unidades), com o total de entregas de
-// cada um. Passe `desde` pra filtrar (ex: início da semana vigente); sem
-// isso, ranqueia o histórico inteiro.
-async function getRankingEntregas(guildId, desde = null, limite = 15) {
+// Total entregue de cada item (agregado de todo mundo). Passe `desde` pra
+// filtrar (ex: início da semana vigente); sem isso, soma o histórico inteiro.
+async function getTotaisPorItem(guildId, desde = null) {
   try {
     const condicaoData = desde ? 'AND e.data_aprovacao >= $2' : '';
-    const params = desde ? [guildId, desde, limite] : [guildId, limite];
-    const limiteParam = desde ? '$3' : '$2';
+    const params = desde ? [guildId, desde] : [guildId];
+
+    const result = await pool.query(
+      `SELECT ie.item_nome, SUM(ie.quantidade) AS total
+       FROM itens_entregues ie
+       JOIN entregas_farm e ON ie.entrega_id = e.id
+       JOIN servidores s ON e.servidor_id = s.id
+       WHERE s.guild_id = $1
+         AND e.status = 'aprovada'
+         ${condicaoData}
+       GROUP BY ie.item_nome
+       ORDER BY total DESC`,
+      params
+    );
+
+    return result.rows.map((row) => ({
+      itemNome: row.item_nome,
+      total: parseInt(row.total, 10),
+    }));
+  } catch (error) {
+    console.error('Erro ao pegar totais por item:', error);
+    throw error;
+  }
+}
+
+// Ranking de quem mais entregou (por unidades), com o total de entregas de
+// cada um. Passe `desde` pra filtrar (ex: início da semana vigente); sem
+// isso, ranqueia o histórico inteiro. Sem `limite`, traz todo mundo que
+// entregou pelo menos uma vez.
+async function getRankingEntregas(guildId, desde = null, limite = null) {
+  try {
+    const condicaoData = desde ? 'AND e.data_aprovacao >= $2' : '';
+    const params = desde ? [guildId, desde] : [guildId];
+    if (limite) params.push(limite);
+    const limiteClause = limite ? `LIMIT $${params.length}` : '';
 
     const result = await pool.query(
       `SELECT m.discord_id, COUNT(DISTINCT e.id) AS total_entregas, COALESCE(SUM(ie.quantidade), 0) AS total_itens
@@ -231,7 +263,7 @@ async function getRankingEntregas(guildId, desde = null, limite = 15) {
          ${condicaoData}
        GROUP BY m.discord_id
        ORDER BY total_itens DESC
-       LIMIT ${limiteParam}`,
+       ${limiteClause}`,
       params
     );
 
@@ -274,5 +306,6 @@ module.exports = {
   getQuantidadeEntregueSemanaAtual,
   getEstatisticasEntregas,
   getRankingEntregas,
+  getTotaisPorItem,
   inicioDaSemanaAtual,
 };
