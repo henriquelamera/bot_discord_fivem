@@ -29,6 +29,54 @@ registerButton('cat_credenciais', async (interaction) => {
   });
 });
 
+registerModal('modal_configurar_banner_registro', async (interaction) => {
+  try {
+    const urlInput = interaction.fields.getTextInputValue('banner_registro_url') || '';
+    const config = await serverService.getConfig(interaction.guild.id);
+    config.boas_vindas = {
+      ...(config.boas_vindas || {}),
+      banner_url: urlInput,
+      imagem_url: urlInput,
+    };
+    await serverService.saveConfig(interaction.guild.id, config);
+
+    await interaction.reply({
+      content: `✅ GIF/Imagem do Registro configurado${urlInput ? '!\n**URL:** ' + urlInput : ' (removido)'}`,
+      ephemeral: true,
+    });
+  } catch (error) {
+    console.error('Erro ao configurar banner registro:', error);
+    await interaction.reply({
+      content: `❌ Erro: ${error.message}`,
+      ephemeral: true,
+    });
+  }
+});
+
+registerModal('modal_configurar_banner_bau', async (interaction) => {
+  try {
+    const urlInput = interaction.fields.getTextInputValue('banner_bau_url') || '';
+    const config = await serverService.getConfig(interaction.guild.id);
+    config.farm = {
+      ...(config.farm || {}),
+      banner_url: urlInput,
+      imagem_url: urlInput,
+    };
+    await serverService.saveConfig(interaction.guild.id, config);
+
+    await interaction.reply({
+      content: `✅ GIF/Imagem do Baú configurado${urlInput ? '!\n**URL:** ' + urlInput : ' (removido)'}`,
+      ephemeral: true,
+    });
+  } catch (error) {
+    console.error('Erro ao configurar banner bau:', error);
+    await interaction.reply({
+      content: `❌ Erro: ${error.message}`,
+      ephemeral: true,
+    });
+  }
+});
+
 // NOTA: Os handlers de buttons (cat_cargos, cat_farm, etc) estão no código legado
 // e têm lógica complexa que funciona bem lá. Apenas os handlers críticos
 // (select_canal_* que salvam config) estão registrados aqui.
