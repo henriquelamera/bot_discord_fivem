@@ -1419,6 +1419,16 @@ module.exports = {
               value: 'cargo_morador',
             },
             {
+              label: 'Cargo Membro',
+              description: 'Cargo da hierarquia acima de Morador',
+              value: 'cargo_membro',
+            },
+            {
+              label: 'Cargo Gerente',
+              description: 'Cargo máximo da hierarquia (acima de Membro)',
+              value: 'cargo_gerente',
+            },
+            {
               label: 'Cargo Baú Aberto',
               description: 'Cargo dado junto ao Morador',
               value: 'cargo_bau_aberto',
@@ -1766,11 +1776,15 @@ module.exports = {
 
         const customIdsPorValor = {
           cargo_morador: 'select_cargo_morador',
+          cargo_membro: 'select_cargo_membro',
+          cargo_gerente: 'select_cargo_gerente',
           cargo_bau_aberto: 'select_cargo_bau_aberto',
           cargo_bau_nao_aberto: 'select_cargo_bau_nao_aberto',
         };
         const titulosPorValor = {
           cargo_morador: 'Cargo Morador',
+          cargo_membro: 'Cargo Membro',
+          cargo_gerente: 'Cargo Gerente',
           cargo_bau_aberto: 'Cargo Baú Aberto',
           cargo_bau_nao_aberto: 'Cargo Sem Baú Aberto',
         };
@@ -1986,12 +2000,16 @@ module.exports = {
       }
 
       if (interaction.customId === 'select_cargo_morador' ||
+          interaction.customId === 'select_cargo_membro' ||
+          interaction.customId === 'select_cargo_gerente' ||
           interaction.customId === 'select_cargo_bau_aberto' ||
           interaction.customId === 'select_cargo_bau_nao_aberto') {
         const cargoId = interaction.values[0];
 
         const camposPorCustomId = {
           select_cargo_morador: { campo: 'cargo_morador_id', titulo: 'Morador' },
+          select_cargo_membro: { campo: 'cargo_membro_id', titulo: 'Membro' },
+          select_cargo_gerente: { campo: 'cargo_gerente_id', titulo: 'Gerente' },
           select_cargo_bau_aberto: { campo: 'cargo_bau_aberto_id', titulo: 'Baú Aberto' },
           select_cargo_bau_nao_aberto: { campo: 'cargo_bau_nao_aberto_id', titulo: 'Sem Baú Aberto' },
         };
