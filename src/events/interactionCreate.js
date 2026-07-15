@@ -5509,6 +5509,12 @@ module.exports = {
               pagamento: entrega.pagamento,
             });
 
+            // Marcar aprovada também na tabela do Postgres (é ela que
+            // alimenta ranking/estatísticas do painel de gerenciamento)
+            await deliveryService.approveDelivery(entrega.id, interaction.user.id).catch((err) => {
+              console.warn('Não foi possível marcar entrega como aprovada no Postgres:', err.message);
+            });
+
             await atualizarHistoricoEntregaFarm(
               interaction.guild,
               entrega,
@@ -5621,6 +5627,12 @@ module.exports = {
             data_aprovacao: entrega.data_aprovacao,
             aprovador_id: entrega.aprovador_id,
             pagamento: entrega.pagamento,
+          });
+
+          // Marcar aprovada também na tabela do Postgres (é ela que
+          // alimenta ranking/estatísticas do painel de gerenciamento)
+          await deliveryService.approveDelivery(entrega.id, interaction.user.id).catch((err) => {
+            console.warn('Não foi possível marcar entrega como aprovada no Postgres:', err.message);
           });
 
           await atualizarHistoricoEntregaFarm(
@@ -5745,6 +5757,12 @@ module.exports = {
             data_rejeicao: entrega.data_rejeicao,
             rejeitador_id: entrega.rejeitador_id,
             motivo_rejeicao: entrega.motivo_rejeicao,
+          });
+
+          // Marcar rejeitada também na tabela do Postgres, pelo mesmo
+          // motivo da aprovação (consistência com ranking/estatísticas)
+          await deliveryService.rejectDelivery(entrega.id, motivo).catch((err) => {
+            console.warn('Não foi possível marcar entrega como rejeitada no Postgres:', err.message);
           });
 
           await atualizarHistoricoEntregaFarm(

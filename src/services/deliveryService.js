@@ -88,6 +88,43 @@ async function rejectDelivery(entregaId, motivo) {
   }
 }
 
+// Sincroniza status/data de uma entrega já existente no Postgres a partir do
+// registro histórico em config.farm.entregas (JSON) - usado só pelo backfill
+// que corrige entregas aprovadas/rejeitadas antes da tabela relacional ser
+// atualizada nesses fluxos. Diferente de approveDelivery/rejectDelivery,
+// aceita a data real do evento em vez de NOW(), pra não fazer entregas
+// antigas aparecerem como "desta semana" nos relatórios.
+async function sincronizarStatusEntrega(entregaId, status, dataEvento, extra = {}) {
+  try {
+    if (status === 'aprovada') {
+      const result = await pool.query(
+        `UPDATE entregas_farm
+         SET status = 'aprovada', data_aprovacao = $1, aprovador_id = $2
+         WHERE id = $3 AND status != 'aprovada'
+         RETURNING id`,
+        [dataEvento || new Date(), extra.aprovadorId || null, entregaId]
+      );
+      return result.rows[0] || null;
+    }
+
+    if (status === 'rejeitada') {
+      const result = await pool.query(
+        `UPDATE entregas_farm
+         SET status = 'rejeitada', motivo_rejeicao = $1
+         WHERE id = $2 AND status != 'rejeitada'
+         RETURNING id`,
+        [extra.motivo || null, entregaId]
+      );
+      return result.rows[0] || null;
+    }
+
+    return null;
+  } catch (error) {
+    console.error('Erro ao sincronizar status de entrega:', error);
+    throw error;
+  }
+}
+
 // Pegar entrega
 async function getDelivery(entregaId) {
   try {
@@ -340,6 +377,7 @@ module.exports = {
   createDelivery,
   approveDelivery,
   rejectDelivery,
+  sincronizarStatusEntrega,
   getDelivery,
   getDeliveryItems,
   getDeliveryWithItems,
