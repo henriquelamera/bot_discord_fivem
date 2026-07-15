@@ -869,17 +869,32 @@ module.exports = {
             .setTitle(`📦 Nova Entrega de Farm — #${entrega_id}`)
             .setColor(0x3498db)
             .addFields(
-              { name: '👤 Usuário', value: interaction.user.tag, inline: true },
+              { name: '👤 Usuário', value: interaction.member.displayName, inline: true },
               { name: '📅 Data', value: new Date().toLocaleDateString('pt-BR'), inline: true }
             );
 
-          // Adicionar items
+          // Adicionar items, com valor estimado pros que forem elegíveis a pagamento
+          const pagamentosConfig = config.farm?.pagamentos || {};
           let descricaoItens = '';
+          let valorTotalEstimado = 0;
+          let temItemPagavel = false;
+
           for (const [itemId, dados] of Object.entries(entrega.itens)) {
-            descricaoItens += `- **${dados.nome}**: ${dados.quantidade}\n`;
+            const pagamento = pagamentosConfig[itemId];
+            if (pagamento?.valor_unidade) {
+              const subtotal = dados.quantidade * pagamento.valor_unidade;
+              valorTotalEstimado += subtotal;
+              temItemPagavel = true;
+              descricaoItens += `- **${dados.nome}:** ${dados.quantidade} x ${formatarMoeda(pagamento.valor_unidade)} = ${formatarMoeda(subtotal)}\n`;
+            } else {
+              descricaoItens += `- **${dados.nome}:** ${dados.quantidade}\n`;
+            }
           }
           if (descricaoItens) {
             embed.addFields({ name: '📊 Items', value: descricaoItens });
+          }
+          if (temItemPagavel) {
+            embed.addFields({ name: '💰 Valor Estimado', value: formatarMoeda(valorTotalEstimado), inline: false });
           }
 
           embed.setImage(printUrl);
