@@ -5473,6 +5473,13 @@ module.exports = {
           });
         }
 
+        if (entrega.usuario_id === interaction.user.id) {
+          return await interaction.reply({
+            content: '❌ Você não pode aprovar o seu próprio farm! Peça pra outro responsável aprovar.',
+            ephemeral: true,
+          });
+        }
+
         try {
           const guildId = interaction.guild.id;
           const membro = await interaction.guild.members.fetch(entrega.usuario_id);
