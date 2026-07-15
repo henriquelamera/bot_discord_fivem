@@ -4642,6 +4642,9 @@ module.exports = {
               ephemeral: true,
             });
 
+            // Remover os botões pra não dar pra aprovar de novo (duplicaria o pagamento)
+            await interaction.message.edit({ components: [] });
+
             try {
               let dmGerente = `✅ Sua entrega de farm foi **aprovada**! Parabéns!`;
               if (infoPagamento?.valor_total > 0) {
@@ -4749,6 +4752,9 @@ module.exports = {
             content: mensagemFeedback,
             ephemeral: true,
           });
+
+          // Remover os botões pra não dar pra aprovar de novo (duplicaria o pagamento)
+          await interaction.message.edit({ components: [] });
 
           // Notificar usuário
           try {
