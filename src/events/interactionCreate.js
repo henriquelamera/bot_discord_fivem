@@ -1260,6 +1260,11 @@ module.exports = {
               value: 'farm_canal_bau',
             },
             {
+              label: 'Banner do Baú',
+              description: 'Definir GIF/imagem do botão de Abrir Baú',
+              value: 'farm_banner_bau',
+            },
+            {
               label: 'Categoria de Farm',
               description: 'Configurar categoria para canais de baú',
               value: 'farm_categoria',
@@ -2275,6 +2280,27 @@ module.exports = {
             components: [row],
             ephemeral: true,
           });
+        }
+
+        if (valor === 'farm_banner_bau') {
+          const config = await serverService.getConfig(interaction.guild.id);
+          const bannerAtual = config.farm?.banner_url || config.farm?.imagem_url || '';
+
+          const modal = new ModalBuilder()
+            .setCustomId('modal_configurar_banner_bau')
+            .setTitle('📦 Banner do Baú');
+
+          const urlInput = new TextInputBuilder()
+            .setCustomId('banner_bau_url')
+            .setLabel('URL do GIF/Imagem')
+            .setStyle(TextInputStyle.Short)
+            .setPlaceholder('https://imgur.com/seu-gif.gif')
+            .setValue(bannerAtual)
+            .setRequired(false);
+
+          modal.addComponents(new ActionRowBuilder().addComponents(urlInput));
+
+          await interaction.showModal(modal);
         }
 
         if (valor === 'farm_categoria') {
