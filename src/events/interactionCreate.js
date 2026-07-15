@@ -470,27 +470,67 @@ module.exports = {
           });
         }
 
+        // Coletar quantidades entregues do modal
+        const itensEntregues = {};
+        for (const item of itens) {
+          const quantidade = interaction.fields.getTextInputValue(`item_${item.id}`);
+          if (quantidade) {
+            itensEntregues[item.id] = {
+              nome: item.nome,
+              quantidade: parseInt(quantidade),
+            };
+          }
+        }
+
+        if (Object.keys(itensEntregues).length === 0) {
+          return await interaction.reply({
+            content: '❌ Você precisa informar a quantidade de pelo menos um item.',
+            ephemeral: true,
+          });
+        }
+
+        await interaction.reply({
+          content: '📸 Agora envie **uma imagem** aqui no canal com o print de comprovação (você tem 5 minutos). Formatos aceitos: PNG, JPG, JPEG, GIF, WEBP.',
+          ephemeral: true,
+        });
+
         try {
+          const coletadas = await interaction.channel.awaitMessages({
+            filter: (msg) =>
+              msg.author.id === interaction.user.id &&
+              [...msg.attachments.values()].some((att) => att.contentType?.startsWith('image/')),
+            max: 1,
+            time: 5 * 60 * 1000,
+            errors: ['time'],
+          });
+
+          const mensagemComImagem = coletadas.first();
+          const imagem = [...mensagemComImagem.attachments.values()].find((att) => att.contentType?.startsWith('image/'));
+          const printUrl = imagem.url;
+
+          // Garantir que existe um registro de membro no banco (pessoas com
+          // cargo atribuído manualmente, sem passar pelo fluxo de registro,
+          // não têm essa linha e a entrega falharia com "Membro não encontrado")
+          const membroExistente = await memberService.getMember(guildId, interaction.user.id);
+          if (!membroExistente) {
+            const nomeFormatadoAtual = config.membros_info?.[interaction.user.id]?.nomeFormatado;
+            const [nomeInGameFallback, idFallback] = nomeFormatadoAtual?.includes(' | ')
+              ? nomeFormatadoAtual.split(' | ')
+              : [interaction.member.displayName, 'N/A'];
+
+            await memberService.saveMember(guildId, interaction.user.id, nomeInGameFallback, idFallback, nomeFormatadoAtual || interaction.member.displayName);
+            await memberService.approveMember(guildId, interaction.user.id);
+          }
+
           // Coletar dados da entrega
           const entrega = {
             usuario_id: interaction.user.id,
             usuario_tag: interaction.user.tag,
             data_entrega: new Date().toISOString(),
-            itens: {},
-            print_url: interaction.fields.getTextInputValue('print_comprovacao'),
+            itens: itensEntregues,
+            print_url: printUrl,
             status: 'pendente_aprovacao',
           };
-
-          // Preencher items entregues
-          for (const item of itens) {
-            const quantidade = interaction.fields.getTextInputValue(`item_${item.id}`);
-            if (quantidade) {
-              entrega.itens[item.id] = {
-                nome: item.nome,
-                quantidade: parseInt(quantidade),
-              };
-            }
-          }
 
           // Salvar entrega no banco PostgreSQL
           const entrega_id = await deliveryService.createDelivery(
@@ -542,7 +582,7 @@ module.exports = {
               embed.addFields({ name: '📊 Items', value: descricaoItens });
             }
 
-            embed.addFields({ name: '📸 Print', value: `[Ver imagem](${entrega.print_url})` });
+            embed.setImage(printUrl);
 
             await canalAprovacao.send({
               embeds: [embed],
@@ -550,13 +590,21 @@ module.exports = {
             });
           }
 
-          await interaction.reply({
+          await interaction.followUp({
             content: '✅ Entrega registrada! Aguardando aprovação dos responsáveis.',
             ephemeral: true,
           });
         } catch (err) {
+          if (err instanceof Map) {
+            await interaction.followUp({
+              content: '❌ Tempo esgotado! Nenhuma imagem foi recebida. Clique em **Entregar Meta** novamente.',
+              ephemeral: true,
+            });
+            return;
+          }
+
           console.error(err);
-          await interaction.reply({
+          await interaction.followUp({
             content: `❌ Erro ao registrar entrega: ${err.message}`,
             ephemeral: true,
           });
@@ -4532,16 +4580,6 @@ module.exports = {
 
           modal.addComponents(new ActionRowBuilder().addComponents(input));
         }
-
-        // Adicionar campo para upload de print (será um link/URL)
-        const printInput = new TextInputBuilder()
-          .setCustomId('print_comprovacao')
-          .setLabel('Link do Print de Comprovação')
-          .setStyle(TextInputStyle.Short)
-          .setPlaceholder('Cole o link da imagem aqui')
-          .setRequired(true);
-
-        modal.addComponents(new ActionRowBuilder().addComponents(printInput));
 
         await interaction.showModal(modal);
       }
