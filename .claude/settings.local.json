@@ -50,7 +50,9 @@
       "Bash(git commit -m ' *)",
       "Bash(node -c index.js)",
       "Bash(node -c src/commands/debug_config.js)",
-      "Bash(node -c src/services/serverService.js)"
+      "Bash(node -c src/services/serverService.js)",
+      "Bash(node -c src/events/guildMemberRemove.js)",
+      "Bash(node -c src/events/guildMemberUpdate.js)"
     ]
   }
 }

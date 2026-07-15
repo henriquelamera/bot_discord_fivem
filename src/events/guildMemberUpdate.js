@@ -1,11 +1,9 @@
-const { load } = require('../store');
-
-const CONFIG_FILE = 'config.json';
+const serverService = require('../services/serverService');
 
 module.exports = {
   name: 'guildMemberUpdate',
   async execute(oldMember, newMember) {
-    const config = load(CONFIG_FILE, {});
+    const config = await serverService.getConfig(newMember.guild.id);
     const moradorRoleId = config.cargo_morador_id;
 
     if (!moradorRoleId) return;

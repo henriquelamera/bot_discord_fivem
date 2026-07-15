@@ -482,6 +482,24 @@ module.exports = {
         });
       }
 
+      if (interaction.customId === 'modal_boas_vindas_saida') {
+        const texto = interaction.fields.getTextInputValue('texto_saida');
+
+        const config = await serverService.getConfig(interaction.guild.id);
+        config.boas_vindas = {
+          ...(config.boas_vindas || {}),
+          mensagem_saida: texto || undefined,
+        };
+        await serverService.saveConfig(interaction.guild.id, config);
+
+        await interaction.reply({
+          content: texto
+            ? `✅ Mensagem de saída configurada!\n\n**Preview:** ${texto.replace(/\{usuario\}/g, interaction.user.tag).replace(/\{servidor\}/g, interaction.guild.name)}`
+            : '✅ Mensagem de saída removida (voltou pro padrão).',
+          ephemeral: true,
+        });
+      }
+
       if (interaction.customId === 'modal_registro') {
         const canalSet = interaction.fields.getTextInputValue('canal_set');
         const descricao = interaction.fields.getTextInputValue('descricao_registro') || '';
@@ -3228,6 +3246,27 @@ module.exports = {
 
           await interaction.showModal(modal);
         }
+
+        if (valor === 'bv_mensagem_saida') {
+          const config = await serverService.getConfig(interaction.guild.id);
+          const mensagemAtual = config.boas_vindas?.mensagem_saida || '';
+
+          const modal = new ModalBuilder()
+            .setCustomId('modal_boas_vindas_saida')
+            .setTitle('👋 Mensagem de Saída');
+
+          const textoInput = new TextInputBuilder()
+            .setCustomId('texto_saida')
+            .setLabel('Mensagem quando alguém sai')
+            .setStyle(TextInputStyle.Paragraph)
+            .setPlaceholder('Ex: {usuario} saiu da Real Becks. Até mais!')
+            .setValue(mensagemAtual)
+            .setRequired(false);
+
+          modal.addComponents(new ActionRowBuilder().addComponents(textoInput));
+
+          await interaction.showModal(modal);
+        }
       }
 
       if (interaction.customId === 'select_categoria_farm_canal_bau') {
@@ -3672,6 +3711,11 @@ module.exports = {
                 label: 'Mensagem e Banner',
                 value: 'bv_mensagem',
                 description: 'Configurar texto e imagem',
+              },
+              {
+                label: 'Mensagem de Saída',
+                value: 'bv_mensagem_saida',
+                description: 'Configurar texto de quando alguém sai',
               }
             );
 

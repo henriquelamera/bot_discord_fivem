@@ -1,21 +1,24 @@
 const { EmbedBuilder } = require('discord.js');
-const { load, save } = require('../store');
-
-const CONFIG_FILE = 'config.json';
+const serverService = require('../services/serverService');
 
 module.exports = {
   name: 'guildMemberRemove',
   async execute(member) {
-    const config = load(CONFIG_FILE, {});
+    const config = await serverService.getConfig(member.guild.id);
     const canalSaidasId = config.boas_vindas?.canal_saidas_id;
 
     // Registrar saída no canal
     if (canalSaidasId) {
       const canalSaidas = member.guild.channels.cache.get(canalSaidasId);
       if (canalSaidas) {
+        const mensagemSaida = (config.boas_vindas?.mensagem_saida || `${member.user.tag} saiu do servidor.`)
+          .replace(/\{usuario\}/g, member.user.tag)
+          .replace(/\{servidor\}/g, member.guild.name);
+
         const embed = new EmbedBuilder()
           .setTitle('👋 Membro Saiu')
           .setColor(0xFF6B6B)
+          .setDescription(mensagemSaida)
           .addFields(
             { name: '👤 Usuário', value: member.user.tag, inline: true },
             { name: 'ID', value: member.id, inline: true },
@@ -26,57 +29,49 @@ module.exports = {
           .setFooter({ text: `ID do Discord: ${member.id}` })
           .setTimestamp();
 
-        await canalSaidas.send({ embeds: [embed] }).catch(err => {
+        await canalSaidas.send({ embeds: [embed] }).catch((err) => {
           console.error(`❌ Erro ao registrar saída:`, err.message);
         });
       }
     }
 
-    // Limpar registro da pessoa
+    // Deletar canal privado de farm (pela permissão da pessoa, não pelo nome)
+    const categoria_bau_id = config.farm?.categoria_bau_id;
+    if (categoria_bau_id) {
+      try {
+        const categoria = member.guild.channels.cache.get(categoria_bau_id);
+        const canal = categoria?.children.cache.find((ch) => ch.permissionOverwrites.cache.has(member.id));
+        if (canal) {
+          await canal.delete();
+          console.log(`✅ Canal de farm #${canal.name} deletado para ${member.user.tag}`);
+        }
+      } catch (err) {
+        console.warn(`⚠️ Erro ao deletar canal de farm:`, err.message);
+      }
+    }
+
+    // Limpar registros pendentes/temporários da pessoa
+    let precisaSalvar = false;
     if (config.membros_info?.[member.id]) {
       delete config.membros_info[member.id];
-      save(CONFIG_FILE, config);
-      console.log(`✅ Registro de ${member.user.tag} removido ao sair do servidor`);
+      precisaSalvar = true;
     }
-
-    // Limpar atualizações pendentes
     if (config.atualizacoes_pendentes?.[member.id]) {
       delete config.atualizacoes_pendentes[member.id];
-      save(CONFIG_FILE, config);
+      precisaSalvar = true;
     }
-
-    // Limpar registros pendentes
     if (config.registros_pendentes?.[member.id]) {
       delete config.registros_pendentes[member.id];
-      save(CONFIG_FILE, config);
+      precisaSalvar = true;
+    }
+    if (config.atualizacoes_hierarquia_pendentes?.[member.id]) {
+      delete config.atualizacoes_hierarquia_pendentes[member.id];
+      precisaSalvar = true;
     }
 
-    // Deletar canal privado de farm
-    const nomeFormatado = config.membros_info?.[member.id]?.nomeFormatado;
-    if (nomeFormatado) {
-      const nomeCanal = nomeFormatado
-        .toLowerCase()
-        .replace(/[^a-z0-9-|]/g, '-')
-        .replace(/--+/g, '-')
-        .replace(/^-|-$/g, '');
-
-      const categoria_bau_id = config.farm?.categoria_bau_id;
-      if (categoria_bau_id) {
-        try {
-          const categoria = member.guild.channels.cache.get(categoria_bau_id);
-          if (categoria) {
-            const canal = member.guild.channels.cache.find(
-              ch => ch.parent?.id === categoria_bau_id && ch.name === nomeCanal
-            );
-            if (canal) {
-              await canal.delete();
-              console.log(`✅ Canal de farm #${nomeCanal} deletado para ${member.user.tag}`);
-            }
-          }
-        } catch (err) {
-          console.warn(`⚠️ Erro ao deletar canal de farm:`, err.message);
-        }
-      }
+    if (precisaSalvar) {
+      await serverService.saveConfig(member.guild.id, config);
+      console.log(`✅ Registros pendentes de ${member.user.tag} removidos ao sair do servidor`);
     }
   },
 };
