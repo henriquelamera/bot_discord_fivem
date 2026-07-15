@@ -8,6 +8,83 @@ const { dispatchButton, dispatchSelectMenu, dispatchModal } = require('../utils/
 // Carregar todos os handlers registrados
 require('../handlers/registerAllHandlers');
 
+// Calcula o valor a pagar de uma entrega (apenas itens elegíveis a pagamento)
+// e publica o lançamento no canal de controle de pagamento, se configurado.
+async function processarPagamentoFarm(config, guild, entrega, aprovadorId) {
+  const pagamentos = config.farm?.pagamentos || {};
+  const canalPagamentoId = config.farm?.canal_controle_pagamento_id;
+
+  const itensPagos = [];
+  let valorTotal = 0;
+
+  for (const [itemId, entregaData] of Object.entries(entrega.itens || {})) {
+    const pag = pagamentos[itemId];
+    if (!pag) continue; // item não elegível a pagamento
+
+    const quantidade = entregaData.quantidade || 0;
+    const subtotal = quantidade * pag.valor_unidade;
+    if (subtotal <= 0) continue;
+
+    itensPagos.push({
+      itemId,
+      nome: entregaData.nome || pag.nome,
+      quantidade,
+      valor_unidade: pag.valor_unidade,
+      subtotal,
+    });
+    valorTotal += subtotal;
+  }
+
+  if (valorTotal <= 0) return null;
+
+  entrega.pagamento = {
+    valor_total: valorTotal,
+    itens: itensPagos,
+    status: 'pendente',
+    aprovador_id: aprovadorId,
+    data_aprovacao: new Date().toISOString(),
+  };
+
+  if (!canalPagamentoId) return entrega.pagamento;
+
+  const canal = guild.channels.cache.get(canalPagamentoId);
+  if (!canal) return entrega.pagamento;
+
+  const { ButtonBuilder, ButtonStyle } = require('discord.js');
+
+  const listaItens = itensPagos
+    .map((i) => `**${i.nome}:** ${i.quantidade} x R$ ${i.valor_unidade.toFixed(2)} = R$ ${i.subtotal.toFixed(2)}`)
+    .join('\n');
+
+  const embed = new EmbedBuilder()
+    .setTitle('💰 Pagamento Pendente')
+    .setColor(0xf1c40f)
+    .addFields(
+      { name: '👤 Farmou', value: `<@${entrega.usuario_id}> (${entrega.usuario_tag})`, inline: false },
+      { name: '✅ Aprovado por', value: `<@${aprovadorId}>`, inline: false },
+      { name: '📦 Itens', value: listaItens, inline: false },
+      { name: '💵 Valor Total', value: `R$ ${valorTotal.toFixed(2)}`, inline: false }
+    )
+    .setTimestamp();
+
+  const botaoPagar = new ButtonBuilder()
+    .setCustomId(`marcar_pago_${entrega.id}`)
+    .setLabel('💰 Marcar como Pago')
+    .setStyle(ButtonStyle.Success);
+
+  const row = new ActionRowBuilder().addComponents(botaoPagar);
+
+  try {
+    const mensagem = await canal.send({ embeds: [embed], components: [row] });
+    entrega.pagamento.canal_id = canalPagamentoId;
+    entrega.pagamento.mensagem_id = mensagem.id;
+  } catch (err) {
+    console.error('Erro ao publicar controle de pagamento:', err.message);
+  }
+
+  return entrega.pagamento;
+}
+
 module.exports = {
   name: 'interactionCreate',
   async execute(interaction, client) {
@@ -638,6 +715,60 @@ module.exports = {
         });
       }
 
+      if (interaction.customId === 'modal_cadastro_pagamento') {
+        const config = await serverService.getConfig(interaction.guild.id);
+        if (!config.farm) config.farm = {};
+        if (!config.farm.pagamentos) config.farm.pagamentos = {};
+
+        const itens = config.farm.itens || [];
+        let pagamentosAdicionados = [];
+        let itensRemovidos = [];
+
+        // Processar apenas os items que foram exibidos no modal (máximo 5)
+        for (let i = 0; i < Math.min(itens.length, 5); i++) {
+          const item = itens[i];
+          const valorStr = interaction.fields.getTextInputValue(`valor_${item.id}`);
+
+          if (valorStr && valorStr.trim()) {
+            const valor = parseFloat(valorStr.replace(',', '.'));
+            if (!isNaN(valor) && valor > 0) {
+              config.farm.pagamentos[item.id] = {
+                nome: item.nome,
+                valor_unidade: valor,
+                data_atualizacao: new Date().toISOString(),
+              };
+              pagamentosAdicionados.push(`${item.nome}: R$ ${valor.toFixed(2)}/unidade`);
+            }
+          } else if (config.farm.pagamentos[item.id]) {
+            // Campo deixado em branco: item deixa de ser elegível a pagamento
+            delete config.farm.pagamentos[item.id];
+            itensRemovidos.push(item.nome);
+          }
+        }
+
+        await serverService.saveConfig(interaction.guild.id, config);
+
+        if (pagamentosAdicionados.length === 0 && itensRemovidos.length === 0) {
+          return await interaction.reply({
+            content: '⚠️ Nenhum valor foi definido (campos vazios).',
+            ephemeral: true,
+          });
+        }
+
+        let resposta = '';
+        if (pagamentosAdicionados.length > 0) {
+          resposta += `✅ **${pagamentosAdicionados.length}** item(s) elegível(is) a pagamento:\n${pagamentosAdicionados.map(p => `- ${p}`).join('\n')}`;
+        }
+        if (itensRemovidos.length > 0) {
+          resposta += `${resposta ? '\n\n' : ''}🚫 **${itensRemovidos.length}** item(s) removido(s) da elegibilidade:\n${itensRemovidos.map(n => `- ${n}`).join('\n')}`;
+        }
+
+        await interaction.reply({
+          content: resposta,
+          ephemeral: true,
+        });
+      }
+
       if (interaction.customId === 'modal_atualizar_registro_membro_generico') {
         const nomeInGame = interaction.fields.getTextInputValue('nome_in_game');
         const id = interaction.fields.getTextInputValue('id_registro');
@@ -1144,9 +1275,19 @@ module.exports = {
               value: 'farm_criar_metas',
             },
             {
+              label: 'Criar Pagamento',
+              description: 'Definir valor pago por unidade de cada item',
+              value: 'farm_criar_pagamento',
+            },
+            {
               label: 'Canal de Aprovações',
               description: 'Configurar canal onde aparecem as entregas',
               value: 'farm_canal_aprovacoes',
+            },
+            {
+              label: 'Canal de Controle de Pagamento',
+              description: 'Canal onde gerentes controlam pagamentos aprovados',
+              value: 'farm_canal_pagamento',
             }
           );
 
@@ -2027,6 +2168,81 @@ module.exports = {
         }
       }
 
+      // Selecionar categoria do canal de controle de pagamento
+      if (interaction.customId === 'select_categoria_canal_pagamento') {
+        try {
+          const categoriaId = interaction.values[0];
+          const { ChannelType, StringSelectMenuBuilder } = require('discord.js');
+
+          const categoria = interaction.guild.channels.cache.get(categoriaId);
+          if (!categoria) {
+            return await interaction.reply({
+              content: '❌ Categoria não encontrada.',
+              ephemeral: true,
+            });
+          }
+
+          const canais = categoria.children.cache
+            .filter(ch => ch.type === ChannelType.GuildText)
+            .map(canal => ({
+              label: `#${canal.name}`,
+              value: canal.id,
+              description: canal.topic || 'Sem descrição',
+            }));
+
+          if (canais.length === 0) {
+            return await interaction.reply({
+              content: '❌ Nenhum canal de texto encontrado nesta categoria.',
+              ephemeral: true,
+            });
+          }
+
+          const selectMenu = new StringSelectMenuBuilder()
+            .setCustomId('select_canal_pagamento')
+            .setPlaceholder('Selecione o canal...')
+            .addOptions(canais.slice(0, 25));
+
+          const row = new ActionRowBuilder().addComponents(selectMenu);
+
+          await interaction.reply({
+            content: `**Passo 2:** Canal de Controle de Pagamento\n\nSelecione o canal em **${categoria.name}**:`,
+            components: [row],
+            ephemeral: true,
+          });
+        } catch (err) {
+          console.error('Erro em select_categoria_canal_pagamento:', err);
+          await interaction.reply({
+            content: '❌ Erro ao selecionar categoria',
+            ephemeral: true,
+          });
+        }
+      }
+
+      // Selecionar canal de controle de pagamento
+      if (interaction.customId === 'select_canal_pagamento') {
+        try {
+          const canalId = interaction.values[0];
+
+          const config = await serverService.getConfig(interaction.guild.id);
+          if (!config.farm) config.farm = {};
+          config.farm.canal_controle_pagamento_id = canalId;
+          await serverService.saveConfig(interaction.guild.id, config);
+
+          const canal = interaction.guild.channels.cache.get(canalId);
+
+          await interaction.reply({
+            content: `✅ Canal de controle de pagamento configurado!\n**Canal:** #${canal.name}\n\nAs entregas aprovadas com valor a pagar aparecerão aqui.`,
+            ephemeral: true,
+          });
+        } catch (err) {
+          console.error('Erro em select_canal_pagamento:', err);
+          await interaction.reply({
+            content: '❌ Erro ao configurar canal de controle de pagamento',
+            ephemeral: true,
+          });
+        }
+      }
+
       if (interaction.customId === 'painel_farm') {
         const valor = interaction.values[0];
         const { StringSelectMenuBuilder, ChannelType } = require('discord.js');
@@ -2219,10 +2435,81 @@ module.exports = {
         }
 
         if (valor === 'farm_criar_pagamento') {
-          await interaction.reply({
-            content: '🚧 Funcionalidade em desenvolvimento!',
-            ephemeral: true,
-          });
+          const config = await serverService.getConfig(interaction.guild.id);
+          const cargoIds = config.farm?.cargo_pagamento || [];
+          const itens = config.farm?.itens || [];
+          const pagamentosExistentes = config.farm?.pagamentos || {};
+
+          if (!cargoIds || cargoIds.length === 0) {
+            return await interaction.reply({
+              content: '❌ Cargo de Pagamento não foi configurado. Configure em `/admin_bot`',
+              ephemeral: true,
+            });
+          }
+
+          const temPermissao = cargoIds.some(id => interaction.member.roles.cache.has(id));
+
+          if (!temPermissao) {
+            return await interaction.reply({
+              content: '❌ Você não tem permissão para configurar pagamentos.',
+              ephemeral: true,
+            });
+          }
+
+          if (itens.length === 0) {
+            return await interaction.reply({
+              content: '❌ Nenhum item cadastrado. Cadastre items em "Criar Itens" primeiro.',
+              ephemeral: true,
+            });
+          }
+
+          // Verificar se já existem pagamentos configurados
+          const temPagamentosConfigurados = Object.keys(pagamentosExistentes).length > 0;
+
+          if (temPagamentosConfigurados) {
+            const pagamentosAtuais = Object.entries(pagamentosExistentes)
+              .map(([id, pag]) => `- ${pag.nome}: R$ ${pag.valor_unidade.toFixed(2)}/unidade`)
+              .join('\n');
+
+            const { ButtonBuilder, ButtonStyle } = require('discord.js');
+            const botaoConfirmar = new ButtonBuilder()
+              .setCustomId('confirmar_sobrescrever_pagamento')
+              .setLabel('✅ Sim, alterar')
+              .setStyle(ButtonStyle.Danger);
+
+            const botaoCancelar = new ButtonBuilder()
+              .setCustomId('cancelar_pagamento')
+              .setLabel('❌ Não, manter')
+              .setStyle(ButtonStyle.Secondary);
+
+            const row = new ActionRowBuilder().addComponents(botaoConfirmar, botaoCancelar);
+
+            return await interaction.reply({
+              content: `⚠️ **Pagamentos já configurados!**\n\nConfiguração atual:\n${pagamentosAtuais}\n\n**Deseja sobrescrever esses valores?**`,
+              components: [row],
+              ephemeral: true,
+            });
+          }
+
+          // Se não tem pagamentos, abre o modal direto
+          const modal = new ModalBuilder()
+            .setCustomId('modal_cadastro_pagamento')
+            .setTitle('💰 Valor por Unidade');
+
+          // Adicionar campo para cada item (máximo 5, deixe em branco para não elegível)
+          for (let i = 0; i < Math.min(itens.length, 5); i++) {
+            const item = itens[i];
+            const valorInput = new TextInputBuilder()
+              .setCustomId(`valor_${item.id}`)
+              .setLabel(`${item.nome} (R$ por unidade)`)
+              .setStyle(TextInputStyle.Short)
+              .setPlaceholder('Ex: 1.50 (deixe vazio se não for elegível)')
+              .setRequired(false);
+
+            modal.addComponents(new ActionRowBuilder().addComponents(valorInput));
+          }
+
+          await interaction.showModal(modal);
         }
 
         if (valor === 'farm_canal_aprovacoes') {
@@ -2252,6 +2539,38 @@ module.exports = {
 
           await interaction.reply({
             content: '**Passo 1:** Canal de Aprovações\n\nSelecione a categoria:',
+            components: [row],
+            ephemeral: true,
+          });
+        }
+
+        if (valor === 'farm_canal_pagamento') {
+          const { ChannelType, StringSelectMenuBuilder } = require('discord.js');
+
+          const categorias = interaction.guild.channels.cache
+            .filter(ch => ch.type === ChannelType.GuildCategory)
+            .map(cat => ({
+              label: cat.name,
+              value: cat.id,
+              description: `${cat.children.cache.size} canais`,
+            }));
+
+          if (categorias.length === 0) {
+            return await interaction.reply({
+              content: '❌ Nenhuma categoria encontrada.',
+              ephemeral: true,
+            });
+          }
+
+          const selectMenu = new StringSelectMenuBuilder()
+            .setCustomId('select_categoria_canal_pagamento')
+            .setPlaceholder('Selecione a categoria...')
+            .addOptions(categorias);
+
+          const row = new ActionRowBuilder().addComponents(selectMenu);
+
+          await interaction.reply({
+            content: '**Passo 1:** Canal de Controle de Pagamento\n\nSelecione a categoria:',
             components: [row],
             ephemeral: true,
           });
@@ -3779,16 +4098,28 @@ module.exports = {
             entrega.status = 'aprovada';
             entrega.data_aprovacao = new Date().toISOString();
             entrega.aprovador_id = interaction.user.id;
+
+            const infoPagamento = await processarPagamentoFarm(config, interaction.guild, entrega, interaction.user.id);
+
             await serverService.saveConfig(interaction.guild.id, config);
 
+            let respostaGerente = `✅ Entrega de ${membro.user.tag} aprovada!\n\n(Gerente - isento do sistema de ADV)`;
+            if (infoPagamento?.valor_total > 0) {
+              respostaGerente += `\n\n💰 **Valor a pagar:** R$ ${infoPagamento.valor_total.toFixed(2)} (lançado no canal de controle de pagamento)`;
+            }
+
             await interaction.reply({
-              content: `✅ Entrega de ${membro.user.tag} aprovada!\n\n(Gerente - isento do sistema de ADV)`,
+              content: respostaGerente,
               ephemeral: true,
             });
 
             try {
+              let dmGerente = `✅ Sua entrega de farm foi **aprovada**! Parabéns!`;
+              if (infoPagamento?.valor_total > 0) {
+                dmGerente += `\n\n💰 **Valor a pagar:** R$ ${infoPagamento.valor_total.toFixed(2)} (aguarde o pagamento ser registrado)`;
+              }
               await membro.user.send({
-                content: `✅ Sua entrega de farm foi **aprovada**! Parabéns!`,
+                content: dmGerente,
               });
             } catch (err) {
               console.warn('Não foi possível notificar usuário:', err.message);
@@ -3863,6 +4194,9 @@ module.exports = {
           entrega.status = 'aprovada';
           entrega.data_aprovacao = new Date().toISOString();
           entrega.aprovador_id = interaction.user.id;
+
+          const infoPagamento = await processarPagamentoFarm(config, interaction.guild, entrega, interaction.user.id);
+
           await serverService.saveConfig(interaction.guild.id, config);
 
           // Montar mensagem de feedback
@@ -3877,6 +4211,9 @@ module.exports = {
                 mensagemFeedback += `\n\n📋 **Ainda Devendo:**\n${itemsAindaDevendo.join('\n')}`;
               }
             }
+          }
+          if (infoPagamento?.valor_total > 0) {
+            mensagemFeedback += `\n\n💰 **Valor a pagar:** R$ ${infoPagamento.valor_total.toFixed(2)} (lançado no canal de controle de pagamento)`;
           }
 
           await interaction.reply({
@@ -3898,6 +4235,9 @@ module.exports = {
                   dmConteudo += `\n\n📋 **Você ainda deve:**\n${itemsAindaDevendo.join('\n')}`;
                 }
               }
+            }
+            if (infoPagamento?.valor_total > 0) {
+              dmConteudo += `\n\n💰 **Valor a pagar:** R$ ${infoPagamento.valor_total.toFixed(2)} (aguarde o pagamento ser registrado)`;
             }
 
             await membro.user.send({
@@ -3986,6 +4326,77 @@ module.exports = {
         }
       }
 
+      if (interaction.customId.startsWith('marcar_pago_')) {
+        const entrega_id = interaction.customId.replace('marcar_pago_', '');
+        const config = await serverService.getConfig(interaction.guild.id);
+
+        const cargoPagamentoIds = config.farm?.cargo_pagamento || [];
+        const temPermissao = cargoPagamentoIds.length === 0 ||
+          interaction.member.roles.cache.some(role => cargoPagamentoIds.includes(role.id));
+
+        if (!temPermissao) {
+          return await interaction.reply({
+            content: '❌ Você não tem permissão para registrar pagamentos.',
+            ephemeral: true,
+          });
+        }
+
+        const entrega = config.farm?.entregas?.find((e) => e.id === entrega_id);
+        if (!entrega || !entrega.pagamento) {
+          return await interaction.reply({
+            content: '❌ Lançamento de pagamento não encontrado.',
+            ephemeral: true,
+          });
+        }
+
+        if (entrega.pagamento.status === 'pago') {
+          return await interaction.reply({
+            content: '⚠️ Este pagamento já foi registrado como pago.',
+            ephemeral: true,
+          });
+        }
+
+        try {
+          entrega.pagamento.status = 'pago';
+          entrega.pagamento.pago_por_id = interaction.user.id;
+          entrega.pagamento.data_pagamento = new Date().toISOString();
+          await serverService.saveConfig(interaction.guild.id, config);
+
+          // Atualizar a mensagem de controle de pagamento
+          try {
+            const embedAtual = interaction.message.embeds[0];
+            const embedPago = EmbedBuilder.from(embedAtual)
+              .setColor(0x2ecc71)
+              .setTitle('✅ Pagamento Realizado')
+              .addFields({ name: '💰 Pago por', value: `<@${interaction.user.id}>`, inline: false });
+
+            await interaction.update({ embeds: [embedPago], components: [] });
+          } catch (err) {
+            console.warn('Não foi possível atualizar mensagem de pagamento:', err.message);
+            await interaction.reply({
+              content: `✅ Pagamento de R$ ${entrega.pagamento.valor_total.toFixed(2)} registrado!`,
+              ephemeral: true,
+            });
+          }
+
+          // Notificar quem entregou o farm
+          try {
+            const membro = await interaction.guild.members.fetch(entrega.usuario_id);
+            await membro.user.send({
+              content: `💰 Seu farm foi **pago**! Valor: R$ ${entrega.pagamento.valor_total.toFixed(2)}`,
+            });
+          } catch (err) {
+            console.warn('Não foi possível notificar usuário sobre pagamento:', err.message);
+          }
+        } catch (err) {
+          console.error(err);
+          await interaction.reply({
+            content: `❌ Erro ao registrar pagamento: ${err.message}`,
+            ephemeral: true,
+          });
+        }
+      }
+
       // Handlers de confirmação para metas
       if (interaction.customId === 'confirmar_sobrescrever_meta') {
         const { ModalBuilder, TextInputBuilder, TextInputStyle } = require('discord.js');
@@ -4018,6 +4429,42 @@ module.exports = {
       if (interaction.customId === 'cancelar_meta') {
         await interaction.reply({
           content: '❌ Operação cancelada. Metas mantidas.',
+          ephemeral: true,
+        });
+      }
+
+      // Handlers de confirmação para pagamentos
+      if (interaction.customId === 'confirmar_sobrescrever_pagamento') {
+        const { ModalBuilder, TextInputBuilder, TextInputStyle } = require('discord.js');
+        const config = await serverService.getConfig(interaction.guild.id);
+        const itens = config.farm?.itens || [];
+
+        const modal = new ModalBuilder()
+          .setCustomId('modal_cadastro_pagamento')
+          .setTitle('💰 Valor por Unidade');
+
+        // Adicionar campo para cada item (máximo 5, deixe em branco para não elegível)
+        for (let i = 0; i < Math.min(itens.length, 5); i++) {
+          const item = itens[i];
+          const valorAtual = config.farm?.pagamentos?.[item.id]?.valor_unidade ?? '';
+
+          const valorInput = new TextInputBuilder()
+            .setCustomId(`valor_${item.id}`)
+            .setLabel(`${item.nome} (R$ por unidade)`)
+            .setStyle(TextInputStyle.Short)
+            .setPlaceholder('Ex: 1.50 (deixe vazio se não for elegível)')
+            .setValue(valorAtual.toString())
+            .setRequired(false);
+
+          modal.addComponents(new ActionRowBuilder().addComponents(valorInput));
+        }
+
+        await interaction.showModal(modal);
+      }
+
+      if (interaction.customId === 'cancelar_pagamento') {
+        await interaction.reply({
+          content: '❌ Operação cancelada. Valores de pagamento mantidos.',
           ephemeral: true,
         });
       }
