@@ -141,6 +141,47 @@ async function getApprovedDeliveries(guildId, discordId, days = 7) {
   }
 }
 
+// Início da semana de farm vigente (segunda-feira 00:00)
+function inicioDaSemanaAtual() {
+  const agora = new Date();
+  const diaDaSemana = agora.getDay(); // 0=domingo, 1=segunda, ...
+  const diasDesdeSegunda = (diaDaSemana + 6) % 7; // segunda=0, ..., domingo=6
+  const inicio = new Date(agora);
+  inicio.setDate(agora.getDate() - diasDesdeSegunda);
+  inicio.setHours(0, 0, 0, 0);
+  return inicio;
+}
+
+// Soma quanto de cada item o membro já entregou na semana vigente
+// (conta pendentes + aprovadas, ignora rejeitadas), pra aplicar o teto
+// semanal por item e não deixar entregar demais de um material só.
+async function getQuantidadeEntregueSemanaAtual(guildId, discordId) {
+  try {
+    const result = await pool.query(
+      `SELECT ie.item_nome, SUM(ie.quantidade) AS total
+       FROM itens_entregues ie
+       JOIN entregas_farm e ON ie.entrega_id = e.id
+       JOIN membros m ON e.membro_id = m.id
+       JOIN servidores s ON e.servidor_id = s.id
+       WHERE m.discord_id = $1
+         AND s.guild_id = $2
+         AND e.status != 'rejeitada'
+         AND e.data_entrega >= $3
+       GROUP BY ie.item_nome`,
+      [discordId, guildId, inicioDaSemanaAtual()]
+    );
+
+    const totais = {};
+    for (const row of result.rows) {
+      totais[row.item_nome] = parseInt(row.total, 10);
+    }
+    return totais;
+  } catch (error) {
+    console.error('Erro ao somar entregas da semana:', error);
+    throw error;
+  }
+}
+
 // Pegar todas as entregas e detalhes completos
 async function getDeliveryWithItems(entregaId) {
   try {
@@ -166,4 +207,5 @@ module.exports = {
   getDeliveryItems,
   getDeliveryWithItems,
   getApprovedDeliveries,
+  getQuantidadeEntregueSemanaAtual,
 };

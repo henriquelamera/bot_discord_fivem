@@ -581,6 +581,29 @@ module.exports = {
           });
         }
 
+        // Verificar teto semanal por item (protege o caixa da facção contra
+        // entregas muito grandes de um único material na mesma semana)
+        const limiteSemanal = config.farm?.limite_semanal_item || 2000;
+        const jaEntregueSemana = await deliveryService.getQuantidadeEntregueSemanaAtual(guildId, interaction.user.id);
+
+        const itensAcimaDoLimite = [];
+        for (const dados of Object.values(itensEntregues)) {
+          const jaEntregue = jaEntregueSemana[dados.nome] || 0;
+          if (jaEntregue + dados.quantidade > limiteSemanal) {
+            const restante = Math.max(limiteSemanal - jaEntregue, 0);
+            itensAcimaDoLimite.push(
+              `- **${dados.nome}:** já entregou ${jaEntregue}/${limiteSemanal} essa semana. Pode entregar no máximo mais **${restante}** (tentou ${dados.quantidade}).`
+            );
+          }
+        }
+
+        if (itensAcimaDoLimite.length > 0) {
+          return await interaction.reply({
+            content: `❌ Limite semanal de **${limiteSemanal}** unidades por item excedido:\n\n${itensAcimaDoLimite.join('\n')}`,
+            ephemeral: true,
+          });
+        }
+
         await interaction.reply({
           content: '📸 Agora envie **uma imagem** aqui no canal com o print de comprovação (você tem 5 minutos). Formatos aceitos: PNG, JPG, JPEG, GIF, WEBP.',
           ephemeral: true,
@@ -1020,6 +1043,28 @@ module.exports = {
 
         await interaction.reply({
           content: resposta,
+          ephemeral: true,
+        });
+      }
+
+      if (interaction.customId === 'modal_limite_semanal_farm') {
+        const limiteStr = interaction.fields.getTextInputValue('limite_semanal');
+        const limite = parseInt(limiteStr, 10);
+
+        if (isNaN(limite) || limite <= 0) {
+          return await interaction.reply({
+            content: '❌ Informe um número válido maior que zero.',
+            ephemeral: true,
+          });
+        }
+
+        const config = await serverService.getConfig(interaction.guild.id);
+        if (!config.farm) config.farm = {};
+        config.farm.limite_semanal_item = limite;
+        await serverService.saveConfig(interaction.guild.id, config);
+
+        await interaction.reply({
+          content: `✅ Limite semanal configurado! Cada pessoa pode entregar no máximo **${limite}** unidades de cada item por semana.`,
           ephemeral: true,
         });
       }
@@ -1625,6 +1670,11 @@ module.exports = {
               label: 'Marcar Sem Baú Aberto em Massa',
               description: 'Aplica o cargo a quem é Morador+ e não abriu o baú',
               value: 'farm_marcar_sem_bau',
+            },
+            {
+              label: 'Limite Semanal por Item',
+              description: 'Máximo que cada pessoa pode entregar de um item por semana',
+              value: 'farm_limite_semanal',
             }
           );
 
@@ -3113,6 +3163,27 @@ module.exports = {
               content: `❌ Erro ao processar membros: ${err.message}`,
             });
           }
+        }
+
+        if (valor === 'farm_limite_semanal') {
+          const config = await serverService.getConfig(interaction.guild.id);
+          const limiteAtual = config.farm?.limite_semanal_item || 2000;
+
+          const modal = new ModalBuilder()
+            .setCustomId('modal_limite_semanal_farm')
+            .setTitle('🚧 Limite Semanal por Item');
+
+          const limiteInput = new TextInputBuilder()
+            .setCustomId('limite_semanal')
+            .setLabel('Máximo por item, por pessoa, por semana')
+            .setStyle(TextInputStyle.Short)
+            .setPlaceholder('Ex: 2000')
+            .setValue(String(limiteAtual))
+            .setRequired(true);
+
+          modal.addComponents(new ActionRowBuilder().addComponents(limiteInput));
+
+          await interaction.showModal(modal);
         }
       }
 
