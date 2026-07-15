@@ -4958,8 +4958,18 @@ module.exports = {
             ephemeral: true,
           });
 
-          // Editar o embed da mensagem para marcar como aprovado
-          await interaction.message.edit({ components: [] });
+          // Editar o embed da mensagem para marcar como aprovado e mostrar quem aprovou
+          const embedOriginalAprovacao = interaction.message.embeds[0];
+          const embedAprovado = embedOriginalAprovacao
+            ? EmbedBuilder.from(embedOriginalAprovacao)
+                .setColor(0x2ecc71)
+                .addFields({ name: '✅ Aprovado por', value: `<@${interaction.user.id}>`, inline: false })
+            : null;
+
+          await interaction.message.edit({
+            embeds: embedAprovado ? [embedAprovado] : undefined,
+            components: [],
+          });
         } catch (err) {
           console.error(err);
           await interaction.reply({
@@ -4995,8 +5005,18 @@ module.exports = {
             ephemeral: true,
           });
 
-          // Remover os botões da mensagem
-          await interaction.message.edit({ components: [] });
+          // Editar o embed da mensagem para marcar como rejeitado e mostrar quem rejeitou
+          const embedOriginalRejeicao = interaction.message.embeds[0];
+          const embedRejeitado = embedOriginalRejeicao
+            ? EmbedBuilder.from(embedOriginalRejeicao)
+                .setColor(0xe74c3c)
+                .addFields({ name: '❌ Rejeitado por', value: `<@${interaction.user.id}>`, inline: false })
+            : null;
+
+          await interaction.message.edit({
+            embeds: embedRejeitado ? [embedRejeitado] : undefined,
+            components: [],
+          });
         } catch (err) {
           console.error(err);
           await interaction.reply({
