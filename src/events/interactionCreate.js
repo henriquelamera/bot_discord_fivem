@@ -4602,7 +4602,7 @@ module.exports = {
           });
         }
 
-        const entrega = config.farm.entregas.find((e) => e.id === entrega_id);
+        const entrega = config.farm.entregas.find((e) => String(e.id) === entrega_id);
         if (!entrega) {
           return await interaction.reply({
             content: '❌ Entrega não encontrada.',
@@ -4815,7 +4815,7 @@ module.exports = {
           });
         }
 
-        const entrega = config.farm.entregas.find((e) => e.id === entrega_id);
+        const entrega = config.farm.entregas.find((e) => String(e.id) === entrega_id);
         if (!entrega) {
           return await interaction.reply({
             content: '❌ Entrega não encontrada.',
@@ -4870,7 +4870,7 @@ module.exports = {
           });
         }
 
-        const entrega = config.farm?.entregas?.find((e) => e.id === entrega_id);
+        const entrega = config.farm?.entregas?.find((e) => String(e.id) === entrega_id);
         if (!entrega || !entrega.pagamento) {
           return await interaction.reply({
             content: '❌ Lançamento de pagamento não encontrado.',
