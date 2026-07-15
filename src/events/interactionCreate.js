@@ -1157,54 +1157,6 @@ module.exports = {
         }
       }
 
-      if (interaction.customId === 'modal_limpar_farm_membro') {
-        const nomeMembroTexto = interaction.fields.getTextInputValue('nome_membro_limpar');
-
-        try {
-          const membroId = extrairIdMembro(nomeMembroTexto);
-          if (!membroId) {
-            return await interaction.reply({
-              content: '❌ Não consegui identificar o membro. Use **@** pra marcar (deixa o Discord autocompletar) ou cole o ID da pessoa.',
-              ephemeral: true,
-            });
-          }
-
-          const totalEntregas = await deliveryService.contarEntregasPorMembro(interaction.guild.id, membroId);
-
-          if (totalEntregas === 0) {
-            return await interaction.reply({
-              content: `❌ <@${membroId}> não tem nenhuma entrega de farm registrada.`,
-              ephemeral: true,
-            });
-          }
-
-          const { ButtonBuilder, ButtonStyle } = require('discord.js');
-          const botaoConfirmar = new ButtonBuilder()
-            .setCustomId(`confirmar_limpar_farm_membro_${membroId}`)
-            .setLabel('✅ Sim, apagar tudo')
-            .setStyle(ButtonStyle.Danger);
-
-          const botaoCancelar = new ButtonBuilder()
-            .setCustomId('cancelar_limpar_farm_membro')
-            .setLabel('❌ Não, manter')
-            .setStyle(ButtonStyle.Secondary);
-
-          const row = new ActionRowBuilder().addComponents(botaoConfirmar, botaoCancelar);
-
-          await interaction.reply({
-            content: `⚠️ **ATENÇÃO!**\n\n<@${membroId}> tem **${totalEntregas}** entrega(s) de farm registrada(s) (aprovadas, pendentes e recusadas).\n\nIsso vai **apagar permanentemente** todo o histórico de entregas dessa pessoa (inclusive pagamentos já registrados) e zerar o limite semanal dela.\n\n**Tem certeza que deseja continuar?**`,
-            components: [row],
-            ephemeral: true,
-          });
-        } catch (err) {
-          console.error(err);
-          await interaction.reply({
-            content: `❌ Erro ao buscar entregas do membro: ${err.message}`,
-            ephemeral: true,
-          });
-        }
-      }
-
       if (interaction.customId === 'modal_cadastro_item') {
         const nomesInput = interaction.fields.getTextInputValue('nome_item');
         const descricaoItem = interaction.fields.getTextInputValue('descricao_item') || '';
@@ -1711,6 +1663,48 @@ module.exports = {
             : '✅ Solicitação de promoção enviada! Aguarde a análise da administração.',
           ephemeral: true,
         });
+      }
+    }
+
+    if (interaction.isUserSelectMenu()) {
+      if (interaction.customId === 'select_membro_limpar_farm') {
+        const membroId = interaction.values[0];
+
+        try {
+          const totalEntregas = await deliveryService.contarEntregasPorMembro(interaction.guild.id, membroId);
+
+          if (totalEntregas === 0) {
+            return await interaction.reply({
+              content: `❌ <@${membroId}> não tem nenhuma entrega de farm registrada.`,
+              ephemeral: true,
+            });
+          }
+
+          const { ButtonBuilder, ButtonStyle } = require('discord.js');
+          const botaoConfirmar = new ButtonBuilder()
+            .setCustomId(`confirmar_limpar_farm_membro_${membroId}`)
+            .setLabel('✅ Sim, apagar tudo')
+            .setStyle(ButtonStyle.Danger);
+
+          const botaoCancelar = new ButtonBuilder()
+            .setCustomId('cancelar_limpar_farm_membro')
+            .setLabel('❌ Não, manter')
+            .setStyle(ButtonStyle.Secondary);
+
+          const row = new ActionRowBuilder().addComponents(botaoConfirmar, botaoCancelar);
+
+          await interaction.reply({
+            content: `⚠️ **ATENÇÃO!**\n\n<@${membroId}> tem **${totalEntregas}** entrega(s) de farm registrada(s) (aprovadas, pendentes e recusadas).\n\nIsso vai **apagar permanentemente** todo o histórico de entregas dessa pessoa (inclusive pagamentos já registrados) e zerar o limite semanal dela.\n\n**Tem certeza que deseja continuar?**`,
+            components: [row],
+            ephemeral: true,
+          });
+        } catch (err) {
+          console.error(err);
+          await interaction.reply({
+            content: `❌ Erro ao buscar entregas do membro: ${err.message}`,
+            ephemeral: true,
+          });
+        }
       }
     }
 
@@ -3621,20 +3615,18 @@ module.exports = {
             });
           }
 
-          const modal = new ModalBuilder()
-            .setCustomId('modal_limpar_farm_membro')
-            .setTitle('🗑️ Limpar Farm de um Membro');
+          const { UserSelectMenuBuilder } = require('discord.js');
+          const selectMembro = new UserSelectMenuBuilder()
+            .setCustomId('select_membro_limpar_farm')
+            .setPlaceholder('Selecione o membro...');
 
-          const nomeInput = new TextInputBuilder()
-            .setCustomId('nome_membro_limpar')
-            .setLabel('Nome ou Menção do Membro')
-            .setStyle(TextInputStyle.Short)
-            .setPlaceholder('Use @ pra marcar (autocomplete) ou cole o ID')
-            .setRequired(true);
+          const rowMembro = new ActionRowBuilder().addComponents(selectMembro);
 
-          modal.addComponents(new ActionRowBuilder().addComponents(nomeInput));
-
-          await interaction.showModal(modal);
+          await interaction.reply({
+            content: '**🗑️ Limpar Farm de um Membro**\n\nSelecione a pessoa:',
+            components: [rowMembro],
+            ephemeral: true,
+          });
         }
 
         if (valor === 'farm_marcar_sem_bau') {
