@@ -1,8 +1,7 @@
-const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const serverService = require('../services/serverService');
 const deliveryService = require('../services/deliveryService');
 const memberService = require('../services/memberService');
-const { formatarMoeda, agruparPendentesPorMembroComIds } = require('../utils/farmPagamentos');
+const { postarFechamentoSemanal } = require('../utils/fechamentoSemanal');
 
 function isMonday() {
   const agora = new Date();
@@ -38,57 +37,10 @@ module.exports = {
 
             // Postar fechamento semanal de pagamentos - independe do resto
             // do farm estar configurado, só precisa do canal de fechamento
-            // (cai pro canal de controle de pagamento se aquele não existir).
-            // Um card por pessoa, com os ids das entregas incluídas e um
-            // botão que confirma o pagamento de tudo de uma vez.
             try {
-              const canalFechamentoId = config.farm.canal_fechamento_semanal_id || config.farm.canal_controle_pagamento_id;
-              const canalFechamento = canalFechamentoId ? guild.channels.cache.get(canalFechamentoId) : null;
-
-              if (canalFechamento) {
-                const pendentes = agruparPendentesPorMembroComIds(config);
-
-                if (pendentes.length > 0) {
-                  if (!config.farm.fechamentos_pendentes) config.farm.fechamentos_pendentes = {};
-
-                  const totalGeral = pendentes.reduce((soma, m) => soma + m.total, 0);
-                  await canalFechamento.send({
-                    content: `🧾 **Fechamento Semanal de Farm** — total a pagar essa semana: **${formatarMoeda(totalGeral)}** (${pendentes.length} pessoa(s))`,
-                  });
-
-                  for (const membro of pendentes) {
-                    const batchId = `${Date.now()}_${membro.discordId}`;
-
-                    config.farm.fechamentos_pendentes[batchId] = {
-                      discordId: membro.discordId,
-                      entregaIds: membro.entregaIds,
-                      valorTotal: membro.total,
-                      data: new Date().toISOString(),
-                    };
-
-                    const embedCard = new EmbedBuilder()
-                      .setTitle('💰 Pagamento Pendente — Fechamento Semanal')
-                      .setColor(0xf1c40f)
-                      .addFields(
-                        { name: '👤 Farmou', value: `<@${membro.discordId}>`, inline: false },
-                        { name: '🧾 Entregas Incluídas', value: membro.entregaIds.map((id) => `#${id}`).join(', '), inline: false },
-                        { name: '💵 Valor Total', value: formatarMoeda(membro.total), inline: false }
-                      )
-                      .setTimestamp();
-
-                    const botaoConfirmar = new ButtonBuilder()
-                      .setCustomId(`confirmar_pagamento_semanal_${batchId}`)
-                      .setLabel('✅ Confirmar Pagamento')
-                      .setStyle(ButtonStyle.Success);
-
-                    const row = new ActionRowBuilder().addComponents(botaoConfirmar);
-
-                    await canalFechamento.send({ embeds: [embedCard], components: [row] });
-                  }
-
-                  await serverService.saveConfig(guildId, config);
-                  console.log(`🧾 Fechamento semanal postado: ${pendentes.length} card(s) (guild ${guildId})`);
-                }
+              const resultado = await postarFechamentoSemanal(guild, config);
+              if (resultado.posted) {
+                console.log(`🧾 Fechamento semanal postado: ${resultado.quantidade} card(s) (guild ${guildId})`);
               }
             } catch (err) {
               console.error(`Erro ao postar fechamento semanal pra guild ${guildId}:`, err);

@@ -6,6 +6,7 @@ const advService = require('../services/advService');
 const { dispatchButton, dispatchSelectMenu, dispatchModal } = require('../utils/handlerRegistry');
 const { marcarAguardandoImagem, desmarcarAguardandoImagem } = require('../utils/entregaMetaTracker');
 const { formatarMoeda, calcularPagamentosPorMembro } = require('../utils/farmPagamentos');
+const { postarFechamentoSemanal } = require('../utils/fechamentoSemanal');
 
 // Carregar todos os handlers registrados
 require('../handlers/registerAllHandlers');
@@ -6522,6 +6523,44 @@ module.exports = {
           .setDescription(`**Total geral:** ${formatarMoeda(totalGeral)}\n\n${lista}`);
 
         await interaction.reply({ embeds: [embed], ephemeral: true });
+      }
+
+      if (interaction.customId === 'ger_farm_fechamento_agora') {
+        const config = await serverService.getConfig(interaction.guild.id);
+
+        const cargoPagamentoIds = config.farm?.cargo_pagamento || [];
+        const temPermissao = cargoPagamentoIds.length === 0 ||
+          interaction.member.roles.cache.some(role => cargoPagamentoIds.includes(role.id));
+
+        if (!temPermissao) {
+          return await interaction.reply({
+            content: '❌ Você não tem permissão para gerar o fechamento.',
+            ephemeral: true,
+          });
+        }
+
+        await interaction.deferReply({ ephemeral: true });
+
+        try {
+          const resultado = await postarFechamentoSemanal(interaction.guild, config);
+
+          if (!resultado.posted) {
+            const motivos = {
+              canal_nao_configurado: '❌ Canal de Fechamento Semanal (ou Controle de Pagamento) não foi configurado.',
+              sem_pendencias: '✅ Nenhum pagamento pendente no momento - nada pra gerar.',
+            };
+            return await interaction.editReply({
+              content: motivos[resultado.motivo] || '❌ Não foi possível gerar o fechamento.',
+            });
+          }
+
+          await interaction.editReply({
+            content: `✅ Fechamento gerado em <#${resultado.canalId}>! **${resultado.quantidade}** pessoa(s), total: ${formatarMoeda(resultado.totalGeral)}`,
+          });
+        } catch (err) {
+          console.error(err);
+          await interaction.editReply({ content: `❌ Erro ao gerar fechamento: ${err.message}` });
+        }
       }
 
       // ===== HANDLERS DE LIMPEZA DE CONFIGURAÇÕES =====

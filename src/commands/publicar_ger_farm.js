@@ -47,8 +47,12 @@ module.exports = {
       new ButtonBuilder().setCustomId('ger_farm_pendente').setLabel('⏳ Pendente').setStyle(ButtonStyle.Danger)
     );
 
+    const row3 = new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId('ger_farm_fechamento_agora').setLabel('🧾 Gerar Fechamento Agora').setStyle(ButtonStyle.Primary)
+    );
+
     try {
-      await canal.send({ embeds: [embed], components: [row1, row2] });
+      await canal.send({ embeds: [embed], components: [row1, row2, row3] });
       await interaction.editReply({ content: `✅ Painel de gerenciamento publicado em <#${canalId}>!` });
     } catch (err) {
       await interaction.editReply({ content: `❌ Erro ao publicar: ${err.message}` });
