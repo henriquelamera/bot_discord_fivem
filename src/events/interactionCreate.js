@@ -62,7 +62,7 @@ async function processarPagamentoFarm(config, guild, entrega, aprovadorId) {
     .join('\n');
 
   const embed = new EmbedBuilder()
-    .setTitle('💰 Pagamento Pendente')
+    .setTitle(`💰 Pagamento Pendente — Entrega #${entrega.id}`)
     .setColor(0xf1c40f)
     .addFields(
       { name: '👤 Farmou', value: `<@${entrega.usuario_id}> (${entrega.usuario_tag})`, inline: false },
@@ -70,6 +70,7 @@ async function processarPagamentoFarm(config, guild, entrega, aprovadorId) {
       { name: '📦 Itens', value: listaItens, inline: false },
       { name: '💵 Valor Total', value: formatarMoeda(valorTotal), inline: false }
     )
+    .setFooter({ text: `ID da entrega: ${entrega.id}` })
     .setTimestamp();
 
   const botaoPagar = new ButtonBuilder()
@@ -204,6 +205,16 @@ function montarEmbedBauAberto(config, member, ehPrimeiraVez, temCargoVisitante) 
     .setDescription(descricao)
     .setFooter({ text: `Farm de ${member.displayName}` })
     .setTimestamp();
+}
+
+// Acha o canal privado de farm de um usuário na categoria de baú, pela
+// permissão específica dele no canal. Retorna null se não encontrar.
+function buscarCanalFarmDoUsuario(guild, config, userId) {
+  const categoriaBauId = config.farm?.categoria_bau_id;
+  if (!categoriaBauId) return null;
+
+  const categoria = guild.channels.cache.get(categoriaBauId);
+  return categoria?.children.cache.find((ch) => ch.permissionOverwrites.cache.has(userId)) || null;
 }
 
 // Cria (ou recria) o canal privado de farm de um usuário na categoria de
@@ -635,7 +646,7 @@ module.exports = {
             const row = new ActionRowBuilder().addComponents(botaoAprovar, botaoRecusar);
 
             const embed = new EmbedBuilder()
-              .setTitle('📦 Nova Entrega de Farm')
+              .setTitle(`📦 Nova Entrega de Farm — #${entrega_id}`)
               .setColor(0x3498db)
               .addFields(
                 { name: '👤 Usuário', value: interaction.user.tag, inline: true },
@@ -4465,10 +4476,7 @@ module.exports = {
           // Verificar se já tem o cargo "Baú Aberto"
           if (interaction.member.roles.cache.has(cargo_bau_aberto_id)) {
             // Tentar achar o canal privado dela na categoria de baú
-            const categoria = categoria_bau_id ? interaction.guild.channels.cache.get(categoria_bau_id) : null;
-            let canalDoBau = categoria?.children.cache.find(ch =>
-              ch.permissionOverwrites.cache.has(interaction.user.id)
-            );
+            let canalDoBau = buscarCanalFarmDoUsuario(interaction.guild, config, interaction.user.id);
 
             // Se o canal foi deletado, recriar com a mensagem completa
             if (!canalDoBau && categoria_bau_id) {
@@ -4951,14 +4959,24 @@ module.exports = {
             });
           }
 
-          // Notificar quem entregou o farm
+          // Notificar quem entregou o farm (DM + canal privado de farm, já que
+          // DM pode estar bloqueada e o canal é sempre acessível)
+          const mensagemPagamento = `💰 Seu farm foi **pago**! Valor: ${formatarMoeda(entrega.pagamento.valor_total)}\n📋 Referente à **Entrega #${entrega.id}**`;
+
           try {
             const membro = await interaction.guild.members.fetch(entrega.usuario_id);
-            await membro.user.send({
-              content: `💰 Seu farm foi **pago**! Valor: ${formatarMoeda(entrega.pagamento.valor_total)}`,
-            });
+            await membro.user.send({ content: mensagemPagamento });
           } catch (err) {
-            console.warn('Não foi possível notificar usuário sobre pagamento:', err.message);
+            console.warn('Não foi possível notificar usuário via DM sobre pagamento:', err.message);
+          }
+
+          try {
+            const canalFarmUsuario = buscarCanalFarmDoUsuario(interaction.guild, config, entrega.usuario_id);
+            if (canalFarmUsuario) {
+              await canalFarmUsuario.send({ content: mensagemPagamento });
+            }
+          } catch (err) {
+            console.warn('Não foi possível notificar no canal de farm sobre pagamento:', err.message);
           }
         } catch (err) {
           console.error(err);
