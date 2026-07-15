@@ -715,6 +715,21 @@ module.exports = {
           });
         }
 
+        // Verificar o canal de aprovações ANTES de pedir a imagem - senão a
+        // entrega fica salva no banco mas nunca aparece pra ninguém aprovar,
+        // e a pessoa recebe mensagem de sucesso mesmo assim (bug silencioso)
+        const canalAprovacaoIdInicial = config.farm?.canal_aprovacoes_id;
+        const canalAprovacaoInicial = canalAprovacaoIdInicial
+          ? interaction.guild.channels.cache.get(canalAprovacaoIdInicial)
+          : null;
+
+        if (!canalAprovacaoInicial) {
+          return await interaction.reply({
+            content: '❌ Canal de aprovações de farm não foi configurado (ou não foi encontrado). Contate um administrador antes de entregar sua meta.',
+            ephemeral: true,
+          });
+        }
+
         // Coletar quantidades entregues do modal
         const itensEntregues = {};
         for (const item of itens) {
@@ -820,49 +835,52 @@ module.exports = {
           // pra não perder entregas de outras pessoas enviadas ao mesmo tempo.
           await serverService.appendEntregaFarm(interaction.guild.id, entrega);
 
-          // Notificar aprovadores
+          // Notificar aprovadores (canal já foi validado no início, mas
+          // reconfere - pode ter sido deletado durante os 5 min de espera da imagem)
           const canalAprovacaoId = config.farm?.canal_aprovacoes_id;
           const canalAprovacao = canalAprovacaoId
             ? interaction.guild.channels.cache.get(canalAprovacaoId)
             : null;
 
-          if (canalAprovacao) {
-            const botaoAprovar = new (require('discord.js')).ButtonBuilder()
-              .setCustomId(`aprovar_farm_${entrega_id}`)
-              .setLabel('✅ Aprovar')
-              .setStyle((require('discord.js')).ButtonStyle.Success);
-
-            const botaoRecusar = new (require('discord.js')).ButtonBuilder()
-              .setCustomId(`recusar_farm_${entrega_id}`)
-              .setLabel('❌ Recusar')
-              .setStyle((require('discord.js')).ButtonStyle.Danger);
-
-            const row = new ActionRowBuilder().addComponents(botaoAprovar, botaoRecusar);
-
-            const embed = new EmbedBuilder()
-              .setTitle(`📦 Nova Entrega de Farm — #${entrega_id}`)
-              .setColor(0x3498db)
-              .addFields(
-                { name: '👤 Usuário', value: interaction.user.tag, inline: true },
-                { name: '📅 Data', value: new Date().toLocaleDateString('pt-BR'), inline: true }
-              );
-
-            // Adicionar items
-            let descricaoItens = '';
-            for (const [itemId, dados] of Object.entries(entrega.itens)) {
-              descricaoItens += `- **${dados.nome}**: ${dados.quantidade}\n`;
-            }
-            if (descricaoItens) {
-              embed.addFields({ name: '📊 Items', value: descricaoItens });
-            }
-
-            embed.setImage(printUrl);
-
-            await canalAprovacao.send({
-              embeds: [embed],
-              components: [row],
-            });
+          if (!canalAprovacao) {
+            throw new Error('Canal de aprovações não encontrado (pode ter sido deletado durante o processo). Sua entrega foi salva - contate um administrador pra aprovar manualmente.');
           }
+
+          const botaoAprovar = new (require('discord.js')).ButtonBuilder()
+            .setCustomId(`aprovar_farm_${entrega_id}`)
+            .setLabel('✅ Aprovar')
+            .setStyle((require('discord.js')).ButtonStyle.Success);
+
+          const botaoRecusar = new (require('discord.js')).ButtonBuilder()
+            .setCustomId(`recusar_farm_${entrega_id}`)
+            .setLabel('❌ Recusar')
+            .setStyle((require('discord.js')).ButtonStyle.Danger);
+
+          const row = new ActionRowBuilder().addComponents(botaoAprovar, botaoRecusar);
+
+          const embed = new EmbedBuilder()
+            .setTitle(`📦 Nova Entrega de Farm — #${entrega_id}`)
+            .setColor(0x3498db)
+            .addFields(
+              { name: '👤 Usuário', value: interaction.user.tag, inline: true },
+              { name: '📅 Data', value: new Date().toLocaleDateString('pt-BR'), inline: true }
+            );
+
+          // Adicionar items
+          let descricaoItens = '';
+          for (const [itemId, dados] of Object.entries(entrega.itens)) {
+            descricaoItens += `- **${dados.nome}**: ${dados.quantidade}\n`;
+          }
+          if (descricaoItens) {
+            embed.addFields({ name: '📊 Items', value: descricaoItens });
+          }
+
+          embed.setImage(printUrl);
+
+          await canalAprovacao.send({
+            embeds: [embed],
+            components: [row],
+          });
 
           await interaction.followUp({
             content: '✅ Entrega registrada! Aguardando aprovação dos responsáveis.',
