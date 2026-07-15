@@ -26,7 +26,30 @@ function calcularPagamentosPorMembro(config, filtro) {
     .sort((a, b) => b.total - a.total);
 }
 
+// Agrupa entregas com pagamento pendente por usuário, trazendo também os
+// ids das entregas incluídas (não só o total) - usado no fechamento semanal
+// pra poder confirmar o pagamento de tudo de uma vez.
+function agruparPendentesPorMembroComIds(config) {
+  const entregas = config.farm?.entregas || [];
+  const porMembro = new Map();
+
+  for (const entrega of entregas) {
+    const pagamento = entrega.pagamento;
+    if (!pagamento || pagamento.status !== 'pendente') continue;
+
+    const atual = porMembro.get(entrega.usuario_id) || { total: 0, entregaIds: [] };
+    atual.total += pagamento.valor_total || 0;
+    atual.entregaIds.push(entrega.id);
+    porMembro.set(entrega.usuario_id, atual);
+  }
+
+  return [...porMembro.entries()]
+    .map(([discordId, dados]) => ({ discordId, ...dados }))
+    .sort((a, b) => b.total - a.total);
+}
+
 module.exports = {
   formatarMoeda,
   calcularPagamentosPorMembro,
+  agruparPendentesPorMembroComIds,
 };

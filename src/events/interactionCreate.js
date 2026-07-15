@@ -97,6 +97,47 @@ async function atualizarHistoricoEntregaFarm(guild, entrega, cor, statusTexto, c
   }
 }
 
+// Marca uma entrega como paga: grava no banco, atualiza o histórico no
+// canal da pessoa e o card original no canal de controle de pagamento
+// (busca pelo canal_id/mensagem_id salvos, então funciona mesmo quando
+// quem chama não é o clique direto naquele card - ex: fechamento semanal).
+// Não notifica o usuário - quem chama decide como (uma entrega ou várias).
+async function marcarEntregaComoPaga(guild, entrega, pagoPorId) {
+  entrega.pagamento.status = 'pago';
+  entrega.pagamento.pago_por_id = pagoPorId;
+  entrega.pagamento.data_pagamento = new Date().toISOString();
+
+  await serverService.patchEntregaFarm(guild.id, entrega.id, {
+    pagamento: entrega.pagamento,
+  });
+
+  await atualizarHistoricoEntregaFarm(
+    guild,
+    entrega,
+    0x2ecc71,
+    '💰 Paga',
+    [{ name: '💰 Valor Pago', value: formatarMoeda(entrega.pagamento.valor_total) }]
+  );
+
+  if (entrega.pagamento.canal_id && entrega.pagamento.mensagem_id) {
+    try {
+      const canalOriginal = guild.channels.cache.get(entrega.pagamento.canal_id);
+      const mensagemOriginal = await canalOriginal?.messages.fetch(entrega.pagamento.mensagem_id);
+      if (mensagemOriginal) {
+        const embedAtual = mensagemOriginal.embeds[0];
+        const embedPago = EmbedBuilder.from(embedAtual)
+          .setColor(0x2ecc71)
+          .setTitle((embedAtual.title || '💰 Pagamento Pendente').replace('Pendente', 'Realizado'))
+          .addFields({ name: '💰 Pago por', value: `<@${pagoPorId}>`, inline: false });
+
+        await mensagemOriginal.edit({ embeds: [embedPago], components: [] });
+      }
+    } catch (err) {
+      console.warn('Não foi possível atualizar card original de pagamento:', err.message);
+    }
+  }
+}
+
 // Monta as opções de tipo de ADV disponíveis pra selecionar, só com os
 // cargos que realmente foram configurados (Cargos de Farm > ADV Farm 1/2)
 function opcoesAdvConfiguradas(config, guild) {
@@ -5754,40 +5795,12 @@ module.exports = {
         }
 
         try {
-          entrega.pagamento.status = 'pago';
-          entrega.pagamento.pago_por_id = interaction.user.id;
-          entrega.pagamento.data_pagamento = new Date().toISOString();
+          await marcarEntregaComoPaga(interaction.guild, entrega, interaction.user.id);
 
-          // Patch atômico só nesta entrega, sem sobrescrever mudanças
-          // feitas em outras entregas por pagamentos concorrentes
-          await serverService.patchEntregaFarm(interaction.guild.id, entrega.id, {
-            pagamento: entrega.pagamento,
+          await interaction.reply({
+            content: `✅ Pagamento de ${formatarMoeda(entrega.pagamento.valor_total)} registrado!`,
+            ephemeral: true,
           });
-
-          await atualizarHistoricoEntregaFarm(
-            interaction.guild,
-            entrega,
-            0x2ecc71,
-            '💰 Paga',
-            [{ name: '💰 Valor Pago', value: formatarMoeda(entrega.pagamento.valor_total) }]
-          );
-
-          // Atualizar a mensagem de controle de pagamento
-          try {
-            const embedAtual = interaction.message.embeds[0];
-            const embedPago = EmbedBuilder.from(embedAtual)
-              .setColor(0x2ecc71)
-              .setTitle('✅ Pagamento Realizado')
-              .addFields({ name: '💰 Pago por', value: `<@${interaction.user.id}>`, inline: false });
-
-            await interaction.update({ embeds: [embedPago], components: [] });
-          } catch (err) {
-            console.warn('Não foi possível atualizar mensagem de pagamento:', err.message);
-            await interaction.reply({
-              content: `✅ Pagamento de ${formatarMoeda(entrega.pagamento.valor_total)} registrado!`,
-              ephemeral: true,
-            });
-          }
 
           // Notificar quem entregou o farm (DM + canal privado de farm, já que
           // DM pode estar bloqueada e o canal é sempre acessível)
@@ -5812,6 +5825,78 @@ module.exports = {
           console.error(err);
           await interaction.reply({
             content: `❌ Erro ao registrar pagamento: ${err.message}`,
+            ephemeral: true,
+          });
+        }
+      }
+
+      if (interaction.customId.startsWith('confirmar_pagamento_semanal_')) {
+        const batchId = interaction.customId.replace('confirmar_pagamento_semanal_', '');
+        const config = await serverService.getConfig(interaction.guild.id);
+
+        const cargoPagamentoIds = config.farm?.cargo_pagamento || [];
+        const temPermissao = cargoPagamentoIds.length === 0 ||
+          interaction.member.roles.cache.some(role => cargoPagamentoIds.includes(role.id));
+
+        if (!temPermissao) {
+          return await interaction.reply({
+            content: '❌ Você não tem permissão para registrar pagamentos.',
+            ephemeral: true,
+          });
+        }
+
+        const lote = config.farm?.fechamentos_pendentes?.[batchId];
+        if (!lote) {
+          return await interaction.reply({
+            content: '❌ Esse lançamento não foi encontrado (pode já ter sido processado).',
+            ephemeral: true,
+          });
+        }
+
+        try {
+          let totalPago = 0;
+
+          for (const entregaId of lote.entregaIds) {
+            const entrega = config.farm?.entregas?.find((e) => String(e.id) === String(entregaId));
+            if (!entrega || !entrega.pagamento || entrega.pagamento.status === 'pago') continue;
+
+            await marcarEntregaComoPaga(interaction.guild, entrega, interaction.user.id);
+            totalPago += entrega.pagamento.valor_total;
+          }
+
+          delete config.farm.fechamentos_pendentes[batchId];
+          await serverService.saveConfig(interaction.guild.id, config);
+
+          const embedAtual = interaction.message.embeds[0];
+          const embedPago = EmbedBuilder.from(embedAtual)
+            .setColor(0x2ecc71)
+            .setTitle('✅ Pagamento Semanal Realizado')
+            .addFields({ name: '💰 Pago por', value: `<@${interaction.user.id}>`, inline: false });
+
+          await interaction.update({ embeds: [embedPago], components: [] });
+
+          // Notificar quem entregou o farm (uma vez só, com o total da semana)
+          const mensagemPagamento = `💰 Seu farm dessa semana foi **pago**! Valor total: ${formatarMoeda(totalPago)}\n📋 Referente às entregas: ${lote.entregaIds.map((id) => `#${id}`).join(', ')}`;
+
+          try {
+            const membro = await interaction.guild.members.fetch(lote.discordId);
+            await membro.user.send({ content: mensagemPagamento });
+          } catch (err) {
+            console.warn('Não foi possível notificar usuário via DM sobre pagamento semanal:', err.message);
+          }
+
+          try {
+            const canalFarmUsuario = buscarCanalFarmDoUsuario(interaction.guild, config, lote.discordId);
+            if (canalFarmUsuario) {
+              await canalFarmUsuario.send({ content: mensagemPagamento });
+            }
+          } catch (err) {
+            console.warn('Não foi possível notificar no canal de farm sobre pagamento semanal:', err.message);
+          }
+        } catch (err) {
+          console.error(err);
+          await interaction.reply({
+            content: `❌ Erro ao registrar pagamento semanal: ${err.message}`,
             ephemeral: true,
           });
         }
