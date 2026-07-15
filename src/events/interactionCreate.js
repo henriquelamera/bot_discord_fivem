@@ -5403,14 +5403,6 @@ module.exports = {
           });
         }
 
-        // Verificar se tem registro aprovado
-        if (!config.membros_info?.[userId]) {
-          return await interaction.reply({
-            content: '❌ Você ainda não tem um registro aprovado! Use **Pedir Registro** para se registrar.',
-            ephemeral: true,
-          });
-        }
-
         // ===== VALIDAÇÃO HIERÁRQUICA DE CARGOS (PARA ATUALIZAR) =====
         const cargoMoradorId = config.cargo_morador_id;
         const cargoMembroId = config.cargo_membro_id;
@@ -5421,6 +5413,16 @@ module.exports = {
         const temCargoMembro = cargoMembroId && interaction.member.roles.cache.has(cargoMembroId);
         const temCargoGerente = cargoGerenteIds.some(id => interaction.member.roles.cache.has(id));
         const temCargoLideranca = cargoLiderancaIds.some(id => interaction.member.roles.cache.has(id));
+
+        // Verificar se tem registro aprovado no banco OU já possui algum cargo
+        // da hierarquia (ex: cargo atribuído manualmente, sem passar pelo fluxo)
+        const jaTemCargoHierarquia = temCargoMorador || temCargoMembro || temCargoGerente || temCargoLideranca;
+        if (!config.membros_info?.[userId] && !jaTemCargoHierarquia) {
+          return await interaction.reply({
+            content: '❌ Você ainda não tem um registro aprovado! Use **Pedir Registro** para se registrar.',
+            ephemeral: true,
+          });
+        }
 
         // Determinar qual tier a pessoa pode solicitar em seguida.
         // Gerente/Liderança podem ter vários cargos possíveis - o cargo
