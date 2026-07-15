@@ -3838,13 +3838,23 @@ module.exports = {
           const categoria_bau_id = config.farm?.categoria_bau_id;
           const cargo_bau_aberto_id = config.cargo_bau_aberto_id;
           const cargo_morador_id = config.cargo_morador_id;
+          const cargo_membro_id = config.cargo_membro_id;
+          const cargo_gerente_id = config.cargo_gerente_id;
           const cargo_farm_em_dia_id = config.farm?.cargo_em_dia_id;
           const rec_uniforme = config.recrutamento?.rec_canal_uniforme;
           const rec_regras_cidade = config.recrutamento?.rec_canal_regras_cidade;
 
           // Verificar se o registro foi aprovado (via banco PostgreSQL)
+          // OU se já possui um cargo da hierarquia (Morador/Membro/Gerente) -
+          // nesses casos o registro já passou por aprovação em algum momento,
+          // mesmo que o registro formal no banco não exista (ex: cargo atribuído manualmente)
           const registroAprovado = await memberService.isMemberApproved(guildId, interaction.user.id);
-          if (!registroAprovado) {
+          const jaTemCargoHierarquia =
+            (cargo_morador_id && interaction.member.roles.cache.has(cargo_morador_id)) ||
+            (cargo_membro_id && interaction.member.roles.cache.has(cargo_membro_id)) ||
+            (cargo_gerente_id && interaction.member.roles.cache.has(cargo_gerente_id));
+
+          if (!registroAprovado && !jaTemCargoHierarquia) {
             return await interaction.reply({
               content: '❌ Seu registro ainda não foi aprovado! Aguarde a análise da administração.',
               ephemeral: true,
