@@ -143,6 +143,57 @@ async function concederPromocaoHierarquia(config, guild, userId, solicitacao, ca
   await membro.user.send(`✅ Sua promoção para **${cargoNovo.name}** foi aprovada!`).catch(() => {});
 }
 
+// Cria (ou recria) o canal privado de farm de um usuário na categoria de
+// baú configurada, com o botão de Entregar Meta. Retorna o canal criado,
+// ou null se a categoria não estiver configurada/for inválida.
+async function criarCanalPrivadoFarm(guild, config, userId, categoriaBauId, embedParaEnviar) {
+  if (!categoriaBauId) return null;
+
+  const categoria = guild.channels.cache.get(categoriaBauId);
+  if (!categoria || categoria.type !== 4) return null; // GuildCategory
+
+  const user = await guild.client.users.fetch(userId);
+  const nomeFormatado = config.membros_info?.[userId]?.nomeFormatado;
+  const nomeCanal = (nomeFormatado || user.username)
+    .toLowerCase()
+    .replace(/[^a-z0-9-|]/g, '-')
+    .replace(/--+/g, '-')
+    .replace(/^-|-$/g, '');
+
+  const responsaveisFarmIds = config.farm?.cargo_responsaveis_farm || [];
+
+  const permissoes = [
+    { id: guild.id, deny: ['ViewChannel'] }, // @everyone
+    { id: userId, allow: ['ViewChannel', 'SendMessages', 'ReadMessageHistory'] },
+  ];
+  for (const roleId of responsaveisFarmIds) {
+    permissoes.push({ id: roleId, allow: ['ViewChannel', 'ReadMessageHistory'] });
+  }
+
+  const canalPessoa = await guild.channels.create({
+    name: nomeCanal,
+    type: 0, // GuildText
+    parent: categoriaBauId,
+    permissionOverwrites: permissoes,
+  });
+
+  const { ButtonBuilder, ButtonStyle } = require('discord.js');
+  const botaoEntregar = new ButtonBuilder()
+    .setCustomId('entregar_meta')
+    .setLabel('📦 Entregar Meta')
+    .setStyle(ButtonStyle.Primary);
+
+  const row = new ActionRowBuilder().addComponents(botaoEntregar);
+
+  await canalPessoa.send({
+    embeds: [embedParaEnviar],
+    components: [row],
+  });
+
+  console.log(`✅ Canal de farm criado para ${user.tag}: #${nomeCanal}`);
+  return canalPessoa;
+}
+
 module.exports = {
   name: 'interactionCreate',
   async execute(interaction, client) {
@@ -4299,17 +4350,29 @@ module.exports = {
 
           // Verificar se já tem o cargo "Baú Aberto"
           if (interaction.member.roles.cache.has(cargo_bau_aberto_id)) {
-            // Tentar achar o canal privado dela na categoria de baú, pra marcar/linkar
-            let canalDoBauMsg = '';
-            if (categoria_bau_id) {
-              const categoria = interaction.guild.channels.cache.get(categoria_bau_id);
-              const canalDoBau = categoria?.children.cache.find(ch =>
-                ch.permissionOverwrites.cache.has(interaction.user.id)
-              );
-              if (canalDoBau) {
-                canalDoBauMsg = `\n\n📍 Seu canal de farm: <#${canalDoBau.id}>`;
+            // Tentar achar o canal privado dela na categoria de baú
+            const categoria = categoria_bau_id ? interaction.guild.channels.cache.get(categoria_bau_id) : null;
+            let canalDoBau = categoria?.children.cache.find(ch =>
+              ch.permissionOverwrites.cache.has(interaction.user.id)
+            );
+
+            // Se o canal foi deletado, recriar
+            if (!canalDoBau && categoria_bau_id) {
+              try {
+                const embedRecriado = new EmbedBuilder()
+                  .setTitle('📦 Canal de Farm Recriado')
+                  .setColor(0xFFD700)
+                  .setDescription('Seu canal privado de farm foi recriado.')
+                  .setFooter({ text: `Farm de ${interaction.member.displayName}` })
+                  .setTimestamp();
+
+                canalDoBau = await criarCanalPrivadoFarm(interaction.guild, config, interaction.user.id, categoria_bau_id, embedRecriado);
+              } catch (err) {
+                console.error('⚠️ Erro ao recriar canal de farm:', err.message);
               }
             }
+
+            const canalDoBauMsg = canalDoBau ? `\n\n📍 Seu canal de farm: <#${canalDoBau.id}>` : '';
 
             return await interaction.reply({
               content: `✅ Você já abriu seu baú!${canalDoBauMsg}`,
@@ -4423,66 +4486,10 @@ module.exports = {
           }
 
           // Criar canal privado para a pessoa
-          if (categoria_bau_id) {
-            try {
-              const categoria = interaction.guild.channels.cache.get(categoria_bau_id);
-              if (categoria && categoria.type === 4) { // GuildCategory
-                const nomeFormatado = config.membros_info?.[interaction.user.id]?.nomeFormatado;
-                const nomeCanal = (nomeFormatado || interaction.user.username)
-                  .toLowerCase()
-                  .replace(/[^a-z0-9-|]/g, '-')
-                  .replace(/--+/g, '-')
-                  .replace(/^-|-$/g, '');
-
-                // Pegar IDs dos responsáveis de farm
-                const responsaveisFarmIds = config.farm?.cargo_responsaveis_farm || [];
-
-                // Montar permissões
-                const permissoes = [
-                  {
-                    id: interaction.guild.id, // @everyone
-                    deny: ['ViewChannel'],
-                  },
-                  {
-                    id: interaction.user.id, // Apenas a pessoa
-                    allow: ['ViewChannel', 'SendMessages', 'ReadMessageHistory'],
-                  },
-                ];
-
-                // Adicionar permissões para responsáveis de farm
-                for (const roleId of responsaveisFarmIds) {
-                  permissoes.push({
-                    id: roleId, // Responsáveis de farm
-                    allow: ['ViewChannel', 'ReadMessageHistory'],
-                  });
-                }
-
-                // Criar canal privado
-                const canalPessoa = await interaction.guild.channels.create({
-                  name: nomeCanal,
-                  type: 0, // GuildText
-                  parent: categoria_bau_id,
-                  permissionOverwrites: permissoes,
-                });
-
-                // Enviar mensagem no canal
-                const botaoEntregar = new (require('discord.js')).ButtonBuilder()
-                  .setCustomId('entregar_meta')
-                  .setLabel('📦 Entregar Meta')
-                  .setStyle((require('discord.js')).ButtonStyle.Primary);
-
-                const row = new ActionRowBuilder().addComponents(botaoEntregar);
-
-                await canalPessoa.send({
-                  embeds: [embed],
-                  components: [row],
-                });
-
-                console.log(`✅ Canal de farm criado para ${interaction.user.tag}: #${nomeCanal}`);
-              }
-            } catch (err) {
-              console.error(`⚠️ Erro ao criar canal de farm:`, err.message);
-            }
+          try {
+            await criarCanalPrivadoFarm(interaction.guild, config, interaction.user.id, categoria_bau_id, embed);
+          } catch (err) {
+            console.error(`⚠️ Erro ao criar canal de farm:`, err.message);
           }
 
           await interaction.reply({
