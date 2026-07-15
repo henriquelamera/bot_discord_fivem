@@ -101,21 +101,31 @@ registerModal('modal_admin_bot', async (interaction) => {
 
 registerModal('modal_boas_vindas_mensagem', async (interaction) => {
   const texto = interaction.fields.getTextInputValue('texto_boas_vindas');
+  const banner = interaction.fields.getTextInputValue('banner_url');
   const guildId = interaction.guild.id;
+
+  console.log('🔍 DEBUG Modal Boas-Vindas (Handler Registrado):');
+  console.log('   Texto recebido:', texto);
+  console.log('   Banner recebido (raw):', banner);
+  console.log('   Banner type:', typeof banner);
 
   try {
     const config = await serverService.getConfig(guildId);
     config.boas_vindas = {
       ...(config.boas_vindas || {}),
-      mensagem_padrao: texto,
+      texto: texto,
+      banner_url: banner || undefined,
     };
     await serverService.saveConfig(guildId, config);
 
+    console.log('📝 Config salva:', JSON.stringify(config.boas_vindas, null, 2));
+
     await interaction.reply({
-      content: '✅ Mensagem de boas-vindas salva com sucesso!',
+      content: '✅ Mensagem e banner de boas-vindas salvos com sucesso!',
       ephemeral: true,
     });
   } catch (err) {
+    console.error('❌ Erro ao salvar:', err);
     await interaction.reply({
       content: `❌ Erro ao salvar: ${err.message}`,
       ephemeral: true,
