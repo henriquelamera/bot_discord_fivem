@@ -264,6 +264,89 @@ async function saveConfig(guildId, config) {
   }
 }
 
+// Garante que existe uma linha de config para o servidor (necessário antes
+// de rodar updates atômicos em cima do config_json)
+async function ensureServidorEConfig(guildId) {
+  await registerServer(guildId, `Servidor ${guildId}`, guildId);
+
+  const servidorResult = await pool.query(
+    'SELECT id FROM servidores WHERE guild_id = $1',
+    [guildId]
+  );
+  const servidorId = servidorResult.rows[0].id;
+
+  await pool.query(
+    `INSERT INTO config_servidor (servidor_id, config_json, data_atualizacao)
+     VALUES ($1, '{}'::jsonb, NOW())
+     ON CONFLICT (servidor_id) DO NOTHING`,
+    [servidorId]
+  );
+
+  return servidorId;
+}
+
+// Adiciona uma entrega de farm em config.farm.entregas de forma atômica
+// (evita que duas entregas concorrentes se sobrescrevam - diferente de
+// saveConfig, que reescreve a config inteira e pode perder dados nesse caso)
+async function appendEntregaFarm(guildId, entrega) {
+  try {
+    const servidorId = await ensureServidorEConfig(guildId);
+
+    await pool.query(
+      `UPDATE config_servidor
+       SET config_json = jsonb_set(
+         jsonb_set(config_json, '{farm}', COALESCE(config_json->'farm', '{}'::jsonb), true),
+         '{farm,entregas}',
+         COALESCE(config_json->'farm'->'entregas', '[]'::jsonb) || $2::jsonb,
+         true
+       ),
+       data_atualizacao = NOW()
+       WHERE servidor_id = $1`,
+      [servidorId, JSON.stringify([entrega])]
+    );
+
+    configCache.delete(`config:${guildId}`);
+  } catch (error) {
+    console.error('Erro ao adicionar entrega de farm:', error);
+    throw error;
+  }
+}
+
+// Mescla campos (patch) em uma entrega específica de config.farm.entregas,
+// pelo id, de forma atômica - usado por aprovar/recusar/marcar como pago,
+// pra não sobrescrever mudanças feitas em outras entregas ao mesmo tempo.
+async function patchEntregaFarm(guildId, entregaId, patch) {
+  try {
+    const servidorId = await ensureServidorEConfig(guildId);
+
+    const result = await pool.query(
+      `UPDATE config_servidor
+       SET config_json = jsonb_set(
+         config_json,
+         '{farm,entregas}',
+         (
+           SELECT COALESCE(jsonb_agg(
+             CASE WHEN (elem->>'id') = $2 THEN elem || $3::jsonb ELSE elem END
+           ), '[]'::jsonb)
+           FROM jsonb_array_elements(COALESCE(config_json->'farm'->'entregas', '[]'::jsonb)) AS elem
+         )
+       ),
+       data_atualizacao = NOW()
+       WHERE servidor_id = $1
+       RETURNING config_json`,
+      [servidorId, String(entregaId), JSON.stringify(patch)]
+    );
+
+    configCache.delete(`config:${guildId}`);
+
+    const entregas = result.rows[0]?.config_json?.farm?.entregas || [];
+    return entregas.find((e) => String(e.id) === String(entregaId)) || null;
+  } catch (error) {
+    console.error('Erro ao atualizar entrega de farm:', error);
+    throw error;
+  }
+}
+
 // Atualizar um campo específico na configuração
 async function updateConfigField(guildId, field, value) {
   try {
@@ -290,4 +373,6 @@ module.exports = {
   getConfig,
   saveConfig,
   updateConfigField,
+  appendEntregaFarm,
+  patchEntregaFarm,
 };

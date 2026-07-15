@@ -621,10 +621,10 @@ module.exports = {
           );
           entrega.id = entrega_id;
 
-          // Também salvar no config para compatibilidade (será removido depois)
-          if (!config.farm.entregas) config.farm.entregas = [];
-          config.farm.entregas.push(entrega);
-          await serverService.saveConfig(interaction.guild.id, config);
+          // Também salvar no config para compatibilidade (será removido depois).
+          // Usa append atômico no banco em vez de reescrever a config inteira,
+          // pra não perder entregas de outras pessoas enviadas ao mesmo tempo.
+          await serverService.appendEntregaFarm(interaction.guild.id, entrega);
 
           // Notificar aprovadores
           const canalAprovacaoId = config.farm?.canal_aprovacoes_id;
@@ -4675,7 +4675,14 @@ module.exports = {
 
             const infoPagamento = await processarPagamentoFarm(config, interaction.guild, entrega, interaction.user.id);
 
-            await serverService.saveConfig(interaction.guild.id, config);
+            // Patch atômico só nesta entrega, sem sobrescrever mudanças
+            // feitas em outras entregas por aprovações concorrentes
+            await serverService.patchEntregaFarm(interaction.guild.id, entrega.id, {
+              status: entrega.status,
+              data_aprovacao: entrega.data_aprovacao,
+              aprovador_id: entrega.aprovador_id,
+              pagamento: entrega.pagamento,
+            });
 
             let respostaGerente = `✅ Entrega de ${membro.user.tag} aprovada!\n\n(Gerente - isento do sistema de ADV)`;
             if (infoPagamento?.valor_total > 0) {
@@ -4774,7 +4781,14 @@ module.exports = {
 
           const infoPagamento = await processarPagamentoFarm(config, interaction.guild, entrega, interaction.user.id);
 
-          await serverService.saveConfig(interaction.guild.id, config);
+          // Patch atômico só nesta entrega, sem sobrescrever mudanças
+          // feitas em outras entregas por aprovações concorrentes
+          await serverService.patchEntregaFarm(interaction.guild.id, entrega.id, {
+            status: entrega.status,
+            data_aprovacao: entrega.data_aprovacao,
+            aprovador_id: entrega.aprovador_id,
+            pagamento: entrega.pagamento,
+          });
 
           // Montar mensagem de feedback
           let mensagemFeedback = `✅ Entrega de ${membro.user.tag} aprovada!`;
@@ -4882,7 +4896,15 @@ module.exports = {
           entrega.data_rejeicao = new Date().toISOString();
           entrega.rejeitador_id = interaction.user.id;
           entrega.motivo_rejeicao = motivo;
-          await serverService.saveConfig(interaction.guild.id, config);
+
+          // Patch atômico só nesta entrega, sem sobrescrever mudanças
+          // feitas em outras entregas por aprovações concorrentes
+          await serverService.patchEntregaFarm(interaction.guild.id, entrega.id, {
+            status: entrega.status,
+            data_rejeicao: entrega.data_rejeicao,
+            rejeitador_id: entrega.rejeitador_id,
+            motivo_rejeicao: entrega.motivo_rejeicao,
+          });
 
           await interaction.reply({
             content: `❌ Entrega de ${membro.user.tag} rejeitada.`,
@@ -4940,7 +4962,12 @@ module.exports = {
           entrega.pagamento.status = 'pago';
           entrega.pagamento.pago_por_id = interaction.user.id;
           entrega.pagamento.data_pagamento = new Date().toISOString();
-          await serverService.saveConfig(interaction.guild.id, config);
+
+          // Patch atômico só nesta entrega, sem sobrescrever mudanças
+          // feitas em outras entregas por pagamentos concorrentes
+          await serverService.patchEntregaFarm(interaction.guild.id, entrega.id, {
+            pagamento: entrega.pagamento,
+          });
 
           // Atualizar a mensagem de controle de pagamento
           try {
