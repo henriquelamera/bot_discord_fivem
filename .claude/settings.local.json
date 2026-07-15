@@ -45,7 +45,8 @@
       "Bash(git push *)",
       "Bash(git commit -m 'test: add deploy test file to verify Railway updates *)",
       "Bash(git commit -m 'debug: add verbose logging for banner_url field capture *)",
-      "Bash(git commit -m 'fix: capture banner_url in modal_boas_vindas_mensagem handler *)"
+      "Bash(git commit -m 'fix: capture banner_url in modal_boas_vindas_mensagem handler *)",
+      "Bash(git commit -m 'fix: use PostgreSQL config in guildMemberAdd, clarify role hierarchy error messages *)"
     ]
   }
 }

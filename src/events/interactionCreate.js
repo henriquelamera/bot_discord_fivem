@@ -4411,9 +4411,9 @@ module.exports = {
           podesPedir = [cargoMoradorId];
           mensagem = '📋 Você pode solicitar promoção para **Morador**';
         } else {
-          // Sem cargo reconhecido (erro)
+          // Sem cargo da hierarquia de registro
           return await interaction.reply({
-            content: '❌ Seu status não foi reconhecido. Contate um administrador.',
+            content: '❌ Você não possui um cargo elegível para solicitar registro. Você já possui outros cargos no servidor que não fazem parte dessa hierarquia (Visitante/Morador/Membro/Gerente).',
             ephemeral: true,
           });
         }
@@ -4546,7 +4546,7 @@ module.exports = {
           nomeCargoProximo = role?.name || 'Membro';
         } else {
           return await interaction.reply({
-            content: '❌ Seu status não foi reconhecido. Contate um administrador.',
+            content: '❌ Você não possui um cargo elegível para atualizar registro. Você já possui outros cargos no servidor que não fazem parte dessa hierarquia (Visitante/Morador/Membro/Gerente).',
             ephemeral: true,
           });
         }

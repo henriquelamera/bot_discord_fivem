@@ -1,7 +1,5 @@
 const { EmbedBuilder, ButtonBuilder, ButtonStyle, ActionRowBuilder } = require('discord.js');
-const { load, save } = require('../store');
-
-const CONFIG_FILE = 'config.json';
+const serverService = require('../services/serverService');
 
 async function atribuirVisitante(member, roleIds) {
   if (!roleIds || roleIds.length === 0) {
@@ -24,11 +22,7 @@ async function atribuirVisitante(member, roleIds) {
 module.exports = {
   name: 'guildMemberAdd',
   async execute(member) {
-    const registros = load('membros.json', {});
-    registros[member.id] = { entrada: Date.now(), tag: member.user.tag };
-    save('membros.json', registros);
-
-    const config = load(CONFIG_FILE, {});
+    const config = await serverService.getConfig(member.guild.id);
     const boasVindas = config.boas_vindas;
 
     if (!boasVindas?.canal_id) {
