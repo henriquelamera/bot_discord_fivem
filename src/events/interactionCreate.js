@@ -4269,6 +4269,7 @@ module.exports = {
           const cargo_lideranca_ids = config.cargo_lideranca_ids || [];
           const cargo_farm_em_dia_id = config.farm?.cargo_em_dia_id;
           const rec_uniforme = config.recrutamento?.rec_canal_uniforme;
+          const rec_regras_fac = config.recrutamento?.rec_canal_regras_fac;
           const rec_regras_cidade = config.recrutamento?.rec_canal_regras_cidade;
 
           // Verificar se o registro foi aprovado (via banco PostgreSQL)
@@ -4382,9 +4383,10 @@ module.exports = {
             descricao += `✅ Você agora é um **Morador** oficial da fac!\n\n`;
           }
 
-          if (rec_uniforme || rec_regras_cidade) {
+          if (rec_uniforme || rec_regras_fac || rec_regras_cidade) {
             descricao += `📋 **INFORMAÇÕES IMPORTANTES:**\n`;
             if (rec_uniforme) descricao += `👕 Veja os uniformes em <#${rec_uniforme}>\n`;
+            if (rec_regras_fac) descricao += `📜 Leia as regras da fac em <#${rec_regras_fac}>\n`;
             if (rec_regras_cidade) descricao += `🏙️ Leia as regras da cidade em <#${rec_regras_cidade}>\n`;
           }
 
@@ -4392,7 +4394,7 @@ module.exports = {
             .setTitle('🎉 Bem-vindo(a) ao Baú!')
             .setColor(0xFFD700)
             .setDescription(descricao)
-            .setFooter({ text: `Farm de ${interaction.user.username}` })
+            .setFooter({ text: `Farm de ${interaction.member.displayName}` })
             .setTimestamp();
 
           // Deletar mensagem de aprovação do canal de registro
