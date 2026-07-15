@@ -5,7 +5,7 @@ require('./src/test-deploy');
 
 const fs = require('fs');
 const path = require('path');
-const { Client, GatewayIntentBits, Collection } = require('discord.js');
+const { Client, GatewayIntentBits, Collection, REST, Routes } = require('discord.js');
 const { initializeDatabase } = require('./src/initDb');
 
 const client = new Client({
@@ -34,8 +34,27 @@ for (const file of fs.readdirSync(eventsPath).filter((f) => f.endsWith('.js'))) 
   }
 }
 
+// Registrar slash commands no Discord (necessário sempre que um comando é
+// adicionado/alterado, senão ele nunca aparece na lista do Discord)
+async function registrarComandos() {
+  const commandsData = [...client.commands.values()].map((c) => c.data.toJSON());
+  const rest = new REST().setToken(process.env.DISCORD_TOKEN);
+
+  await rest.put(
+    Routes.applicationGuildCommands(process.env.CLIENT_ID, process.env.GUILD_ID),
+    { body: commandsData },
+  );
+  console.log(`✅ ${commandsData.length} comando(s) registrado(s) no Discord.`);
+}
+
 // Inicializar banco de dados antes de fazer login
 (async () => {
   await initializeDatabase();
-  client.login(process.env.DISCORD_TOKEN);
+  await client.login(process.env.DISCORD_TOKEN);
+
+  try {
+    await registrarComandos();
+  } catch (err) {
+    console.error('❌ Erro ao registrar comandos:', err.message);
+  }
 })();
