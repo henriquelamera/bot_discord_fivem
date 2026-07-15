@@ -201,6 +201,32 @@ async function processarPagamentoFarm(config, guild, entrega, aprovadorId) {
   return entrega.pagamento;
 }
 
+// Atualiza só nome/ID da pessoa (nickname + registro no banco), sem mexer
+// em cargo nenhum - pra quando ela só quer corrigir os dados, mantendo o
+// cargo atual da hierarquia.
+async function atualizarDadosMembro(config, guild, userId, solicitacao) {
+  const membro = await guild.members.fetch(userId);
+  const nomeFormatado = `${solicitacao.nomeInGame} | ${solicitacao.id}`;
+  await membro.setNickname(nomeFormatado).catch(() => {});
+
+  if (!config.membros_info) config.membros_info = {};
+  config.membros_info[userId] = {
+    ...config.membros_info[userId],
+    nomeInGame: solicitacao.nomeInGame,
+    id: solicitacao.id,
+  };
+
+  await memberService.saveMember(guild.id, userId, solicitacao.nomeInGame, solicitacao.id, nomeFormatado).catch((err) => {
+    console.warn('Erro ao sincronizar membro no banco:', err.message);
+  });
+
+  if (config.atualizacoes_hierarquia_pendentes) {
+    delete config.atualizacoes_hierarquia_pendentes[userId];
+  }
+
+  await membro.user.send('✅ Seus dados (nome/ID) foram atualizados com sucesso!').catch(() => {});
+}
+
 // Concede uma promoção da hierarquia (Morador/Membro/Gerente/Liderança):
 // atualiza nickname, remove qualquer cargo antigo da hierarquia, adiciona o
 // cargo novo e limpa a solicitação pendente. `solicitacao` vem de
@@ -1506,10 +1532,13 @@ module.exports = {
           });
         }
 
-        const nomesTier = { membro: 'Membro', gerente: 'Gerente', lideranca: 'Liderança' };
+        const nomesTier = { manter: 'Nome/ID (sem mudar cargo)', membro: 'Membro', gerente: 'Gerente', lideranca: 'Liderança' };
+        const tituloEmbed = tierAlvo === 'manter'
+          ? '📋 SOLICITAÇÃO DE ATUALIZAÇÃO DE DADOS'
+          : `📋 SOLICITAÇÃO DE PROMOÇÃO — ${nomesTier[tierAlvo] || tierAlvo}`;
 
         const embed = new EmbedBuilder()
-          .setTitle(`📋 SOLICITAÇÃO DE PROMOÇÃO — ${nomesTier[tierAlvo] || tierAlvo}`)
+          .setTitle(tituloEmbed)
           .setColor(0xf39c12)
           .addFields(
             { name: '🔗 Discord', value: `<@${userId}>`, inline: false },
@@ -1542,7 +1571,9 @@ module.exports = {
         }
 
         await interaction.reply({
-          content: '✅ Solicitação de promoção enviada! Aguarde a análise da administração.',
+          content: tierAlvo === 'manter'
+            ? '✅ Solicitação de atualização de dados enviada! Aguarde a análise da administração.'
+            : '✅ Solicitação de promoção enviada! Aguarde a análise da administração.',
           ephemeral: true,
         });
       }
@@ -2162,6 +2193,44 @@ module.exports = {
           .setRequired(true);
 
         modal.addComponents(new ActionRowBuilder().addComponents(nomeInput));
+
+        await interaction.showModal(modal);
+      }
+
+      if (interaction.customId === 'select_tipo_atualizacao_registro') {
+        const tierAlvo = interaction.values[0];
+        const nomesTier = { manter: 'Nome/ID', membro: 'Membro', gerente: 'Gerente', lideranca: 'Liderança' };
+
+        const modal = new ModalBuilder()
+          .setCustomId(`modal_atualizar_registro_hierarquia_${tierAlvo}`)
+          .setTitle(`📋 Atualizar ${nomesTier[tierAlvo] || tierAlvo}`);
+
+        const nomeInput = new TextInputBuilder()
+          .setCustomId('nome_in_game')
+          .setLabel('Seu nome in-game (novo)')
+          .setStyle(TextInputStyle.Short)
+          .setPlaceholder('Ex: Levi')
+          .setRequired(true);
+
+        const idInput = new TextInputBuilder()
+          .setCustomId('id_registro')
+          .setLabel('Seu ID na cidade (novo)')
+          .setStyle(TextInputStyle.Short)
+          .setPlaceholder('Ex: 1202')
+          .setRequired(true);
+
+        const solicitadoInput = new TextInputBuilder()
+          .setCustomId('solicitado_por')
+          .setLabel('Quem solicitou esta atualização?')
+          .setStyle(TextInputStyle.Short)
+          .setPlaceholder('Nome de quem pediu')
+          .setRequired(true);
+
+        modal.addComponents(
+          new ActionRowBuilder().addComponents(nomeInput),
+          new ActionRowBuilder().addComponents(idInput),
+          new ActionRowBuilder().addComponents(solicitadoInput)
+        );
 
         await interaction.showModal(modal);
       }
@@ -4732,6 +4801,28 @@ module.exports = {
           });
         }
 
+        // Atualização de dados sem promoção: não mexe em cargo nenhum
+        if (solicitacao.tierAlvo === 'manter') {
+          try {
+            await atualizarDadosMembro(config, interaction.guild, userId, solicitacao);
+            await serverService.saveConfig(interaction.guild.id, config);
+
+            await interaction.reply({
+              content: `✅ Dados de <@${userId}> atualizados!`,
+              ephemeral: true,
+            });
+
+            await interaction.message.edit({ components: [] });
+          } catch (err) {
+            console.error(err);
+            await interaction.reply({
+              content: `❌ Erro ao atualizar dados: ${err.message}`,
+              ephemeral: true,
+            });
+          }
+          return;
+        }
+
         const candidatosPorTier = {
           membro: config.cargo_membro_id ? [config.cargo_membro_id] : [],
           gerente: config.cargo_gerente_ids || [],
@@ -6388,28 +6479,21 @@ module.exports = {
           });
         }
 
-        // Determinar qual tier a pessoa pode solicitar em seguida.
+        // Determinar qual tier a pessoa pode solicitar em seguida (se houver).
         // Gerente/Liderança podem ter vários cargos possíveis - o cargo
         // específico só é escolhido pelo aprovador no momento da aprovação.
         let tierAlvo = null;
         let nomeCargoProximo = '';
 
         if (temCargoLideranca) {
-          // Liderança não pode pedir mais nada
-          return await interaction.reply({
-            content: '✅ Você já tem o cargo máximo (Liderança)! Não pode solicitar mais promoções.',
-            ephemeral: true,
-          });
+          // Liderança já é o topo - não tem próximo tier, mas ainda pode atualizar dados
         } else if (temCargoGerente) {
-          // Gerente pode pedir Liderança
           tierAlvo = 'lideranca';
           nomeCargoProximo = 'Liderança';
         } else if (temCargoMembro) {
-          // Membro pode pedir Gerente
           tierAlvo = 'gerente';
           nomeCargoProximo = 'Gerente';
         } else if (temCargoMorador) {
-          // Morador pode pedir Membro
           tierAlvo = 'membro';
           const role = interaction.guild.roles.cache.get(cargoMembroId);
           nomeCargoProximo = role?.name || 'Membro';
@@ -6420,52 +6504,42 @@ module.exports = {
           });
         }
 
-        // Verificar se o próximo tier tem pelo menos um cargo configurado
-        const temCargoConfiguradoParaTier =
+        // Só oferece a opção de promoção se o próximo tier tiver cargo configurado
+        const temCargoConfiguradoParaTier = tierAlvo && (
           (tierAlvo === 'membro' && cargoMembroId) ||
           (tierAlvo === 'gerente' && cargoGerenteIds.length > 0) ||
-          (tierAlvo === 'lideranca' && cargoLiderancaIds.length > 0);
+          (tierAlvo === 'lideranca' && cargoLiderancaIds.length > 0)
+        );
 
-        if (!temCargoConfiguradoParaTier) {
-          return await interaction.reply({
-            content: `❌ O cargo de **${nomeCargoProximo}** não foi configurado! Contate um administrador.`,
-            ephemeral: true,
+        const { StringSelectMenuBuilder } = require('discord.js');
+        const opcoes = [
+          {
+            label: 'Atualizar Nome/ID',
+            description: 'Mantém seu cargo atual, só corrige seus dados',
+            value: 'manter',
+          },
+        ];
+
+        if (temCargoConfiguradoParaTier) {
+          opcoes.push({
+            label: `Solicitar Promoção para ${nomeCargoProximo}`,
+            description: 'Pede a próxima promoção da hierarquia',
+            value: tierAlvo,
           });
         }
 
-        // Abrir modal de atualização (o tier alvo vai no customId)
-        const modal = new ModalBuilder()
-          .setCustomId(`modal_atualizar_registro_hierarquia_${tierAlvo}`)
-          .setTitle(`📋 Atualizar para ${nomeCargoProximo}`);
+        const selectMenu = new StringSelectMenuBuilder()
+          .setCustomId('select_tipo_atualizacao_registro')
+          .setPlaceholder('O que você quer fazer?')
+          .addOptions(opcoes);
 
-        const nomeInput = new TextInputBuilder()
-          .setCustomId('nome_in_game')
-          .setLabel('Seu nome in-game (novo)')
-          .setStyle(TextInputStyle.Short)
-          .setPlaceholder('Ex: Levi')
-          .setRequired(true);
+        const row = new ActionRowBuilder().addComponents(selectMenu);
 
-        const idInput = new TextInputBuilder()
-          .setCustomId('id_registro')
-          .setLabel('Seu ID na cidade (novo)')
-          .setStyle(TextInputStyle.Short)
-          .setPlaceholder('Ex: 1202')
-          .setRequired(true);
-
-        const solicitadoInput = new TextInputBuilder()
-          .setCustomId('solicitado_por')
-          .setLabel('Quem solicitou esta atualização?')
-          .setStyle(TextInputStyle.Short)
-          .setPlaceholder('Nome de quem pediu')
-          .setRequired(true);
-
-        modal.addComponents(
-          new ActionRowBuilder().addComponents(nomeInput),
-          new ActionRowBuilder().addComponents(idInput),
-          new ActionRowBuilder().addComponents(solicitadoInput)
-        );
-
-        await interaction.showModal(modal);
+        await interaction.reply({
+          content: '**📋 Atualizar Registro**\n\nSelecione o que deseja fazer:',
+          components: [row],
+          ephemeral: true,
+        });
       }
 
       if (interaction.customId.startsWith('registro_')) {
