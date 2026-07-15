@@ -12,8 +12,14 @@ const { postarFechamentoSemanal, removerEntregaDosFechamentosPendentes } = requi
 require('../handlers/registerAllHandlers');
 
 // Lista os IDs dos membros que têm um cargo (null se não configurado/não existir)
-function listarIdsComCargo(guild, cargoId) {
+// Busca o membro-alvo pelo cargo. Precisa dar fetch em todos os membros do
+// servidor antes de ler role.members - o cache do discord.js só tem os
+// membros que já "passaram" pelo bot (mensagens, updates recentes, etc), e
+// sem o fetch os relatórios (sem baú, baú aberto, em dia, atrasado, adv)
+// mostravam só uma fração de quem realmente tinha o cargo.
+async function listarIdsComCargo(guild, cargoId) {
   if (!cargoId) return null;
+  await guild.members.fetch().catch(() => {});
   const role = guild.roles.cache.get(cargoId);
   return role ? [...role.members.keys()] : null;
 }
@@ -6400,11 +6406,12 @@ module.exports = {
       // ===== PAINEL DE GERENCIAMENTO DE FARM =====
 
       if (interaction.customId === 'ger_farm_sem_bau') {
+        await interaction.deferReply({ ephemeral: true });
         const config = await serverService.getConfig(interaction.guild.id);
-        const ids = listarIdsComCargo(interaction.guild, config.cargo_bau_nao_aberto_id);
+        const ids = await listarIdsComCargo(interaction.guild, config.cargo_bau_nao_aberto_id);
 
         if (ids === null) {
-          return await interaction.reply({ content: '❌ Cargo "Sem Baú Aberto" não foi configurado.', ephemeral: true });
+          return await interaction.editReply({ content: '❌ Cargo "Sem Baú Aberto" não foi configurado.' });
         }
 
         const embed = new EmbedBuilder()
@@ -6412,15 +6419,16 @@ module.exports = {
           .setColor(0xe67e22)
           .setDescription(formatarListaMembros(ids));
 
-        await interaction.reply({ embeds: [embed], ephemeral: true });
+        await interaction.editReply({ embeds: [embed] });
       }
 
       if (interaction.customId === 'ger_farm_bau_aberto') {
+        await interaction.deferReply({ ephemeral: true });
         const config = await serverService.getConfig(interaction.guild.id);
-        const ids = listarIdsComCargo(interaction.guild, config.cargo_bau_aberto_id);
+        const ids = await listarIdsComCargo(interaction.guild, config.cargo_bau_aberto_id);
 
         if (ids === null) {
-          return await interaction.reply({ content: '❌ Cargo "Baú Aberto" não foi configurado.', ephemeral: true });
+          return await interaction.editReply({ content: '❌ Cargo "Baú Aberto" não foi configurado.' });
         }
 
         const embed = new EmbedBuilder()
@@ -6428,15 +6436,16 @@ module.exports = {
           .setColor(0xFFD700)
           .setDescription(formatarListaMembros(ids));
 
-        await interaction.reply({ embeds: [embed], ephemeral: true });
+        await interaction.editReply({ embeds: [embed] });
       }
 
       if (interaction.customId === 'ger_farm_em_dia') {
+        await interaction.deferReply({ ephemeral: true });
         const config = await serverService.getConfig(interaction.guild.id);
-        const ids = listarIdsComCargo(interaction.guild, config.farm?.cargo_em_dia_id);
+        const ids = await listarIdsComCargo(interaction.guild, config.farm?.cargo_em_dia_id);
 
         if (ids === null) {
-          return await interaction.reply({ content: '❌ Cargo "Farm em Dia" não foi configurado.', ephemeral: true });
+          return await interaction.editReply({ content: '❌ Cargo "Farm em Dia" não foi configurado.' });
         }
 
         const embed = new EmbedBuilder()
@@ -6444,15 +6453,16 @@ module.exports = {
           .setColor(0x2ecc71)
           .setDescription(formatarListaMembros(ids));
 
-        await interaction.reply({ embeds: [embed], ephemeral: true });
+        await interaction.editReply({ embeds: [embed] });
       }
 
       if (interaction.customId === 'ger_farm_atrasado') {
+        await interaction.deferReply({ ephemeral: true });
         const config = await serverService.getConfig(interaction.guild.id);
-        const ids = listarIdsComCargo(interaction.guild, config.farm?.cargo_atrasado_id);
+        const ids = await listarIdsComCargo(interaction.guild, config.farm?.cargo_atrasado_id);
 
         if (ids === null) {
-          return await interaction.reply({ content: '❌ Cargo "Farm Atrasado" não foi configurado.', ephemeral: true });
+          return await interaction.editReply({ content: '❌ Cargo "Farm Atrasado" não foi configurado.' });
         }
 
         const embed = new EmbedBuilder()
@@ -6460,13 +6470,14 @@ module.exports = {
           .setColor(0xe74c3c)
           .setDescription(formatarListaMembros(ids));
 
-        await interaction.reply({ embeds: [embed], ephemeral: true });
+        await interaction.editReply({ embeds: [embed] });
       }
 
       if (interaction.customId === 'ger_farm_adv') {
+        await interaction.deferReply({ ephemeral: true });
         const config = await serverService.getConfig(interaction.guild.id);
-        const idsAdv1 = listarIdsComCargo(interaction.guild, config.farm?.cargo_adv_1);
-        const idsAdv2 = listarIdsComCargo(interaction.guild, config.farm?.cargo_adv_2);
+        const idsAdv1 = await listarIdsComCargo(interaction.guild, config.farm?.cargo_adv_1);
+        const idsAdv2 = await listarIdsComCargo(interaction.guild, config.farm?.cargo_adv_2);
 
         const embed = new EmbedBuilder()
           .setTitle('⚠️ ADV Farm')
@@ -6484,7 +6495,7 @@ module.exports = {
             }
           );
 
-        await interaction.reply({ embeds: [embed], ephemeral: true });
+        await interaction.editReply({ embeds: [embed] });
       }
 
       if (interaction.customId === 'ger_farm_metas_semanal') {
