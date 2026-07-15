@@ -59,7 +59,9 @@
       "Bash(node -c src/commands/publicar_ger_farm.js)",
       "Bash(node -c src/events/messageCreate.js)",
       "Bash(node -c src/utils/entregaMetaTracker.js)",
-      "Bash(node -e \"const { UserSelectMenuBuilder } = require\\('discord.js'\\); console.log\\(typeof UserSelectMenuBuilder\\);\")"
+      "Bash(node -e \"const { UserSelectMenuBuilder } = require\\('discord.js'\\); console.log\\(typeof UserSelectMenuBuilder\\);\")",
+      "Bash(node -c src/utils/farmPagamentos.js)",
+      "Bash(node -c src/jobs/farmCron.js)"
     ]
   }
 }

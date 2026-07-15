@@ -1,6 +1,8 @@
+const { EmbedBuilder } = require('discord.js');
 const serverService = require('../services/serverService');
 const deliveryService = require('../services/deliveryService');
 const memberService = require('../services/memberService');
+const { formatarMoeda, calcularPagamentosPorMembro } = require('../utils/farmPagamentos');
 
 function isMonday() {
   const agora = new Date();
@@ -32,6 +34,36 @@ module.exports = {
 
             if (!config.farm) {
               continue;
+            }
+
+            // Postar fechamento semanal de pagamentos - independe do resto
+            // do farm estar configurado, só precisa do canal de pagamento
+            try {
+              const canalPagamentoId = config.farm.canal_controle_pagamento_id;
+              const canalPagamento = canalPagamentoId ? guild.channels.cache.get(canalPagamentoId) : null;
+
+              if (canalPagamento) {
+                const pendentes = calcularPagamentosPorMembro(config, (p) => p.status === 'pendente');
+
+                if (pendentes.length > 0) {
+                  const totalGeral = pendentes.reduce((soma, m) => soma + m.total, 0);
+                  const lista = pendentes
+                    .map((m) => `<@${m.discordId}> — ${formatarMoeda(m.total)} (${m.qtd} pagamento(s))`)
+                    .join('\n');
+
+                  const embedFechamento = new EmbedBuilder()
+                    .setTitle('🧾 Fechamento Semanal — Pagamentos a Fazer')
+                    .setColor(0xf1c40f)
+                    .setDescription(`A semana de farm fechou! Total a pagar: **${formatarMoeda(totalGeral)}**\n\n${lista}`)
+                    .setFooter({ text: 'Marque como pago aqui no canal conforme for pagando cada um' })
+                    .setTimestamp();
+
+                  await canalPagamento.send({ embeds: [embedFechamento] });
+                  console.log(`🧾 Fechamento semanal de pagamentos postado (guild ${guildId})`);
+                }
+              }
+            } catch (err) {
+              console.error(`Erro ao postar fechamento semanal pra guild ${guildId}:`, err);
             }
 
           const cargoEmDiaId = config.farm.cargo_em_dia_id;
