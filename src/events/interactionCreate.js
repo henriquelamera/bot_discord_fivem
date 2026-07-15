@@ -148,6 +148,64 @@ async function concederPromocaoHierarquia(config, guild, userId, solicitacao, ca
   await membro.user.send(`✅ Sua promoção para **${cargoNovo.name}** foi aprovada!`).catch(() => {});
 }
 
+// Monta o bloco de texto com metas de farm, prazo de entrega e as
+// implicações de não entregar no prazo. Só lista itens com meta definida.
+function montarInfoFarm(config) {
+  const itens = config.farm?.itens || [];
+  const metas = config.farm?.metas || {};
+
+  const itensComMeta = itens.filter((item) => metas[item.id]?.meta_semanal);
+  if (itensComMeta.length === 0) return '';
+
+  const listaMetas = itensComMeta
+    .map((item) => `- **${item.nome}:** ${metas[item.id].meta_semanal}/semana`)
+    .join('\n');
+
+  return (
+    `🎯 **METAS DE FARM:**\n${listaMetas}\n\n` +
+    `⚠️ Todos os itens farmados devem ser entregues **juntos**, em uma única entrega (botão **Entregar Meta** no seu canal).\n\n` +
+    `⏰ **PRAZO:** o farm é semanal. O prazo é verificado toda **segunda-feira às 00h**, considerando as entregas aprovadas nos últimos 7 dias.\n\n` +
+    `🚨 **SE NÃO ENTREGAR NO PRAZO:**\n` +
+    `- Perde o cargo **Farm em Dia** e recebe **Farm Atrasado**\n` +
+    `- Recebe uma **ADV** (advertência)\n` +
+    `- Ao atingir **2 ADVs**, fica sujeito a **PD** (Punição da Organização)\n\n`
+  );
+}
+
+// Monta o embed completo mostrado ao abrir o baú (primeira vez ou canal
+// recriado) - sempre com uniforme/regras/metas/prazo, pra manter a mensagem
+// sempre completa independente do motivo de estar sendo enviada.
+function montarEmbedBauAberto(config, member, ehPrimeiraVez, temCargoVisitante) {
+  const rec_uniforme = config.recrutamento?.rec_canal_uniforme;
+  const rec_regras_fac = config.recrutamento?.rec_canal_regras_fac;
+  const rec_regras_cidade = config.recrutamento?.rec_canal_regras_cidade;
+
+  let descricao = ehPrimeiraVez
+    ? `🎉 **PARABÉNS!** Você abriu seu baú de farm!\n\n`
+    : `📦 Aqui estão as informações do seu farm:\n\n`;
+
+  if (ehPrimeiraVez && temCargoVisitante) {
+    descricao += `✅ Você agora é um **Morador** oficial da fac!\n\n`;
+  }
+
+  if (rec_uniforme || rec_regras_fac || rec_regras_cidade) {
+    descricao += `📋 **INFORMAÇÕES IMPORTANTES:**\n`;
+    if (rec_uniforme) descricao += `👕 Veja os uniformes em <#${rec_uniforme}>\n`;
+    if (rec_regras_fac) descricao += `📜 Leia as regras da fac em <#${rec_regras_fac}>\n`;
+    if (rec_regras_cidade) descricao += `🏙️ Leia as regras da cidade em <#${rec_regras_cidade}>\n`;
+    descricao += '\n';
+  }
+
+  descricao += montarInfoFarm(config);
+
+  return new EmbedBuilder()
+    .setTitle(ehPrimeiraVez ? '🎉 Bem-vindo(a) ao Baú!' : '📦 Seu Canal de Farm')
+    .setColor(0xFFD700)
+    .setDescription(descricao)
+    .setFooter({ text: `Farm de ${member.displayName}` })
+    .setTimestamp();
+}
+
 // Cria (ou recria) o canal privado de farm de um usuário na categoria de
 // baú configurada, com o botão de Entregar Meta. Retorna o canal criado,
 // ou null se a categoria não estiver configurada/for inválida.
@@ -4378,9 +4436,6 @@ module.exports = {
           const cargo_gerente_ids = config.cargo_gerente_ids || [];
           const cargo_lideranca_ids = config.cargo_lideranca_ids || [];
           const cargo_farm_em_dia_id = config.farm?.cargo_em_dia_id;
-          const rec_uniforme = config.recrutamento?.rec_canal_uniforme;
-          const rec_regras_fac = config.recrutamento?.rec_canal_regras_fac;
-          const rec_regras_cidade = config.recrutamento?.rec_canal_regras_cidade;
 
           // Verificar se o registro foi aprovado (via banco PostgreSQL)
           // OU se já possui um cargo da hierarquia (Morador/Membro/Gerente/Liderança) -
@@ -4415,16 +4470,10 @@ module.exports = {
               ch.permissionOverwrites.cache.has(interaction.user.id)
             );
 
-            // Se o canal foi deletado, recriar
+            // Se o canal foi deletado, recriar com a mensagem completa
             if (!canalDoBau && categoria_bau_id) {
               try {
-                const embedRecriado = new EmbedBuilder()
-                  .setTitle('📦 Canal de Farm Recriado')
-                  .setColor(0xFFD700)
-                  .setDescription('Seu canal privado de farm foi recriado.')
-                  .setFooter({ text: `Farm de ${interaction.member.displayName}` })
-                  .setTimestamp();
-
+                const embedRecriado = montarEmbedBauAberto(config, interaction.member, false, false);
                 canalDoBau = await criarCanalPrivadoFarm(interaction.guild, config, interaction.user.id, categoria_bau_id, embedRecriado);
               } catch (err) {
                 console.error('⚠️ Erro ao recriar canal de farm:', err.message);
@@ -4503,25 +4552,8 @@ module.exports = {
             });
           }
 
-          // Montar mensagem com parabéns, uniformes e regras
-          let descricao = `🎉 **PARABÉNS!** Você abriu seu baú de farm!\n\n`;
-          if (temCargoVisitante) {
-            descricao += `✅ Você agora é um **Morador** oficial da fac!\n\n`;
-          }
-
-          if (rec_uniforme || rec_regras_fac || rec_regras_cidade) {
-            descricao += `📋 **INFORMAÇÕES IMPORTANTES:**\n`;
-            if (rec_uniforme) descricao += `👕 Veja os uniformes em <#${rec_uniforme}>\n`;
-            if (rec_regras_fac) descricao += `📜 Leia as regras da fac em <#${rec_regras_fac}>\n`;
-            if (rec_regras_cidade) descricao += `🏙️ Leia as regras da cidade em <#${rec_regras_cidade}>\n`;
-          }
-
-          const embed = new EmbedBuilder()
-            .setTitle('🎉 Bem-vindo(a) ao Baú!')
-            .setColor(0xFFD700)
-            .setDescription(descricao)
-            .setFooter({ text: `Farm de ${interaction.member.displayName}` })
-            .setTimestamp();
+          // Montar mensagem completa: parabéns, uniformes, regras, metas e prazo
+          const embed = montarEmbedBauAberto(config, interaction.member, true, temCargoVisitante);
 
           // Deletar mensagem de aprovação do canal de registro
           const canalRegistroId = config.boas_vindas?.canal_registro_id;
