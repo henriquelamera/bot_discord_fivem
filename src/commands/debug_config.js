@@ -1,4 +1,4 @@
-const { SlashCommandBuilder } = require('discord.js');
+const { SlashCommandBuilder, AttachmentBuilder } = require('discord.js');
 const serverService = require('../services/serverService');
 
 module.exports = {
@@ -11,17 +11,25 @@ module.exports = {
     await interaction.deferReply({ ephemeral: true });
 
     const config = await serverService.getConfig(interaction.guild.id);
-
-    // Mostrar a config inteira em formato legível
     const configStr = JSON.stringify(config, null, 2);
 
-    // Se for muito grande, cortar
-    const truncated = configStr.length > 2000
-      ? configStr.substring(0, 1997) + '...'
-      : configStr;
+    // Mensagens do Discord têm limite de 2000 caracteres; o bloco de código
+    // (```json\n...\n```) soma ~10 caracteres extras a esse total.
+    const LIMITE_MENSAGEM = 1900;
 
-    await interaction.editReply({
-      content: `\`\`\`json\n${truncated}\n\`\`\``,
-    });
+    if (configStr.length <= LIMITE_MENSAGEM) {
+      await interaction.editReply({
+        content: `\`\`\`json\n${configStr}\n\`\`\``,
+      });
+    } else {
+      const arquivo = new AttachmentBuilder(Buffer.from(configStr, 'utf-8'), {
+        name: `config_${interaction.guild.id}.json`,
+      });
+
+      await interaction.editReply({
+        content: '🔍 Config muito grande para exibir no chat, segue em arquivo:',
+        files: [arquivo],
+      });
+    }
   },
 };
