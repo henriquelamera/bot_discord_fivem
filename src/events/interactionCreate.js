@@ -95,6 +95,35 @@ function formatarTotaisPorItem(totais) {
   return totais.map((t) => `**${t.itemNome}:** ${t.total.toLocaleString('pt-BR')}`).join('\n');
 }
 
+// Atualiza o registro de uma entrega no canal privado da pessoa (o embed
+// enviado na submissão) pra refletir o novo status - aprovada/recusada/paga -
+// mantendo um histórico completo ali, não só a foto solta.
+async function atualizarHistoricoEntregaFarm(guild, entrega, cor, statusTexto, camposExtras = []) {
+  if (!entrega.historico_canal_id || !entrega.historico_mensagem_id) return;
+
+  try {
+    const canal = guild.channels.cache.get(entrega.historico_canal_id);
+    if (!canal) return;
+
+    const msg = await canal.messages.fetch(entrega.historico_mensagem_id);
+    const embedAtual = msg.embeds[0];
+    if (!embedAtual) return;
+
+    const tituloBase = embedAtual.title?.replace(/\s+—.*$/, '').trim() || `📦 Entrega #${entrega.id}`;
+    const embedAtualizado = EmbedBuilder.from(embedAtual)
+      .setTitle(`${tituloBase} — ${statusTexto}`)
+      .setColor(cor);
+
+    if (camposExtras.length > 0) {
+      embedAtualizado.addFields(...camposExtras);
+    }
+
+    await msg.edit({ embeds: [embedAtualizado] });
+  } catch (err) {
+    console.warn('Não foi possível atualizar histórico no canal da pessoa:', err.message);
+  }
+}
+
 // Extrai o ID de um membro a partir de texto digitado (menção "<@id>" gerada
 // pelo autocomplete do "@" do Discord, ou o ID numérico colado direto).
 // Retorna null se não conseguir identificar - texto solto (nome/apelido)
@@ -903,6 +932,22 @@ module.exports = {
             embeds: [embed],
             components: [row],
           });
+
+          // Deixar um registro completo no próprio canal da pessoa (sem isso
+          // só sobrava a foto solta, difícil de achar o histórico depois)
+          try {
+            const embedHistorico = EmbedBuilder.from(embed.toJSON())
+              .setTitle(`📦 Entrega #${entrega_id} — ⏳ Pendente de Aprovação`)
+              .setColor(0xf1c40f);
+
+            const mensagemHistorico = await interaction.channel.send({ embeds: [embedHistorico] });
+            await serverService.patchEntregaFarm(interaction.guild.id, entrega_id, {
+              historico_canal_id: interaction.channel.id,
+              historico_mensagem_id: mensagemHistorico.id,
+            });
+          } catch (err) {
+            console.warn('Não foi possível registrar histórico no canal da pessoa:', err.message);
+          }
 
           await interaction.followUp({
             content: '✅ Entrega registrada! Aguardando aprovação dos responsáveis.',
@@ -5275,6 +5320,14 @@ module.exports = {
               pagamento: entrega.pagamento,
             });
 
+            await atualizarHistoricoEntregaFarm(
+              interaction.guild,
+              entrega,
+              0x2ecc71,
+              '✅ Aprovada',
+              infoPagamento?.valor_total > 0 ? [{ name: '💰 Valor', value: formatarMoeda(infoPagamento.valor_total) }] : []
+            );
+
             let respostaGerente = `✅ Entrega de ${membro.user.tag} aprovada!\n\n(Gerente - isento do sistema de ADV)`;
             if (infoPagamento?.valor_total > 0) {
               respostaGerente += `\n\n💰 **Valor a pagar:** ${formatarMoeda(infoPagamento.valor_total)} (lançado no canal de controle de pagamento)`;
@@ -5380,6 +5433,14 @@ module.exports = {
             aprovador_id: entrega.aprovador_id,
             pagamento: entrega.pagamento,
           });
+
+          await atualizarHistoricoEntregaFarm(
+            interaction.guild,
+            entrega,
+            0x2ecc71,
+            '✅ Aprovada',
+            infoPagamento?.valor_total > 0 ? [{ name: '💰 Valor', value: formatarMoeda(infoPagamento.valor_total) }] : []
+          );
 
           // Montar mensagem de feedback
           let mensagemFeedback = `✅ Entrega de ${membro.user.tag} aprovada!`;
@@ -5497,6 +5558,14 @@ module.exports = {
             motivo_rejeicao: entrega.motivo_rejeicao,
           });
 
+          await atualizarHistoricoEntregaFarm(
+            interaction.guild,
+            entrega,
+            0xe74c3c,
+            '❌ Recusada',
+            [{ name: '📝 Motivo', value: motivo }]
+          );
+
           await interaction.reply({
             content: `❌ Entrega de ${membro.user.tag} rejeitada.`,
             ephemeral: true,
@@ -5559,6 +5628,14 @@ module.exports = {
           await serverService.patchEntregaFarm(interaction.guild.id, entrega.id, {
             pagamento: entrega.pagamento,
           });
+
+          await atualizarHistoricoEntregaFarm(
+            interaction.guild,
+            entrega,
+            0x2ecc71,
+            '💰 Paga',
+            [{ name: '💰 Valor Pago', value: formatarMoeda(entrega.pagamento.valor_total) }]
+          );
 
           // Atualizar a mensagem de controle de pagamento
           try {
