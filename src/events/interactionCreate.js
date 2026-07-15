@@ -4,6 +4,7 @@ const memberService = require('../services/memberService');
 const deliveryService = require('../services/deliveryService');
 const advService = require('../services/advService');
 const { dispatchButton, dispatchSelectMenu, dispatchModal } = require('../utils/handlerRegistry');
+const { marcarAguardandoImagem, desmarcarAguardandoImagem } = require('../utils/entregaMetaTracker');
 
 // Carregar todos os handlers registrados
 require('../handlers/registerAllHandlers');
@@ -301,6 +302,11 @@ function montarInfoFarm(config) {
   return (
     `🎯 **METAS DE FARM:**\n${listaMetas}\n\n` +
     `⚠️ Todos os itens farmados devem ser entregues **juntos**, em uma única entrega (botão **Entregar Meta** no seu canal).\n\n` +
+    `📦 **COMO ENTREGAR (siga essa ordem):**\n` +
+    `1️⃣ Clique no botão **📦 Entregar Meta** abaixo\n` +
+    `2️⃣ Preencha a quantidade de cada item no formulário\n` +
+    `3️⃣ Só **depois** disso envie a foto do print aqui no canal, quando o bot pedir\n` +
+    `❌ Mandar a foto direto sem clicar no botão primeiro **não conta como entrega**!\n\n` +
     `⏰ **PRAZO:** o farm é semanal. O prazo é verificado toda **segunda-feira às 00h**, considerando as entregas aprovadas nos últimos 7 dias.\n\n` +
     `🚨 **SE NÃO ENTREGAR NO PRAZO:**\n` +
     `- Perde o cargo **Farm em Dia** e recebe **Farm Atrasado**\n` +
@@ -777,6 +783,7 @@ module.exports = {
           ephemeral: true,
         });
 
+        marcarAguardandoImagem(interaction.channel.id);
         try {
           const coletadas = await interaction.channel.awaitMessages({
             filter: (msg) =>
@@ -900,6 +907,8 @@ module.exports = {
             content: `❌ Erro ao registrar entrega: ${err.message}`,
             ephemeral: true,
           });
+        } finally {
+          desmarcarAguardandoImagem(interaction.channel.id);
         }
       }
 
