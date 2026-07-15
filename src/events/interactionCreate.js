@@ -1952,6 +1952,11 @@ module.exports = {
               label: 'Limpar Farm de um Membro',
               description: 'Apaga todas as entregas de uma pessoa (ex: dados de teste)',
               value: 'farm_limpar_membro',
+            },
+            {
+              label: 'Canal de Fechamento Semanal',
+              description: 'Onde o resumo de pagamentos a fazer é postado toda segunda',
+              value: 'farm_canal_fechamento',
             }
           );
 
@@ -3165,6 +3170,79 @@ module.exports = {
         }
       }
 
+      if (interaction.customId === 'select_categoria_canal_fechamento') {
+        try {
+          const categoriaId = interaction.values[0];
+          const { ChannelType, StringSelectMenuBuilder } = require('discord.js');
+
+          const categoria = interaction.guild.channels.cache.get(categoriaId);
+          if (!categoria) {
+            return await interaction.reply({
+              content: '❌ Categoria não encontrada.',
+              ephemeral: true,
+            });
+          }
+
+          const canais = categoria.children.cache
+            .filter(ch => ch.type === ChannelType.GuildText)
+            .map(canal => ({
+              label: `#${canal.name}`,
+              value: canal.id,
+              description: canal.topic || 'Sem descrição',
+            }));
+
+          if (canais.length === 0) {
+            return await interaction.reply({
+              content: '❌ Nenhum canal de texto encontrado nesta categoria.',
+              ephemeral: true,
+            });
+          }
+
+          const selectMenu = new StringSelectMenuBuilder()
+            .setCustomId('select_canal_fechamento')
+            .setPlaceholder('Selecione o canal...')
+            .addOptions(canais.slice(0, 25));
+
+          const row = new ActionRowBuilder().addComponents(selectMenu);
+
+          await interaction.reply({
+            content: `**Passo 2:** Canal de Fechamento Semanal\n\nSelecione o canal em **${categoria.name}**:`,
+            components: [row],
+            ephemeral: true,
+          });
+        } catch (err) {
+          console.error('Erro em select_categoria_canal_fechamento:', err);
+          await interaction.reply({
+            content: '❌ Erro ao selecionar categoria',
+            ephemeral: true,
+          });
+        }
+      }
+
+      if (interaction.customId === 'select_canal_fechamento') {
+        try {
+          const canalId = interaction.values[0];
+
+          const config = await serverService.getConfig(interaction.guild.id);
+          if (!config.farm) config.farm = {};
+          config.farm.canal_fechamento_semanal_id = canalId;
+          await serverService.saveConfig(interaction.guild.id, config);
+
+          const canal = interaction.guild.channels.cache.get(canalId);
+
+          await interaction.reply({
+            content: `✅ Canal de fechamento semanal configurado!\n**Canal:** #${canal.name}\n\nToda segunda-feira o resumo de pagamentos a fazer será postado lá.`,
+            ephemeral: true,
+          });
+        } catch (err) {
+          console.error('Erro em select_canal_fechamento:', err);
+          await interaction.reply({
+            content: '❌ Erro ao configurar canal de fechamento semanal',
+            ephemeral: true,
+          });
+        }
+      }
+
       if (interaction.customId === 'painel_farm') {
         const valor = interaction.values[0];
         const { StringSelectMenuBuilder, ChannelType } = require('discord.js');
@@ -3546,6 +3624,38 @@ module.exports = {
 
           await interaction.reply({
             content: '**Passo 1:** Canal de Gerenciamento\n\nSelecione a categoria:',
+            components: [row],
+            ephemeral: true,
+          });
+        }
+
+        if (valor === 'farm_canal_fechamento') {
+          const { ChannelType, StringSelectMenuBuilder } = require('discord.js');
+
+          const categorias = interaction.guild.channels.cache
+            .filter(ch => ch.type === ChannelType.GuildCategory)
+            .map(cat => ({
+              label: cat.name,
+              value: cat.id,
+              description: `${cat.children.cache.size} canais`,
+            }));
+
+          if (categorias.length === 0) {
+            return await interaction.reply({
+              content: '❌ Nenhuma categoria encontrada.',
+              ephemeral: true,
+            });
+          }
+
+          const selectMenu = new StringSelectMenuBuilder()
+            .setCustomId('select_categoria_canal_fechamento')
+            .setPlaceholder('Selecione a categoria...')
+            .addOptions(categorias);
+
+          const row = new ActionRowBuilder().addComponents(selectMenu);
+
+          await interaction.reply({
+            content: '**Passo 1:** Canal de Fechamento Semanal\n\nSelecione a categoria:',
             components: [row],
             ephemeral: true,
           });

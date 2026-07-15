@@ -37,10 +37,11 @@ module.exports = {
             }
 
             // Postar fechamento semanal de pagamentos - independe do resto
-            // do farm estar configurado, só precisa do canal de pagamento
+            // do farm estar configurado, só precisa do canal de fechamento
+            // (cai pro canal de controle de pagamento se aquele não existir)
             try {
-              const canalPagamentoId = config.farm.canal_controle_pagamento_id;
-              const canalPagamento = canalPagamentoId ? guild.channels.cache.get(canalPagamentoId) : null;
+              const canalFechamentoId = config.farm.canal_fechamento_semanal_id || config.farm.canal_controle_pagamento_id;
+              const canalPagamento = canalFechamentoId ? guild.channels.cache.get(canalFechamentoId) : null;
 
               if (canalPagamento) {
                 const pendentes = calcularPagamentosPorMembro(config, (p) => p.status === 'pendente');
