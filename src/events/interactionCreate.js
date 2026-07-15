@@ -1410,15 +1410,9 @@ module.exports = {
     }
 
     if (interaction.isStringSelectMenu()) {
-      // Tentar dispatcher de handlers registrados primeiro
-      try {
-        if (await dispatchSelectMenu(interaction)) {
-          return; // Handler foi executado com sucesso
-        }
-      } catch (error) {
-        console.error('Erro no dispatcher de selectMenu:', error);
-        // Continua para fallback
-      }
+      // NOTA: Dispatcher para selectMenus desabilitado pois há muitas variações complexas
+      // Apenas os select_canal_* que salvam config estão no dispatcher
+      // Tudo o mais usa o código legado que funciona bem
 
       if (interaction.customId === 'painel_credenciais') {
         const valor = interaction.values[0];
