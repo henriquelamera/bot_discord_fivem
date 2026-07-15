@@ -42,7 +42,8 @@
       "Bash(git commit -m 'feat: add dedicated modal handlers for configuring banners *)",
       "Bash(git commit -m 'fix: use deferReply to prevent timeout on publish commands *)",
       "Bash(git commit -m 'add: debug command to show full config from database *)",
-      "Bash(git push *)"
+      "Bash(git push *)",
+      "Bash(git commit -m 'test: add deploy test file to verify Railway updates *)"
     ]
   }
 }

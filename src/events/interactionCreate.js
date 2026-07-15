@@ -194,19 +194,27 @@ module.exports = {
 
       if (interaction.customId === 'modal_boas_vindas_mensagem') {
         const texto = interaction.fields.getTextInputValue('texto_boas_vindas');
-        const banner = interaction.fields.getTextInputValue('banner_url') || '';
+        const banner = interaction.fields.getTextInputValue('banner_url');
+
+        console.log('🔍 DEBUG Modal Boas-Vindas:');
+        console.log('   Texto recebido:', texto);
+        console.log('   Banner recebido (raw):', banner);
+        console.log('   Banner type:', typeof banner);
+        console.log('   Banner === "":', banner === '');
+        console.log('   Banner length:', banner?.length);
 
         const config = await serverService.getConfig(interaction.guild.id);
         config.boas_vindas = {
           ...(config.boas_vindas || {}),
           texto: texto,
-          banner_url: banner,
+          banner_url: banner || undefined,
         };
         await serverService.saveConfig(interaction.guild.id, config);
 
         console.log('📝 Boas-vindas configuradas:');
         console.log('   Texto:', texto);
         console.log('   Banner URL:', banner || 'nenhuma');
+        console.log('   Config salva:', JSON.stringify(config.boas_vindas, null, 2));
 
         await interaction.reply({
           content: '✅ Mensagem e banner configurados com sucesso!',
