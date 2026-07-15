@@ -514,9 +514,15 @@ module.exports = {
           const membroExistente = await memberService.getMember(guildId, interaction.user.id);
           if (!membroExistente) {
             const nomeFormatadoAtual = config.membros_info?.[interaction.user.id]?.nomeFormatado;
-            const [nomeInGameFallback, idFallback] = nomeFormatadoAtual?.includes(' | ')
-              ? nomeFormatadoAtual.split(' | ')
-              : [interaction.member.displayName, 'N/A'];
+            let nomeInGameFallback = interaction.member.displayName;
+            let idFallback = null; // id_ingame é INT no banco - não pode ser texto tipo "N/A"
+
+            if (nomeFormatadoAtual?.includes(' | ')) {
+              const [nome, id] = nomeFormatadoAtual.split(' | ');
+              nomeInGameFallback = nome;
+              const idNum = parseInt(id, 10);
+              idFallback = Number.isNaN(idNum) ? null : idNum;
+            }
 
             await memberService.saveMember(guildId, interaction.user.id, nomeInGameFallback, idFallback, nomeFormatadoAtual || interaction.member.displayName);
             await memberService.approveMember(guildId, interaction.user.id);
