@@ -1,4 +1,8 @@
 require('dotenv').config();
+
+// Teste de deploy
+require('./src/test-deploy');
+
 const fs = require('fs');
 const path = require('path');
 const { Client, GatewayIntentBits, Collection } = require('discord.js');
