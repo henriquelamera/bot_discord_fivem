@@ -292,6 +292,36 @@ registerSelectMenu('select_canal_farm_canal_bau', async (interaction) => {
   }
 });
 
+// Handler para select_cargos_bot (crítico pois salva configuração)
+registerSelectMenu('select_cargos_bot', async (interaction) => {
+  try {
+    const cargoIds = interaction.values;
+
+    const config = await serverService.getConfig(interaction.guild.id);
+    config.cargos_disponiveis = cargoIds;
+    await serverService.saveConfig(interaction.guild.id, config);
+
+    // Pega nomes dos cargos com segurança (evita null reference)
+    const cargosNomes = cargoIds
+      .map(id => {
+        const role = interaction.guild.roles.cache.get(id);
+        return role ? role.name : `[Cargo deletado: ${id}]`;
+      })
+      .join(', ');
+
+    await interaction.reply({
+      content: `✅ Cargos do bot configurados!\n**Cargos selecionados:** ${cargosNomes}`,
+      ephemeral: true,
+    });
+  } catch (error) {
+    console.error('Erro ao configurar cargos do bot:', error);
+    await interaction.reply({
+      content: `❌ Erro ao salvar cargos: ${error.message}`,
+      ephemeral: true,
+    });
+  }
+});
+
 // Padrões para handlers que seguem nome comum
 registerPattern(/^select_.*/, 'selectMenu', async (interaction) => {
   // Fallback para select menus genéricos - será tratado por fallthrough
