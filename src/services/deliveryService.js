@@ -278,6 +278,47 @@ async function getRankingEntregas(guildId, desde = null, limite = null) {
   }
 }
 
+// Conta quantas entregas um membro tem no total (pra confirmar antes de limpar)
+async function contarEntregasPorMembro(guildId, discordId) {
+  try {
+    const result = await pool.query(
+      `SELECT COUNT(*) AS count
+       FROM entregas_farm e
+       JOIN membros m ON e.membro_id = m.id
+       JOIN servidores s ON e.servidor_id = s.id
+       WHERE m.discord_id = $1 AND s.guild_id = $2`,
+      [discordId, guildId]
+    );
+    return parseInt(result.rows[0].count, 10);
+  } catch (error) {
+    console.error('Erro ao contar entregas do membro:', error);
+    throw error;
+  }
+}
+
+// Apaga todas as entregas de um membro (itens_entregues vai junto por
+// ON DELETE CASCADE). Usado pra limpar farm de teste que travou o limite
+// semanal. Retorna quantas entregas foram apagadas.
+async function deletarEntregasPorMembro(guildId, discordId) {
+  try {
+    const result = await pool.query(
+      `DELETE FROM entregas_farm
+       WHERE id IN (
+         SELECT e.id FROM entregas_farm e
+         JOIN membros m ON e.membro_id = m.id
+         JOIN servidores s ON e.servidor_id = s.id
+         WHERE m.discord_id = $1 AND s.guild_id = $2
+       )
+       RETURNING id`,
+      [discordId, guildId]
+    );
+    return result.rows.length;
+  } catch (error) {
+    console.error('Erro ao deletar entregas do membro:', error);
+    throw error;
+  }
+}
+
 // Pegar todas as entregas e detalhes completos
 async function getDeliveryWithItems(entregaId) {
   try {
@@ -307,5 +348,7 @@ module.exports = {
   getEstatisticasEntregas,
   getRankingEntregas,
   getTotaisPorItem,
+  contarEntregasPorMembro,
+  deletarEntregasPorMembro,
   inicioDaSemanaAtual,
 };

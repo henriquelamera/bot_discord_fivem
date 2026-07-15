@@ -1157,6 +1157,54 @@ module.exports = {
         }
       }
 
+      if (interaction.customId === 'modal_limpar_farm_membro') {
+        const nomeMembroTexto = interaction.fields.getTextInputValue('nome_membro_limpar');
+
+        try {
+          const membroId = extrairIdMembro(nomeMembroTexto);
+          if (!membroId) {
+            return await interaction.reply({
+              content: '❌ Não consegui identificar o membro. Use **@** pra marcar (deixa o Discord autocompletar) ou cole o ID da pessoa.',
+              ephemeral: true,
+            });
+          }
+
+          const totalEntregas = await deliveryService.contarEntregasPorMembro(interaction.guild.id, membroId);
+
+          if (totalEntregas === 0) {
+            return await interaction.reply({
+              content: `❌ <@${membroId}> não tem nenhuma entrega de farm registrada.`,
+              ephemeral: true,
+            });
+          }
+
+          const { ButtonBuilder, ButtonStyle } = require('discord.js');
+          const botaoConfirmar = new ButtonBuilder()
+            .setCustomId(`confirmar_limpar_farm_membro_${membroId}`)
+            .setLabel('✅ Sim, apagar tudo')
+            .setStyle(ButtonStyle.Danger);
+
+          const botaoCancelar = new ButtonBuilder()
+            .setCustomId('cancelar_limpar_farm_membro')
+            .setLabel('❌ Não, manter')
+            .setStyle(ButtonStyle.Secondary);
+
+          const row = new ActionRowBuilder().addComponents(botaoConfirmar, botaoCancelar);
+
+          await interaction.reply({
+            content: `⚠️ **ATENÇÃO!**\n\n<@${membroId}> tem **${totalEntregas}** entrega(s) de farm registrada(s) (aprovadas, pendentes e recusadas).\n\nIsso vai **apagar permanentemente** todo o histórico de entregas dessa pessoa (inclusive pagamentos já registrados) e zerar o limite semanal dela.\n\n**Tem certeza que deseja continuar?**`,
+            components: [row],
+            ephemeral: true,
+          });
+        } catch (err) {
+          console.error(err);
+          await interaction.reply({
+            content: `❌ Erro ao buscar entregas do membro: ${err.message}`,
+            ephemeral: true,
+          });
+        }
+      }
+
       if (interaction.customId === 'modal_cadastro_item') {
         const nomesInput = interaction.fields.getTextInputValue('nome_item');
         const descricaoItem = interaction.fields.getTextInputValue('descricao_item') || '';
@@ -1941,6 +1989,11 @@ module.exports = {
               label: 'Canal de Gerenciamento',
               description: 'Canal onde o painel de estatísticas é publicado',
               value: 'farm_canal_gerenciamento',
+            },
+            {
+              label: 'Limpar Farm de um Membro',
+              description: 'Apaga todas as entregas de uma pessoa (ex: dados de teste)',
+              value: 'farm_limpar_membro',
             }
           );
 
@@ -3552,6 +3605,36 @@ module.exports = {
             components: [row],
             ephemeral: true,
           });
+        }
+
+        if (valor === 'farm_limpar_membro') {
+          const config = await serverService.getConfig(interaction.guild.id);
+          const cargoAprovadoresIds = config.farm?.cargo_pagamento || [];
+          const temPermissao = cargoAprovadoresIds.length === 0 ||
+            interaction.member.roles.cache.some(role => cargoAprovadoresIds.includes(role.id)) ||
+            interaction.memberPermissions.has('ADMINISTRATOR');
+
+          if (!temPermissao) {
+            return await interaction.reply({
+              content: '❌ Você não tem permissão para limpar farm de membros!',
+              ephemeral: true,
+            });
+          }
+
+          const modal = new ModalBuilder()
+            .setCustomId('modal_limpar_farm_membro')
+            .setTitle('🗑️ Limpar Farm de um Membro');
+
+          const nomeInput = new TextInputBuilder()
+            .setCustomId('nome_membro_limpar')
+            .setLabel('Nome ou Menção do Membro')
+            .setStyle(TextInputStyle.Short)
+            .setPlaceholder('Use @ pra marcar (autocomplete) ou cole o ID')
+            .setRequired(true);
+
+          modal.addComponents(new ActionRowBuilder().addComponents(nomeInput));
+
+          await interaction.showModal(modal);
         }
 
         if (valor === 'farm_marcar_sem_bau') {
@@ -6068,6 +6151,45 @@ module.exports = {
             ephemeral: true,
           });
         }
+      }
+
+      if (interaction.customId.startsWith('confirmar_limpar_farm_membro_')) {
+        const membroId = interaction.customId.replace('confirmar_limpar_farm_membro_', '');
+
+        try {
+          const totalDeletado = await deliveryService.deletarEntregasPorMembro(interaction.guild.id, membroId);
+
+          const config = await serverService.getConfig(interaction.guild.id);
+          if (config.farm?.entregas) {
+            config.farm.entregas = config.farm.entregas.filter((e) => e.usuario_id !== membroId);
+            await serverService.saveConfig(interaction.guild.id, config);
+          }
+
+          await serverService.logAction(
+            interaction.guild.id,
+            interaction.user.id,
+            'limpar_farm_membro',
+            `${totalDeletado} entrega(s) de <@${membroId}> apagadas`
+          );
+
+          await interaction.update({
+            content: `✅ **${totalDeletado}** entrega(s) de <@${membroId}> apagada(s). O limite semanal dela foi zerado.`,
+            components: [],
+          });
+        } catch (err) {
+          console.error(err);
+          await interaction.reply({
+            content: `❌ Erro ao limpar farm: ${err.message}`,
+            ephemeral: true,
+          });
+        }
+      }
+
+      if (interaction.customId === 'cancelar_limpar_farm_membro') {
+        await interaction.update({
+          content: '❌ Operação cancelada. Nada foi apagado.',
+          components: [],
+        });
       }
 
       // ===== PAINEL DE GERENCIAMENTO DE FARM =====
