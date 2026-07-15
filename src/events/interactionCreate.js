@@ -8,6 +8,11 @@ const { dispatchButton, dispatchSelectMenu, dispatchModal } = require('../utils/
 // Carregar todos os handlers registrados
 require('../handlers/registerAllHandlers');
 
+// Formata um valor em Real (ex: 18000 -> "R$ 18.000,00")
+function formatarMoeda(valor) {
+  return `R$ ${valor.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
 // Calcula o valor a pagar de uma entrega (apenas itens elegíveis a pagamento)
 // e publica o lançamento no canal de controle de pagamento, se configurado.
 async function processarPagamentoFarm(config, guild, entrega, aprovadorId) {
@@ -53,7 +58,7 @@ async function processarPagamentoFarm(config, guild, entrega, aprovadorId) {
   const { ButtonBuilder, ButtonStyle } = require('discord.js');
 
   const listaItens = itensPagos
-    .map((i) => `**${i.nome}:** ${i.quantidade} x R$ ${i.valor_unidade.toFixed(2)} = R$ ${i.subtotal.toFixed(2)}`)
+    .map((i) => `**${i.nome}:** ${i.quantidade} x ${formatarMoeda(i.valor_unidade)} = ${formatarMoeda(i.subtotal)}`)
     .join('\n');
 
   const embed = new EmbedBuilder()
@@ -63,7 +68,7 @@ async function processarPagamentoFarm(config, guild, entrega, aprovadorId) {
       { name: '👤 Farmou', value: `<@${entrega.usuario_id}> (${entrega.usuario_tag})`, inline: false },
       { name: '✅ Aprovado por', value: `<@${aprovadorId}>`, inline: false },
       { name: '📦 Itens', value: listaItens, inline: false },
-      { name: '💵 Valor Total', value: `R$ ${valorTotal.toFixed(2)}`, inline: false }
+      { name: '💵 Valor Total', value: formatarMoeda(valorTotal), inline: false }
     )
     .setTimestamp();
 
@@ -900,7 +905,7 @@ module.exports = {
                 valor_unidade: valor,
                 data_atualizacao: new Date().toISOString(),
               };
-              pagamentosAdicionados.push(`${item.nome}: R$ ${valor.toFixed(2)}/unidade`);
+              pagamentosAdicionados.push(`${item.nome}: ${formatarMoeda(valor)}/unidade`);
             }
           } else if (config.farm.pagamentos[item.id]) {
             // Campo deixado em branco: item deixa de ser elegível a pagamento
@@ -2847,7 +2852,7 @@ module.exports = {
 
           if (temPagamentosConfigurados) {
             const pagamentosAtuais = Object.entries(pagamentosExistentes)
-              .map(([id, pag]) => `- ${pag.nome}: R$ ${pag.valor_unidade.toFixed(2)}/unidade`)
+              .map(([id, pag]) => `- ${pag.nome}: ${formatarMoeda(pag.valor_unidade)}/unidade`)
               .join('\n');
 
             const { ButtonBuilder, ButtonStyle } = require('discord.js');
@@ -4634,7 +4639,7 @@ module.exports = {
 
             let respostaGerente = `✅ Entrega de ${membro.user.tag} aprovada!\n\n(Gerente - isento do sistema de ADV)`;
             if (infoPagamento?.valor_total > 0) {
-              respostaGerente += `\n\n💰 **Valor a pagar:** R$ ${infoPagamento.valor_total.toFixed(2)} (lançado no canal de controle de pagamento)`;
+              respostaGerente += `\n\n💰 **Valor a pagar:** ${formatarMoeda(infoPagamento.valor_total)} (lançado no canal de controle de pagamento)`;
             }
 
             await interaction.reply({
@@ -4648,7 +4653,7 @@ module.exports = {
             try {
               let dmGerente = `✅ Sua entrega de farm foi **aprovada**! Parabéns!`;
               if (infoPagamento?.valor_total > 0) {
-                dmGerente += `\n\n💰 **Valor a pagar:** R$ ${infoPagamento.valor_total.toFixed(2)} (aguarde o pagamento ser registrado)`;
+                dmGerente += `\n\n💰 **Valor a pagar:** ${formatarMoeda(infoPagamento.valor_total)} (aguarde o pagamento ser registrado)`;
               }
               await membro.user.send({
                 content: dmGerente,
@@ -4745,7 +4750,7 @@ module.exports = {
             }
           }
           if (infoPagamento?.valor_total > 0) {
-            mensagemFeedback += `\n\n💰 **Valor a pagar:** R$ ${infoPagamento.valor_total.toFixed(2)} (lançado no canal de controle de pagamento)`;
+            mensagemFeedback += `\n\n💰 **Valor a pagar:** ${formatarMoeda(infoPagamento.valor_total)} (lançado no canal de controle de pagamento)`;
           }
 
           await interaction.reply({
@@ -4772,7 +4777,7 @@ module.exports = {
               }
             }
             if (infoPagamento?.valor_total > 0) {
-              dmConteudo += `\n\n💰 **Valor a pagar:** R$ ${infoPagamento.valor_total.toFixed(2)} (aguarde o pagamento ser registrado)`;
+              dmConteudo += `\n\n💰 **Valor a pagar:** ${formatarMoeda(infoPagamento.valor_total)} (aguarde o pagamento ser registrado)`;
             }
 
             await membro.user.send({
@@ -4909,7 +4914,7 @@ module.exports = {
           } catch (err) {
             console.warn('Não foi possível atualizar mensagem de pagamento:', err.message);
             await interaction.reply({
-              content: `✅ Pagamento de R$ ${entrega.pagamento.valor_total.toFixed(2)} registrado!`,
+              content: `✅ Pagamento de ${formatarMoeda(entrega.pagamento.valor_total)} registrado!`,
               ephemeral: true,
             });
           }
@@ -4918,7 +4923,7 @@ module.exports = {
           try {
             const membro = await interaction.guild.members.fetch(entrega.usuario_id);
             await membro.user.send({
-              content: `💰 Seu farm foi **pago**! Valor: R$ ${entrega.pagamento.valor_total.toFixed(2)}`,
+              content: `💰 Seu farm foi **pago**! Valor: ${formatarMoeda(entrega.pagamento.valor_total)}`,
             });
           } catch (err) {
             console.warn('Não foi possível notificar usuário sobre pagamento:', err.message);
