@@ -152,9 +152,9 @@ async function criarCanalPrivadoFarm(guild, config, userId, categoriaBauId, embe
   const categoria = guild.channels.cache.get(categoriaBauId);
   if (!categoria || categoria.type !== 4) return null; // GuildCategory
 
-  const user = await guild.client.users.fetch(userId);
+  const membro = await guild.members.fetch(userId);
   const nomeFormatado = config.membros_info?.[userId]?.nomeFormatado;
-  const nomeCanal = (nomeFormatado || user.username)
+  const nomeCanal = (nomeFormatado || membro.displayName)
     .toLowerCase()
     .replace(/[^a-z0-9-|]/g, '-')
     .replace(/--+/g, '-')
@@ -190,7 +190,7 @@ async function criarCanalPrivadoFarm(guild, config, userId, categoriaBauId, embe
     components: [row],
   });
 
-  console.log(`✅ Canal de farm criado para ${user.tag}: #${nomeCanal}`);
+  console.log(`✅ Canal de farm criado para ${membro.user.tag}: #${nomeCanal}`);
   return canalPessoa;
 }
 
