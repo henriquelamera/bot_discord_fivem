@@ -6,7 +6,7 @@ const advService = require('../services/advService');
 const { dispatchButton, dispatchSelectMenu, dispatchModal } = require('../utils/handlerRegistry');
 const { marcarAguardandoImagem, desmarcarAguardandoImagem } = require('../utils/entregaMetaTracker');
 const { formatarMoeda, calcularPagamentosPorMembro } = require('../utils/farmPagamentos');
-const { postarFechamentoSemanal } = require('../utils/fechamentoSemanal');
+const { postarFechamentoSemanal, removerEntregaDosFechamentosPendentes } = require('../utils/fechamentoSemanal');
 
 // Carregar todos os handlers registrados
 require('../handlers/registerAllHandlers');
@@ -99,11 +99,13 @@ async function atualizarHistoricoEntregaFarm(guild, entrega, cor, statusTexto, c
 }
 
 // Marca uma entrega como paga: grava no banco, atualiza o histórico no
-// canal da pessoa e o card original no canal de controle de pagamento
+// canal da pessoa, o card original no canal de controle de pagamento
 // (busca pelo canal_id/mensagem_id salvos, então funciona mesmo quando
-// quem chama não é o clique direto naquele card - ex: fechamento semanal).
+// quem chama não é o clique direto naquele card - ex: fechamento semanal)
+// e também tira essa entrega de qualquer card de fechamento pendente que
+// ainda a referencie, pra nunca ficar com valor desatualizado.
 // Não notifica o usuário - quem chama decide como (uma entrega ou várias).
-async function marcarEntregaComoPaga(guild, entrega, pagoPorId) {
+async function marcarEntregaComoPaga(guild, config, entrega, pagoPorId) {
   entrega.pagamento.status = 'pago';
   entrega.pagamento.pago_por_id = pagoPorId;
   entrega.pagamento.data_pagamento = new Date().toISOString();
@@ -137,6 +139,9 @@ async function marcarEntregaComoPaga(guild, entrega, pagoPorId) {
       console.warn('Não foi possível atualizar card original de pagamento:', err.message);
     }
   }
+
+  await removerEntregaDosFechamentosPendentes(guild, config, entrega);
+  await serverService.saveConfig(guild.id, config);
 }
 
 // Monta as opções de tipo de ADV disponíveis pra selecionar, só com os
@@ -5796,7 +5801,7 @@ module.exports = {
         }
 
         try {
-          await marcarEntregaComoPaga(interaction.guild, entrega, interaction.user.id);
+          await marcarEntregaComoPaga(interaction.guild, config, entrega, interaction.user.id);
 
           await interaction.reply({
             content: `✅ Pagamento de ${formatarMoeda(entrega.pagamento.valor_total)} registrado!`,
@@ -5857,11 +5862,14 @@ module.exports = {
         try {
           let totalPago = 0;
 
-          for (const entregaId of lote.entregaIds) {
+          // Copia a lista antes de iterar - marcarEntregaComoPaga tira cada
+          // entrega desse mesmo lote conforme processa, e mexer no array
+          // original enquanto percorre ele pularia itens
+          for (const entregaId of [...lote.entregaIds]) {
             const entrega = config.farm?.entregas?.find((e) => String(e.id) === String(entregaId));
             if (!entrega || !entrega.pagamento || entrega.pagamento.status === 'pago') continue;
 
-            await marcarEntregaComoPaga(interaction.guild, entrega, interaction.user.id);
+            await marcarEntregaComoPaga(interaction.guild, config, entrega, interaction.user.id);
             totalPago += entrega.pagamento.valor_total;
           }
 

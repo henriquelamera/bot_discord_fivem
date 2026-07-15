@@ -53,7 +53,9 @@ async function postarFechamentoSemanal(guild, config) {
 
     const row = new ActionRowBuilder().addComponents(botaoConfirmar);
 
-    await canal.send({ embeds: [embedCard], components: [row] });
+    const mensagemCard = await canal.send({ embeds: [embedCard], components: [row] });
+    config.farm.fechamentos_pendentes[batchId].canal_id = canal.id;
+    config.farm.fechamentos_pendentes[batchId].mensagem_id = mensagemCard.id;
   }
 
   await serverService.saveConfig(guild.id, config);
@@ -61,4 +63,48 @@ async function postarFechamentoSemanal(guild, config) {
   return { posted: true, quantidade: pendentes.length, totalGeral, canalId };
 }
 
-module.exports = { postarFechamentoSemanal };
+// Quando uma entrega é marcada como paga (individualmente ou em lote), tira
+// ela de qualquer card de fechamento pendente que ainda a referencie e
+// atualiza o card (valor + lista de entregas) - ou marca "tudo pago" se
+// não sobrar nenhuma. Só mexe em `config` na memória, quem chama salva.
+async function removerEntregaDosFechamentosPendentes(guild, config, entrega) {
+  const fechamentos = config.farm?.fechamentos_pendentes;
+  if (!fechamentos) return;
+
+  for (const [batchId, lote] of Object.entries(fechamentos)) {
+    const idx = lote.entregaIds.findIndex((id) => String(id) === String(entrega.id));
+    if (idx === -1) continue;
+
+    lote.entregaIds.splice(idx, 1);
+    lote.valorTotal -= entrega.pagamento.valor_total || 0;
+
+    if (!lote.canal_id || !lote.mensagem_id) continue;
+
+    try {
+      const canal = guild.channels.cache.get(lote.canal_id);
+      const msg = await canal?.messages.fetch(lote.mensagem_id);
+      if (!msg) continue;
+
+      const embedAtual = msg.embeds[0];
+
+      if (lote.entregaIds.length === 0) {
+        const embedPago = EmbedBuilder.from(embedAtual)
+          .setColor(0x2ecc71)
+          .setTitle('✅ Tudo Pago');
+        await msg.edit({ embeds: [embedPago], components: [] });
+        delete fechamentos[batchId];
+      } else {
+        const embedAtualizado = EmbedBuilder.from(embedAtual).setFields(
+          { name: '👤 Farmou', value: `<@${lote.discordId}>`, inline: false },
+          { name: '🧾 Entregas Incluídas', value: lote.entregaIds.map((id) => `#${id}`).join(', '), inline: false },
+          { name: '💵 Valor Total', value: formatarMoeda(lote.valorTotal), inline: false }
+        );
+        await msg.edit({ embeds: [embedAtualizado] });
+      }
+    } catch (err) {
+      console.warn('Não foi possível atualizar card de fechamento após pagamento:', err.message);
+    }
+  }
+}
+
+module.exports = { postarFechamentoSemanal, removerEntregaDosFechamentosPendentes };
