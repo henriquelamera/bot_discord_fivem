@@ -494,7 +494,7 @@ module.exports = {
 
         await interaction.reply({
           content: texto
-            ? `✅ Mensagem de saída configurada!\n\n**Preview:** ${texto.replace(/\{usuario\}/g, interaction.user.tag).replace(/\{servidor\}/g, interaction.guild.name)}`
+            ? `✅ Mensagem de saída configurada!\n\n**Preview:** ${texto.replace(/\{usuario\}/g, interaction.member.displayName).replace(/\{servidor\}/g, interaction.guild.name)}`
             : '✅ Mensagem de saída removida (voltou pro padrão).',
           ephemeral: true,
         });

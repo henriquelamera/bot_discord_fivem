@@ -11,8 +11,8 @@ module.exports = {
     if (canalSaidasId) {
       const canalSaidas = member.guild.channels.cache.get(canalSaidasId);
       if (canalSaidas) {
-        const mensagemSaida = (config.boas_vindas?.mensagem_saida || `${member.user.tag} saiu do servidor.`)
-          .replace(/\{usuario\}/g, member.user.tag)
+        const mensagemSaida = (config.boas_vindas?.mensagem_saida || `${member.displayName} saiu do servidor.`)
+          .replace(/\{usuario\}/g, member.displayName)
           .replace(/\{servidor\}/g, member.guild.name);
 
         const embed = new EmbedBuilder()
