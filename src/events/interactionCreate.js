@@ -1293,6 +1293,11 @@ module.exports = {
               label: 'Canal de Controle de Pagamento',
               description: 'Canal onde gerentes controlam pagamentos aprovados',
               value: 'farm_canal_pagamento',
+            },
+            {
+              label: 'Marcar Sem Baú Aberto em Massa',
+              description: 'Aplica o cargo a quem é Morador+ e não abriu o baú',
+              value: 'farm_marcar_sem_bau',
             }
           );
 
@@ -1417,6 +1422,11 @@ module.exports = {
               label: 'Cargo Baú Aberto',
               description: 'Cargo dado junto ao Morador',
               value: 'cargo_bau_aberto',
+            },
+            {
+              label: 'Cargo Sem Baú Aberto',
+              description: 'Marca quem ainda não abriu o baú',
+              value: 'cargo_bau_nao_aberto',
             }
           );
 
@@ -1754,17 +1764,26 @@ module.exports = {
           });
         }
 
+        const customIdsPorValor = {
+          cargo_morador: 'select_cargo_morador',
+          cargo_bau_aberto: 'select_cargo_bau_aberto',
+          cargo_bau_nao_aberto: 'select_cargo_bau_nao_aberto',
+        };
+        const titulosPorValor = {
+          cargo_morador: 'Cargo Morador',
+          cargo_bau_aberto: 'Cargo Baú Aberto',
+          cargo_bau_nao_aberto: 'Cargo Sem Baú Aberto',
+        };
+
         const selectMenu = new StringSelectMenuBuilder()
-          .setCustomId(valor === 'cargo_morador' ? 'select_cargo_morador' : 'select_cargo_bau_aberto')
+          .setCustomId(customIdsPorValor[valor])
           .setPlaceholder('Selecione o cargo...')
           .addOptions(cargos.slice(0, 25));
 
         const row = new ActionRowBuilder().addComponents(selectMenu);
 
-        const titulo = valor === 'cargo_morador' ? 'Cargo Morador' : 'Cargo Baú Aberto';
-
         await interaction.reply({
-          content: `**${titulo}**\n\nSelecione qual cargo será atribuído:`,
+          content: `**${titulosPorValor[valor]}**\n\nSelecione qual cargo será atribuído:`,
           components: [row],
           ephemeral: true,
         });
@@ -1966,22 +1985,23 @@ module.exports = {
         });
       }
 
-      if (interaction.customId === 'select_cargo_morador' || interaction.customId === 'select_cargo_bau_aberto') {
+      if (interaction.customId === 'select_cargo_morador' ||
+          interaction.customId === 'select_cargo_bau_aberto' ||
+          interaction.customId === 'select_cargo_bau_nao_aberto') {
         const cargoId = interaction.values[0];
-        const isMorador = interaction.customId === 'select_cargo_morador';
+
+        const camposPorCustomId = {
+          select_cargo_morador: { campo: 'cargo_morador_id', titulo: 'Morador' },
+          select_cargo_bau_aberto: { campo: 'cargo_bau_aberto_id', titulo: 'Baú Aberto' },
+          select_cargo_bau_nao_aberto: { campo: 'cargo_bau_nao_aberto_id', titulo: 'Sem Baú Aberto' },
+        };
+        const { campo, titulo } = camposPorCustomId[interaction.customId];
 
         const config = await serverService.getConfig(interaction.guild.id);
-
-        if (isMorador) {
-          config.cargo_morador_id = cargoId;
-        } else {
-          config.cargo_bau_aberto_id = cargoId;
-        }
-
+        config[campo] = cargoId;
         await serverService.saveConfig(interaction.guild.id, config);
 
         const cargo = interaction.guild.roles.cache.get(cargoId);
-        const titulo = isMorador ? 'Morador' : 'Baú Aberto';
 
         await interaction.reply({
           content: `✅ Cargo ${titulo} configurado!\n**Cargo:** ${cargo.name}`,
@@ -2600,6 +2620,72 @@ module.exports = {
             components: [row],
             ephemeral: true,
           });
+        }
+
+        if (valor === 'farm_marcar_sem_bau') {
+          const config = await serverService.getConfig(interaction.guild.id);
+          const cargoBauAbertoId = config.cargo_bau_aberto_id;
+          const cargoBauNaoAbertoId = config.cargo_bau_nao_aberto_id;
+          const cargoMoradorId = config.cargo_morador_id;
+          const cargoMembroId = config.cargo_membro_id;
+          const cargoGerenteId = config.cargo_gerente_id;
+
+          if (!cargoBauNaoAbertoId) {
+            return await interaction.reply({
+              content: '❌ Cargo "Sem Baú Aberto" não foi configurado. Configure em **Cargos do Sistema**.',
+              ephemeral: true,
+            });
+          }
+
+          if (!cargoBauAbertoId || (!cargoMoradorId && !cargoMembroId && !cargoGerenteId)) {
+            return await interaction.reply({
+              content: '❌ Cargos do sistema (Baú Aberto / Morador / Membro / Gerente) não foram configurados.',
+              ephemeral: true,
+            });
+          }
+
+          const cargoBauNaoAberto = interaction.guild.roles.cache.get(cargoBauNaoAbertoId);
+          if (!cargoBauNaoAberto) {
+            return await interaction.reply({
+              content: '❌ Cargo "Sem Baú Aberto" não encontrado no servidor.',
+              ephemeral: true,
+            });
+          }
+
+          await interaction.deferReply({ ephemeral: true });
+
+          try {
+            const membros = await interaction.guild.members.fetch();
+            let marcados = 0;
+
+            for (const membro of membros.values()) {
+              const temHierarquiaMoradorOuMais =
+                (cargoMoradorId && membro.roles.cache.has(cargoMoradorId)) ||
+                (cargoMembroId && membro.roles.cache.has(cargoMembroId)) ||
+                (cargoGerenteId && membro.roles.cache.has(cargoGerenteId));
+
+              const jaTemBauAberto = membro.roles.cache.has(cargoBauAbertoId);
+              const jaTemSemBau = membro.roles.cache.has(cargoBauNaoAbertoId);
+
+              if (temHierarquiaMoradorOuMais && !jaTemBauAberto && !jaTemSemBau) {
+                try {
+                  await membro.roles.add(cargoBauNaoAbertoId);
+                  marcados++;
+                } catch (err) {
+                  console.error(`Erro ao adicionar cargo Sem Baú a ${membro.user.tag}:`, err.message);
+                }
+              }
+            }
+
+            await interaction.editReply({
+              content: `✅ **${marcados}** membro(s) marcado(s) com o cargo **${cargoBauNaoAberto.name}**!`,
+            });
+          } catch (err) {
+            console.error('Erro ao aplicar cargo sem baú em massa:', err);
+            await interaction.editReply({
+              content: `❌ Erro ao processar membros: ${err.message}`,
+            });
+          }
         }
       }
 
@@ -3837,6 +3923,7 @@ module.exports = {
 
           const categoria_bau_id = config.farm?.categoria_bau_id;
           const cargo_bau_aberto_id = config.cargo_bau_aberto_id;
+          const cargo_bau_nao_aberto_id = config.cargo_bau_nao_aberto_id;
           const cargo_morador_id = config.cargo_morador_id;
           const cargo_membro_id = config.cargo_membro_id;
           const cargo_gerente_id = config.cargo_gerente_id;
@@ -3924,6 +4011,12 @@ module.exports = {
             if (cargoRemover.size > 0) {
               await interaction.member.roles.remove([...cargoRemover.keys()]);
               console.log(`✅ Cargo(s) de visitante removido para ${interaction.user.tag}`);
+            }
+
+            // Remover marcação de "Sem Baú Aberto", se tiver
+            if (cargo_bau_nao_aberto_id && interaction.member.roles.cache.has(cargo_bau_nao_aberto_id)) {
+              await interaction.member.roles.remove(cargo_bau_nao_aberto_id);
+              console.log(`✅ Cargo "Sem Baú Aberto" removido para ${interaction.user.tag}`);
             }
 
             // Log da ação no banco
