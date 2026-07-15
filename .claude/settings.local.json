@@ -34,7 +34,15 @@
       "Bash(git commit -m 'fix: ensure dispatcher returns true when handler executes successfully *)",
       "Bash(git commit -m 'fix: register primary select menu handlers to eliminate second timeout *)",
       "Bash(git commit -m 'fix: register select_canal_* handlers to save config on final selection *)",
-      "Bash(git commit -m 'fix: remove simplified button handlers that were overriding correct implementations *)"
+      "Bash(git commit -m 'fix: remove simplified button handlers that were overriding correct implementations *)",
+      "Bash(git commit -m 'fix: add safe select_cargos_bot handler with null checking *)",
+      "Bash(git commit -m 'fix: disable complex select menu dispatcher - use legacy code *)",
+      "Bash(rm -f .claude/settings.local.json.tmp*)",
+      "Bash(git commit -m 'feat: add image/GIF support to registration, farm, and ADV banners *)",
+      "Bash(git commit -m 'feat: add dedicated modal handlers for configuring banners *)",
+      "Bash(git commit -m 'fix: use deferReply to prevent timeout on publish commands *)",
+      "Bash(git commit -m 'add: debug command to show full config from database *)",
+      "Bash(git push *)"
     ]
   }
 }

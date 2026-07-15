@@ -16,6 +16,9 @@ module.exports = {
     const config = await serverService.getConfig(interaction.guild.id);
     const canalRegistroId = config.boas_vindas?.canal_registro_id;
 
+    // DEBUG
+    console.log('📋 Config Boas-Vindas:', JSON.stringify(config.boas_vindas, null, 2));
+
     // Criar embed com imagem/GIF se configurado
     const embed = new EmbedBuilder()
       .setTitle('📋 Registro')
@@ -25,7 +28,12 @@ module.exports = {
     // Adicionar imagem/GIF se existir na config
     if (config.boas_vindas?.imagem_url || config.boas_vindas?.banner_url) {
       const imageUrl = config.boas_vindas.imagem_url || config.boas_vindas.banner_url;
+      console.log('✅ Adicionando imagem:', imageUrl);
       embed.setImage(imageUrl);
+    } else {
+      console.log('❌ Nenhuma imagem configurada');
+      console.log('   imagem_url:', config.boas_vindas?.imagem_url);
+      console.log('   banner_url:', config.boas_vindas?.banner_url);
     }
 
     const row = rowFactory.registro();
