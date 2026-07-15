@@ -13,6 +13,35 @@ function formatarMoeda(valor) {
   return `R$ ${valor.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
+// Extrai o ID de um membro a partir de texto digitado (menção "<@id>" gerada
+// pelo autocomplete do "@" do Discord, ou o ID numérico colado direto).
+// Retorna null se não conseguir identificar - texto solto (nome/apelido)
+// não é resolvido, pra evitar aplicar ADV na pessoa errada.
+function extrairIdMembro(texto) {
+  const match = texto.match(/<@!?(\d+)>/);
+  if (match) return match[1];
+
+  const limpo = texto.trim().replace(/^@/, '');
+  if (/^\d{15,21}$/.test(limpo)) return limpo;
+
+  return null;
+}
+
+// Monta as opções de tipo de ADV disponíveis pra selecionar, só com os
+// cargos que realmente foram configurados (Cargos de Farm > ADV Farm 1/2)
+function opcoesAdvConfiguradas(config, guild) {
+  const opcoes = [];
+  if (config.farm?.cargo_adv_1) {
+    const role = guild.roles.cache.get(config.farm.cargo_adv_1);
+    opcoes.push({ label: `ADV 1${role ? ' - ' + role.name : ''}`, value: '1' });
+  }
+  if (config.farm?.cargo_adv_2) {
+    const role = guild.roles.cache.get(config.farm.cargo_adv_2);
+    opcoes.push({ label: `ADV 2${role ? ' - ' + role.name : ''}`, value: '2' });
+  }
+  return opcoes;
+}
+
 // Calcula o valor a pagar de uma entrega (apenas itens elegíveis a pagamento)
 // e publica o lançamento no canal de controle de pagamento, se configurado.
 async function processarPagamentoFarm(config, guild, entrega, aprovadorId) {
@@ -749,23 +778,29 @@ module.exports = {
         }
       }
 
-      if (interaction.customId === 'modal_registrar_adv') {
+      if (interaction.customId.startsWith('modal_registrar_adv_')) {
+        const tipoAdv = parseInt(interaction.customId.replace('modal_registrar_adv_', ''), 10);
         const config = await serverService.getConfig(interaction.guild.id);
-        const guildId = interaction.guild.id;
-        const nomeMembro = interaction.fields.getTextInputValue('nome_membro');
+        const nomeMembroTexto = interaction.fields.getTextInputValue('nome_membro');
         const motivoAdv = interaction.fields.getTextInputValue('motivo_adv');
-        const tipoAdv = interaction.fields.getTextInputValue('tipo_adv');
 
         try {
-          // Validar tipo de ADV
-          if (tipoAdv !== '1' && tipoAdv !== '2') {
+          const membroId = extrairIdMembro(nomeMembroTexto);
+          if (!membroId) {
             return await interaction.reply({
-              content: '❌ Tipo de ADV deve ser 1 ou 2!',
+              content: '❌ Não consegui identificar o membro. Use **@** pra marcar (deixa o Discord autocompletar) ou cole o ID da pessoa.',
               ephemeral: true,
             });
           }
 
-          // Registrar ADV no banco (será enviado para aprovação)
+          const membroAlvo = await interaction.guild.members.fetch(membroId).catch(() => null);
+          if (!membroAlvo) {
+            return await interaction.reply({
+              content: '❌ Membro não encontrado no servidor.',
+              ephemeral: true,
+            });
+          }
+
           const canalAprovacaoAdvId = config.farm?.canal_aprovacao_adv;
           if (!canalAprovacaoAdvId) {
             return await interaction.reply({
@@ -785,12 +820,12 @@ module.exports = {
           // Criar embed para aprovação
           const advId = Date.now().toString();
           const embed = new EmbedBuilder()
-            .setTitle('⚠️ Nova Solicitação de ADV')
+            .setTitle(`⚠️ Nova Solicitação de ADV ${tipoAdv}`)
             .setColor(0xFF6B6B)
             .addFields(
               { name: '👤 Registrado por', value: interaction.user.tag, inline: true },
               { name: '⏰ Data', value: new Date().toLocaleDateString('pt-BR'), inline: true },
-              { name: '🎯 Membro', value: nomeMembro, inline: true },
+              { name: '🎯 Membro', value: `<@${membroAlvo.id}>`, inline: true },
               { name: '⚠️ Tipo ADV', value: `ADV ${tipoAdv}`, inline: true },
               { name: '📝 Motivo', value: motivoAdv, inline: false }
             );
@@ -810,15 +845,14 @@ module.exports = {
           // Salvar info de ADV pendente
           if (!config.farm.advs_pendentes) config.farm.advs_pendentes = {};
           config.farm.advs_pendentes[advId] = {
-            nomeMembro,
-            tipoAdv: parseInt(tipoAdv),
+            membroId: membroAlvo.id,
+            tipoAdv,
             motivo: motivoAdv,
             registradoPor: interaction.user.id,
             registradoPorTag: interaction.user.tag,
             data: new Date().toISOString(),
           };
-          // ADV pendente salvo na config temporariamente até aprovação
-          // TODO: Migrar para DB quando handler de aprovação for implementado
+          await serverService.saveConfig(interaction.guild.id, config);
 
           await canalAprovacao.send({
             embeds: [embed],
@@ -826,7 +860,7 @@ module.exports = {
           });
 
           await interaction.reply({
-            content: `✅ ADV registrado! Aguardando aprovação dos responsáveis.`,
+            content: `✅ ADV registrado para <@${membroAlvo.id}>! Aguardando aprovação dos responsáveis.`,
             ephemeral: true,
           });
         } catch (err) {
@@ -838,17 +872,24 @@ module.exports = {
         }
       }
 
-      if (interaction.customId === 'modal_remover_adv') {
+      if (interaction.customId.startsWith('modal_remover_adv_')) {
+        const tipoAdv = parseInt(interaction.customId.replace('modal_remover_adv_', ''), 10);
         const config = await serverService.getConfig(interaction.guild.id);
-        const guildId = interaction.guild.id;
-        const nomeMembro = interaction.fields.getTextInputValue('nome_membro_remover');
-        const tipoAdv = interaction.fields.getTextInputValue('tipo_adv_remover');
+        const nomeMembroTexto = interaction.fields.getTextInputValue('nome_membro_remover');
 
         try {
-          // Validar tipo de ADV
-          if (tipoAdv !== '1' && tipoAdv !== '2') {
+          const membroId = extrairIdMembro(nomeMembroTexto);
+          if (!membroId) {
             return await interaction.reply({
-              content: '❌ Tipo de ADV deve ser 1 ou 2!',
+              content: '❌ Não consegui identificar o membro. Use **@** pra marcar (deixa o Discord autocompletar) ou cole o ID da pessoa.',
+              ephemeral: true,
+            });
+          }
+
+          const membroAlvo = await interaction.guild.members.fetch(membroId).catch(() => null);
+          if (!membroAlvo) {
+            return await interaction.reply({
+              content: '❌ Membro não encontrado no servidor.',
               ephemeral: true,
             });
           }
@@ -872,12 +913,12 @@ module.exports = {
           // Criar embed para aprovação de remoção
           const advId = Date.now().toString();
           const embed = new EmbedBuilder()
-            .setTitle('✅ Solicitação de Remoção de ADV')
+            .setTitle(`✅ Solicitação de Remoção de ADV ${tipoAdv}`)
             .setColor(0x2ecc71)
             .addFields(
               { name: '👤 Solicitado por', value: interaction.user.tag, inline: true },
               { name: '⏰ Data', value: new Date().toLocaleDateString('pt-BR'), inline: true },
-              { name: '🎯 Membro', value: nomeMembro, inline: true },
+              { name: '🎯 Membro', value: `<@${membroAlvo.id}>`, inline: true },
               { name: '⚠️ ADV a Remover', value: `ADV ${tipoAdv}`, inline: true }
             );
 
@@ -896,14 +937,13 @@ module.exports = {
           // Salvar info de remoção pendente
           if (!config.farm.remocoes_adv_pendentes) config.farm.remocoes_adv_pendentes = {};
           config.farm.remocoes_adv_pendentes[advId] = {
-            nomeMembro,
-            tipoAdv: parseInt(tipoAdv),
+            membroId: membroAlvo.id,
+            tipoAdv,
             solicitadoPor: interaction.user.id,
             solicitadoPorTag: interaction.user.tag,
             data: new Date().toISOString(),
           };
-          // ADV pendente salvo na config temporariamente até aprovação
-          // TODO: Migrar para DB quando handler de aprovação for implementado
+          await serverService.saveConfig(interaction.guild.id, config);
 
           await canalAprovacao.send({
             embeds: [embed],
@@ -911,7 +951,7 @@ module.exports = {
           });
 
           await interaction.reply({
-            content: `✅ Solicitação de remoção enviada! Aguardando aprovação dos responsáveis.`,
+            content: `✅ Solicitação de remoção enviada para <@${membroAlvo.id}>! Aguardando aprovação dos responsáveis.`,
             ephemeral: true,
           });
         } catch (err) {
@@ -1991,6 +2031,54 @@ module.exports = {
       // NOTA: Dispatcher para selectMenus desabilitado pois há muitas variações complexas
       // Apenas os select_canal_* que salvam config estão no dispatcher
       // Tudo o mais usa o código legado que funciona bem
+
+      if (interaction.customId === 'select_tipo_adv_registrar') {
+        const tipoAdv = interaction.values[0];
+
+        const modal = new ModalBuilder()
+          .setCustomId(`modal_registrar_adv_${tipoAdv}`)
+          .setTitle(`⚠️ Registrar ADV ${tipoAdv}`);
+
+        const nomeInput = new TextInputBuilder()
+          .setCustomId('nome_membro')
+          .setLabel('Nome ou Menção do Membro')
+          .setStyle(TextInputStyle.Short)
+          .setPlaceholder('Use @ pra marcar (autocomplete) ou cole o ID')
+          .setRequired(true);
+
+        const motivoInput = new TextInputBuilder()
+          .setCustomId('motivo_adv')
+          .setLabel('Motivo do ADV')
+          .setStyle(TextInputStyle.Paragraph)
+          .setPlaceholder('Digite o motivo da advertência')
+          .setRequired(true);
+
+        modal.addComponents(
+          new ActionRowBuilder().addComponents(nomeInput),
+          new ActionRowBuilder().addComponents(motivoInput)
+        );
+
+        await interaction.showModal(modal);
+      }
+
+      if (interaction.customId === 'select_tipo_adv_remover') {
+        const tipoAdv = interaction.values[0];
+
+        const modal = new ModalBuilder()
+          .setCustomId(`modal_remover_adv_${tipoAdv}`)
+          .setTitle(`✅ Remover ADV ${tipoAdv}`);
+
+        const nomeInput = new TextInputBuilder()
+          .setCustomId('nome_membro_remover')
+          .setLabel('Nome ou Menção do Membro')
+          .setStyle(TextInputStyle.Short)
+          .setPlaceholder('Use @ pra marcar (autocomplete) ou cole o ID')
+          .setRequired(true);
+
+        modal.addComponents(new ActionRowBuilder().addComponents(nomeInput));
+
+        await interaction.showModal(modal);
+      }
 
       if (interaction.customId === 'painel_credenciais') {
         const valor = interaction.values[0];
@@ -5229,38 +5317,27 @@ module.exports = {
           });
         }
 
-        const modal = new ModalBuilder()
-          .setCustomId('modal_registrar_adv')
-          .setTitle('⚠️ Registrar ADV');
+        const opcoes = opcoesAdvConfiguradas(config, interaction.guild);
+        if (opcoes.length === 0) {
+          return await interaction.reply({
+            content: '❌ Nenhum cargo de ADV foi configurado. Configure em **Cargos de Farm**.',
+            ephemeral: true,
+          });
+        }
 
-        const nomeInput = new TextInputBuilder()
-          .setCustomId('nome_membro')
-          .setLabel('Nome ou Menção do Membro')
-          .setStyle(TextInputStyle.Short)
-          .setPlaceholder('Ex: @Usuario ou ID')
-          .setRequired(true);
+        const { StringSelectMenuBuilder } = require('discord.js');
+        const selectMenu = new StringSelectMenuBuilder()
+          .setCustomId('select_tipo_adv_registrar')
+          .setPlaceholder('Selecione o tipo de ADV...')
+          .addOptions(opcoes);
 
-        const motivoInput = new TextInputBuilder()
-          .setCustomId('motivo_adv')
-          .setLabel('Motivo do ADV')
-          .setStyle(TextInputStyle.Paragraph)
-          .setPlaceholder('Digite o motivo da advertência')
-          .setRequired(true);
+        const row = new ActionRowBuilder().addComponents(selectMenu);
 
-        const tipoInput = new TextInputBuilder()
-          .setCustomId('tipo_adv')
-          .setLabel('Tipo de ADV (1 ou 2)')
-          .setStyle(TextInputStyle.Short)
-          .setPlaceholder('1 ou 2')
-          .setRequired(true);
-
-        modal.addComponents(
-          new ActionRowBuilder().addComponents(nomeInput),
-          new ActionRowBuilder().addComponents(motivoInput),
-          new ActionRowBuilder().addComponents(tipoInput)
-        );
-
-        await interaction.showModal(modal);
+        await interaction.reply({
+          content: '**⚠️ Registrar ADV**\n\nSelecione qual ADV a pessoa vai receber:',
+          components: [row],
+          ephemeral: true,
+        });
       }
 
       if (interaction.customId === 'remover_adv') {
@@ -5279,30 +5356,262 @@ module.exports = {
           });
         }
 
-        const modal = new ModalBuilder()
-          .setCustomId('modal_remover_adv')
-          .setTitle('✅ Remover ADV');
+        const opcoes = opcoesAdvConfiguradas(config, interaction.guild);
+        if (opcoes.length === 0) {
+          return await interaction.reply({
+            content: '❌ Nenhum cargo de ADV foi configurado. Configure em **Cargos de Farm**.',
+            ephemeral: true,
+          });
+        }
 
-        const nomeInput = new TextInputBuilder()
-          .setCustomId('nome_membro_remover')
-          .setLabel('Nome ou Menção do Membro')
-          .setStyle(TextInputStyle.Short)
-          .setPlaceholder('Ex: @Usuario ou ID')
-          .setRequired(true);
+        const { StringSelectMenuBuilder } = require('discord.js');
+        const selectMenu = new StringSelectMenuBuilder()
+          .setCustomId('select_tipo_adv_remover')
+          .setPlaceholder('Selecione o tipo de ADV...')
+          .addOptions(opcoes);
 
-        const tipoInput = new TextInputBuilder()
-          .setCustomId('tipo_adv_remover')
-          .setLabel('Tipo de ADV a Remover (1 ou 2)')
-          .setStyle(TextInputStyle.Short)
-          .setPlaceholder('1 ou 2')
-          .setRequired(true);
+        const row = new ActionRowBuilder().addComponents(selectMenu);
 
-        modal.addComponents(
-          new ActionRowBuilder().addComponents(nomeInput),
-          new ActionRowBuilder().addComponents(tipoInput)
-        );
+        await interaction.reply({
+          content: '**✅ Remover ADV**\n\nSelecione qual ADV a pessoa vai perder:',
+          components: [row],
+          ephemeral: true,
+        });
+      }
 
-        await interaction.showModal(modal);
+      if (interaction.customId.startsWith('aprovar_adv_')) {
+        const advId = interaction.customId.replace('aprovar_adv_', '');
+        const config = await serverService.getConfig(interaction.guild.id);
+
+        const cargosAprovacaoIds = config.farm?.cargo_aprovacao_adv || [];
+        const temPermissao = cargosAprovacaoIds.length === 0 ||
+          interaction.member.roles.cache.some(role => cargosAprovacaoIds.includes(role.id)) ||
+          interaction.memberPermissions.has('ADMINISTRATOR');
+
+        if (!temPermissao) {
+          return await interaction.reply({
+            content: '❌ Você não tem permissão para aprovar ADVs!',
+            ephemeral: true,
+          });
+        }
+
+        const pendente = config.farm?.advs_pendentes?.[advId];
+        if (!pendente) {
+          return await interaction.reply({
+            content: '❌ Solicitação não encontrada (pode já ter sido processada).',
+            ephemeral: true,
+          });
+        }
+
+        const cargoAdvId = pendente.tipoAdv === 1 ? config.farm?.cargo_adv_1 : config.farm?.cargo_adv_2;
+        if (!cargoAdvId) {
+          return await interaction.reply({
+            content: `❌ Cargo de ADV ${pendente.tipoAdv} não foi configurado.`,
+            ephemeral: true,
+          });
+        }
+
+        try {
+          const membro = await interaction.guild.members.fetch(pendente.membroId);
+          await membro.roles.add(cargoAdvId);
+
+          // Garantir que existe um registro de membro no banco antes de
+          // registrar o ADV (cargo atribuído manualmente sem registro formal)
+          const membroExistente = await memberService.getMember(interaction.guild.id, pendente.membroId);
+          if (!membroExistente) {
+            await memberService.saveMember(interaction.guild.id, pendente.membroId, membro.displayName, null, membro.displayName);
+            await memberService.approveMember(interaction.guild.id, pendente.membroId);
+          }
+
+          await advService.addADV(interaction.guild.id, pendente.membroId, pendente.tipoAdv, pendente.motivo);
+
+          await serverService.logAction(
+            interaction.guild.id,
+            interaction.user.id,
+            'aprovacao_adv',
+            `ADV ${pendente.tipoAdv} aplicado em ${membro.user.tag}: ${pendente.motivo}`
+          );
+
+          delete config.farm.advs_pendentes[advId];
+          await serverService.saveConfig(interaction.guild.id, config);
+
+          await interaction.reply({
+            content: `✅ ADV ${pendente.tipoAdv} aplicado em ${membro.user.tag}!`,
+            ephemeral: true,
+          });
+
+          await interaction.message.edit({ components: [] });
+
+          try {
+            await membro.user.send({
+              content: `⚠️ Você recebeu um **ADV ${pendente.tipoAdv}**!\n\n**Motivo:** ${pendente.motivo}`,
+            });
+          } catch (err) {
+            console.warn('Não foi possível notificar usuário sobre ADV:', err.message);
+          }
+        } catch (err) {
+          console.error(err);
+          await interaction.reply({
+            content: `❌ Erro ao aprovar ADV: ${err.message}`,
+            ephemeral: true,
+          });
+        }
+      }
+
+      if (interaction.customId.startsWith('rejeitar_adv_')) {
+        const advId = interaction.customId.replace('rejeitar_adv_', '');
+        const config = await serverService.getConfig(interaction.guild.id);
+
+        const cargosAprovacaoIds = config.farm?.cargo_aprovacao_adv || [];
+        const temPermissao = cargosAprovacaoIds.length === 0 ||
+          interaction.member.roles.cache.some(role => cargosAprovacaoIds.includes(role.id)) ||
+          interaction.memberPermissions.has('ADMINISTRATOR');
+
+        if (!temPermissao) {
+          return await interaction.reply({
+            content: '❌ Você não tem permissão para rejeitar ADVs!',
+            ephemeral: true,
+          });
+        }
+
+        const pendente = config.farm?.advs_pendentes?.[advId];
+        if (!pendente) {
+          return await interaction.reply({
+            content: '❌ Solicitação não encontrada (pode já ter sido processada).',
+            ephemeral: true,
+          });
+        }
+
+        try {
+          delete config.farm.advs_pendentes[advId];
+          await serverService.saveConfig(interaction.guild.id, config);
+
+          await interaction.reply({
+            content: '❌ Solicitação de ADV rejeitada.',
+            ephemeral: true,
+          });
+
+          await interaction.message.edit({ components: [] });
+        } catch (err) {
+          console.error(err);
+          await interaction.reply({
+            content: `❌ Erro ao rejeitar ADV: ${err.message}`,
+            ephemeral: true,
+          });
+        }
+      }
+
+      if (interaction.customId.startsWith('confirmar_remover_adv_')) {
+        const advId = interaction.customId.replace('confirmar_remover_adv_', '');
+        const config = await serverService.getConfig(interaction.guild.id);
+
+        const cargosAprovacaoIds = config.farm?.cargo_aprovacao_adv || [];
+        const temPermissao = cargosAprovacaoIds.length === 0 ||
+          interaction.member.roles.cache.some(role => cargosAprovacaoIds.includes(role.id)) ||
+          interaction.memberPermissions.has('ADMINISTRATOR');
+
+        if (!temPermissao) {
+          return await interaction.reply({
+            content: '❌ Você não tem permissão para remover ADVs!',
+            ephemeral: true,
+          });
+        }
+
+        const pendente = config.farm?.remocoes_adv_pendentes?.[advId];
+        if (!pendente) {
+          return await interaction.reply({
+            content: '❌ Solicitação não encontrada (pode já ter sido processada).',
+            ephemeral: true,
+          });
+        }
+
+        const cargoAdvId = pendente.tipoAdv === 1 ? config.farm?.cargo_adv_1 : config.farm?.cargo_adv_2;
+        if (!cargoAdvId) {
+          return await interaction.reply({
+            content: `❌ Cargo de ADV ${pendente.tipoAdv} não foi configurado.`,
+            ephemeral: true,
+          });
+        }
+
+        try {
+          const membro = await interaction.guild.members.fetch(pendente.membroId);
+          await membro.roles.remove(cargoAdvId);
+          await advService.removeADV(interaction.guild.id, pendente.membroId, pendente.tipoAdv);
+
+          await serverService.logAction(
+            interaction.guild.id,
+            interaction.user.id,
+            'remocao_adv',
+            `ADV ${pendente.tipoAdv} removido de ${membro.user.tag}`
+          );
+
+          delete config.farm.remocoes_adv_pendentes[advId];
+          await serverService.saveConfig(interaction.guild.id, config);
+
+          await interaction.reply({
+            content: `✅ ADV ${pendente.tipoAdv} removido de ${membro.user.tag}!`,
+            ephemeral: true,
+          });
+
+          await interaction.message.edit({ components: [] });
+
+          try {
+            await membro.user.send({
+              content: `✅ Seu **ADV ${pendente.tipoAdv}** foi removido!`,
+            });
+          } catch (err) {
+            console.warn('Não foi possível notificar usuário sobre remoção de ADV:', err.message);
+          }
+        } catch (err) {
+          console.error(err);
+          await interaction.reply({
+            content: `❌ Erro ao remover ADV: ${err.message}`,
+            ephemeral: true,
+          });
+        }
+      }
+
+      if (interaction.customId.startsWith('cancelar_remover_adv_')) {
+        const advId = interaction.customId.replace('cancelar_remover_adv_', '');
+        const config = await serverService.getConfig(interaction.guild.id);
+
+        const cargosAprovacaoIds = config.farm?.cargo_aprovacao_adv || [];
+        const temPermissao = cargosAprovacaoIds.length === 0 ||
+          interaction.member.roles.cache.some(role => cargosAprovacaoIds.includes(role.id)) ||
+          interaction.memberPermissions.has('ADMINISTRATOR');
+
+        if (!temPermissao) {
+          return await interaction.reply({
+            content: '❌ Você não tem permissão para cancelar essa remoção!',
+            ephemeral: true,
+          });
+        }
+
+        const pendente = config.farm?.remocoes_adv_pendentes?.[advId];
+        if (!pendente) {
+          return await interaction.reply({
+            content: '❌ Solicitação não encontrada (pode já ter sido processada).',
+            ephemeral: true,
+          });
+        }
+
+        try {
+          delete config.farm.remocoes_adv_pendentes[advId];
+          await serverService.saveConfig(interaction.guild.id, config);
+
+          await interaction.reply({
+            content: '❌ Remoção de ADV cancelada.',
+            ephemeral: true,
+          });
+
+          await interaction.message.edit({ components: [] });
+        } catch (err) {
+          console.error(err);
+          await interaction.reply({
+            content: `❌ Erro ao cancelar remoção de ADV: ${err.message}`,
+            ephemeral: true,
+          });
+        }
       }
 
       // ===== HANDLERS DE LIMPEZA DE CONFIGURAÇÕES =====
