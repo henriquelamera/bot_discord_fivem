@@ -178,7 +178,10 @@ async function processarPagamentoFarm(config, guild, entrega, aprovadorId) {
     const pag = pagamentos[itemId];
     if (!pag) continue; // item não elegível a pagamento
 
-    const quantidade = entregaData.quantidade || 0;
+    const quantidadeEntregue = entregaData.quantidade || 0;
+    // Entregas acima do teto semanal são registradas inteiras, mas só a
+    // quantidade dentro do limite é paga (entregas antigas não têm o campo)
+    const quantidade = entregaData.quantidade_pagavel ?? quantidadeEntregue;
     const subtotal = quantidade * pag.valor_unidade;
     if (subtotal <= 0) continue;
 
@@ -186,6 +189,7 @@ async function processarPagamentoFarm(config, guild, entrega, aprovadorId) {
       itemId,
       nome: entregaData.nome || pag.nome,
       quantidade,
+      quantidade_entregue: quantidadeEntregue,
       valor_unidade: pag.valor_unidade,
       subtotal,
     });
@@ -210,7 +214,12 @@ async function processarPagamentoFarm(config, guild, entrega, aprovadorId) {
   const { ButtonBuilder, ButtonStyle } = require('discord.js');
 
   const listaItens = itensPagos
-    .map((i) => `**${i.nome}:** ${i.quantidade} x ${formatarMoeda(i.valor_unidade)} = ${formatarMoeda(i.subtotal)}`)
+    .map((i) => {
+      const notaExcedente = i.quantidade_entregue > i.quantidade
+        ? ` ⚠️ (entregou ${i.quantidade_entregue}, teto semanal)`
+        : '';
+      return `**${i.nome}:** ${i.quantidade} x ${formatarMoeda(i.valor_unidade)} = ${formatarMoeda(i.subtotal)}${notaExcedente}`;
+    })
     .join('\n');
 
   const embed = new EmbedBuilder()
@@ -796,31 +805,31 @@ module.exports = {
           });
         }
 
-        // Verificar teto semanal por item (protege o caixa da facção contra
-        // entregas muito grandes de um único material na mesma semana)
+        // Teto semanal por item (protege o caixa da facção contra entregas
+        // muito grandes de um único material na mesma semana). Não bloqueia
+        // a entrega: a pessoa pode entregar quanto quiser, mas só é paga até
+        // o limite - o excedente fica registrado sem pagamento e ela é avisada.
         const limiteSemanal = config.farm?.limite_semanal_item || 2000;
         const jaEntregueSemana = await deliveryService.getQuantidadeEntregueSemanaAtual(guildId, interaction.user.id);
 
-        const itensAcimaDoLimite = [];
+        const avisosLimite = [];
         for (const dados of Object.values(itensEntregues)) {
           const jaEntregue = jaEntregueSemana[dados.nome] || 0;
-          if (jaEntregue + dados.quantidade > limiteSemanal) {
-            const restante = Math.max(limiteSemanal - jaEntregue, 0);
-            itensAcimaDoLimite.push(
-              `- **${dados.nome}:** já entregou ${jaEntregue}/${limiteSemanal} essa semana. Pode entregar no máximo mais **${restante}** (tentou ${dados.quantidade}).`
+          const restantePagavel = Math.max(limiteSemanal - jaEntregue, 0);
+          dados.quantidade_pagavel = Math.min(dados.quantidade, restantePagavel);
+          if (dados.quantidade > restantePagavel) {
+            avisosLimite.push(
+              `- **${dados.nome}:** entregou **${dados.quantidade}**, mas com ${jaEntregue} já entregues essa semana só **${dados.quantidade_pagavel}** serão pagas.`
             );
           }
         }
 
-        if (itensAcimaDoLimite.length > 0) {
-          return await interaction.reply({
-            content: `❌ Limite semanal de **${limiteSemanal}** unidades por item excedido:\n\n${itensAcimaDoLimite.join('\n')}`,
-            ephemeral: true,
-          });
-        }
+        const avisoLimiteTexto = avisosLimite.length > 0
+          ? `\n\n⚠️ **Atenção:** o limite semanal é de **${limiteSemanal}** unidades pagas por item. Sua entrega será registrada, mas o excedente **não será pago**:\n${avisosLimite.join('\n')}`
+          : '';
 
         await interaction.reply({
-          content: '📸 Agora envie **uma imagem** aqui no canal com o print de comprovação (você tem 5 minutos). Formatos aceitos: PNG, JPG, JPEG, GIF, WEBP.',
+          content: `📸 Agora envie **uma imagem** aqui no canal com o print de comprovação (você tem 5 minutos). Formatos aceitos: PNG, JPG, JPEG, GIF, WEBP.${avisoLimiteTexto}`,
           ephemeral: true,
         });
 
@@ -922,11 +931,16 @@ module.exports = {
 
           for (const [itemId, dados] of Object.entries(entrega.itens)) {
             const pagamento = pagamentosConfig[itemId];
+            const qtdPagavel = dados.quantidade_pagavel ?? dados.quantidade;
             if (pagamento?.valor_unidade) {
-              const subtotal = dados.quantidade * pagamento.valor_unidade;
+              const subtotal = qtdPagavel * pagamento.valor_unidade;
               valorTotalEstimado += subtotal;
               temItemPagavel = true;
-              descricaoItens += `- **${dados.nome}:** ${dados.quantidade} x ${formatarMoeda(pagamento.valor_unidade)} = ${formatarMoeda(subtotal)}\n`;
+              if (qtdPagavel < dados.quantidade) {
+                descricaoItens += `- **${dados.nome}:** ${dados.quantidade} entregues → paga ${qtdPagavel} x ${formatarMoeda(pagamento.valor_unidade)} = ${formatarMoeda(subtotal)} ⚠️ (excedente do limite semanal não é pago)\n`;
+              } else {
+                descricaoItens += `- **${dados.nome}:** ${dados.quantidade} x ${formatarMoeda(pagamento.valor_unidade)} = ${formatarMoeda(subtotal)}\n`;
+              }
             } else {
               descricaoItens += `- **${dados.nome}:** ${dados.quantidade}\n`;
             }
@@ -962,7 +976,7 @@ module.exports = {
           }
 
           await interaction.followUp({
-            content: '✅ Entrega registrada! Aguardando aprovação dos responsáveis.',
+            content: `✅ Entrega registrada! Aguardando aprovação dos responsáveis.${avisoLimiteTexto}`,
             ephemeral: true,
           });
         } catch (err) {
@@ -1229,7 +1243,7 @@ module.exports = {
         await serverService.saveConfig(interaction.guild.id, config);
 
         await interaction.reply({
-          content: `✅ Limite semanal configurado! Cada pessoa pode entregar no máximo **${limite}** unidades de cada item por semana.`,
+          content: `✅ Limite semanal configurado! Cada pessoa recebe por no máximo **${limite}** unidades de cada item por semana — pode entregar mais, mas o excedente não é pago.`,
           ephemeral: true,
         });
       }
@@ -3820,7 +3834,7 @@ module.exports = {
 
           const limiteInput = new TextInputBuilder()
             .setCustomId('limite_semanal')
-            .setLabel('Máximo por item, por pessoa, por semana')
+            .setLabel('Máximo pago por item/pessoa/semana')
             .setStyle(TextInputStyle.Short)
             .setPlaceholder('Ex: 2000')
             .setValue(String(limiteAtual))
