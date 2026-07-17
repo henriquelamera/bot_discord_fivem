@@ -69,6 +69,14 @@ function formatarListaTruncada(linhas, limiteChars = 3500) {
   return texto;
 }
 
+// Converte texto de quantidade digitado pelo usuário em inteiro, aceitando
+// separador de milhar ("2.000", "2,000", "2 000"). Formato inválido vira NaN.
+function parseQuantidade(texto) {
+  const t = String(texto ?? '').trim();
+  if (!/^\d{1,3}([.,\s]\d{3})*$|^\d+$/.test(t)) return NaN;
+  return parseInt(t.replace(/[.,\s]/g, ''), 10);
+}
+
 // Monta o texto "Nome: quantidade" por item, um por linha
 function formatarTotaisPorItem(totais) {
   if (totais.length === 0) return 'Nenhum item entregue ainda.';
@@ -788,14 +796,27 @@ module.exports = {
 
         // Coletar quantidades entregues do modal
         const itensEntregues = {};
+        const quantidadesInvalidas = [];
         for (const item of itens) {
           const quantidade = interaction.fields.getTextInputValue(`item_${item.id}`);
-          if (quantidade) {
-            itensEntregues[item.id] = {
-              nome: item.nome,
-              quantidade: parseInt(quantidade),
-            };
+          if (quantidade && quantidade.trim()) {
+            const qtd = parseQuantidade(quantidade);
+            if (isNaN(qtd) || qtd <= 0) {
+              quantidadesInvalidas.push(`- **${item.nome}:** "${quantidade.trim()}"`);
+            } else {
+              itensEntregues[item.id] = {
+                nome: item.nome,
+                quantidade: qtd,
+              };
+            }
           }
+        }
+
+        if (quantidadesInvalidas.length > 0) {
+          return await interaction.reply({
+            content: `❌ Quantidade inválida — use apenas números (ex: 2000 ou 2.000):\n${quantidadesInvalidas.join('\n')}`,
+            ephemeral: true,
+          });
         }
 
         if (Object.keys(itensEntregues).length === 0) {
@@ -1145,7 +1166,7 @@ module.exports = {
           const quantidadeStr = interaction.fields.getTextInputValue(`meta_${item.id}`);
 
           if (quantidadeStr && quantidadeStr.trim()) {
-            const quantidade = parseInt(quantidadeStr);
+            const quantidade = parseQuantidade(quantidadeStr);
             if (!isNaN(quantidade) && quantidade > 0) {
               config.farm.metas[item.id] = {
                 nome: item.nome,
@@ -1228,11 +1249,11 @@ module.exports = {
 
       if (interaction.customId === 'modal_limite_semanal_farm') {
         const limiteStr = interaction.fields.getTextInputValue('limite_semanal');
-        const limite = parseInt(limiteStr, 10);
+        const limite = parseQuantidade(limiteStr);
 
         if (isNaN(limite) || limite <= 0) {
           return await interaction.reply({
-            content: '❌ Informe um número válido maior que zero.',
+            content: '❌ Informe um número válido maior que zero (ex: 2000 ou 2.000).',
             ephemeral: true,
           });
         }
