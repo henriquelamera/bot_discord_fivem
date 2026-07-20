@@ -192,6 +192,35 @@ function construirModalMetas(config, pagina) {
   return { modal, itensPagina, totalPaginas };
 }
 
+// Mesma paginação de construirModalMetas, só que pro modal de valor por
+// unidade de pagamento (também limitado a 5 campos por modal do Discord)
+function construirModalPagamento(config, pagina) {
+  const itens = config.farm?.itens || [];
+  const totalPaginas = Math.max(1, Math.ceil(itens.length / ITENS_POR_MODAL_META));
+  const inicio = (pagina - 1) * ITENS_POR_MODAL_META;
+  const itensPagina = itens.slice(inicio, inicio + ITENS_POR_MODAL_META);
+
+  const modal = new ModalBuilder()
+    .setCustomId(pagina === 1 ? 'modal_cadastro_pagamento' : `modal_cadastro_pagamento_p${pagina}`)
+    .setTitle(totalPaginas > 1 ? `💰 Valor por Unidade (${pagina}/${totalPaginas})` : '💰 Valor por Unidade');
+
+  for (const item of itensPagina) {
+    const valorAtual = config.farm?.pagamentos?.[item.id]?.valor_unidade;
+    const valorInput = new TextInputBuilder()
+      .setCustomId(`valor_${item.id}`)
+      .setLabel(`${item.nome} (R$ por unidade)`)
+      .setStyle(TextInputStyle.Short)
+      .setPlaceholder('Ex: 1.50 (deixe vazio se não for elegível)')
+      .setRequired(false);
+
+    if (valorAtual) valorInput.setValue(valorAtual.toString());
+
+    modal.addComponents(new ActionRowBuilder().addComponents(valorInput));
+  }
+
+  return { modal, itensPagina, totalPaginas };
+}
+
 // Monta as opções de tipo de ADV disponíveis pra selecionar, só com os
 // cargos que realmente foram configurados (Cargos de Farm > ADV Farm 1/2)
 function opcoesAdvConfiguradas(config, guild) {
@@ -1248,18 +1277,26 @@ module.exports = {
         }
       }
 
-      if (interaction.customId === 'modal_cadastro_pagamento') {
+      if (interaction.customId === 'modal_cadastro_pagamento' || interaction.customId.startsWith('modal_cadastro_pagamento_p')) {
+        const pagina = interaction.customId === 'modal_cadastro_pagamento'
+          ? 1
+          : parseInt(interaction.customId.replace('modal_cadastro_pagamento_p', ''), 10);
+
         const config = await serverService.getConfig(interaction.guild.id);
         if (!config.farm) config.farm = {};
         if (!config.farm.pagamentos) config.farm.pagamentos = {};
 
         const itens = config.farm.itens || [];
+        const totalPaginas = Math.max(1, Math.ceil(itens.length / ITENS_POR_MODAL_META));
+        const inicio = (pagina - 1) * ITENS_POR_MODAL_META;
+        // Só processa os itens dessa página - iterar por todos os itens
+        // cadastrados quebrava com "field not found" a partir do 6º item
+        const itensPagina = itens.slice(inicio, inicio + ITENS_POR_MODAL_META);
+
         let pagamentosAdicionados = [];
         let itensRemovidos = [];
 
-        // Processar apenas os items que foram exibidos no modal (máximo 5)
-        for (let i = 0; i < Math.min(itens.length, 5); i++) {
-          const item = itens[i];
+        for (const item of itensPagina) {
           const valorStr = interaction.fields.getTextInputValue(`valor_${item.id}`);
 
           if (valorStr && valorStr.trim()) {
@@ -1281,13 +1318,6 @@ module.exports = {
 
         await serverService.saveConfig(interaction.guild.id, config);
 
-        if (pagamentosAdicionados.length === 0 && itensRemovidos.length === 0) {
-          return await interaction.reply({
-            content: '⚠️ Nenhum valor foi definido (campos vazios).',
-            ephemeral: true,
-          });
-        }
-
         let resposta = '';
         if (pagamentosAdicionados.length > 0) {
           resposta += `✅ **${pagamentosAdicionados.length}** item(s) elegível(is) a pagamento:\n${pagamentosAdicionados.map(p => `- ${p}`).join('\n')}`;
@@ -1295,11 +1325,29 @@ module.exports = {
         if (itensRemovidos.length > 0) {
           resposta += `${resposta ? '\n\n' : ''}🚫 **${itensRemovidos.length}** item(s) removido(s) da elegibilidade:\n${itensRemovidos.map(n => `- ${n}`).join('\n')}`;
         }
+        if (!resposta) {
+          resposta = '⚠️ Nenhum valor foi definido nessa página (campos vazios).';
+        }
 
-        await interaction.reply({
-          content: resposta,
-          ephemeral: true,
-        });
+        if (pagina < totalPaginas) {
+          const { ButtonBuilder, ButtonStyle } = require('discord.js');
+          const proximoInicio = pagina * ITENS_POR_MODAL_META;
+          const botaoContinuar = new ButtonBuilder()
+            .setCustomId(`farm_pagamento_pagina_${pagina + 1}`)
+            .setLabel(`➡️ Continuar (itens ${proximoInicio + 1}-${Math.min(proximoInicio + ITENS_POR_MODAL_META, itens.length)})`)
+            .setStyle(ButtonStyle.Primary);
+
+          await interaction.reply({
+            content: `${resposta}\n\nAinda faltam **${itens.length - proximoInicio}** item(ns) — o Discord só permite 5 campos por formulário.`,
+            components: [new ActionRowBuilder().addComponents(botaoContinuar)],
+            ephemeral: true,
+          });
+        } else {
+          await interaction.reply({
+            content: resposta,
+            ephemeral: true,
+          });
+        }
       }
 
       if (interaction.customId === 'modal_limite_semanal_farm') {
@@ -1830,6 +1878,13 @@ module.exports = {
         const pagina = parseInt(interaction.customId.replace('farm_meta_pagina_', ''), 10);
         const config = await serverService.getConfig(interaction.guild.id);
         const { modal } = construirModalMetas(config, pagina);
+        await interaction.showModal(modal);
+      }
+
+      if (interaction.customId.startsWith('farm_pagamento_pagina_')) {
+        const pagina = parseInt(interaction.customId.replace('farm_pagamento_pagina_', ''), 10);
+        const config = await serverService.getConfig(interaction.guild.id);
+        const { modal } = construirModalPagamento(config, pagina);
         await interaction.showModal(modal);
       }
 
@@ -3647,23 +3702,7 @@ module.exports = {
           }
 
           // Se não tem pagamentos, abre o modal direto
-          const modal = new ModalBuilder()
-            .setCustomId('modal_cadastro_pagamento')
-            .setTitle('💰 Valor por Unidade');
-
-          // Adicionar campo para cada item (máximo 5, deixe em branco para não elegível)
-          for (let i = 0; i < Math.min(itens.length, 5); i++) {
-            const item = itens[i];
-            const valorInput = new TextInputBuilder()
-              .setCustomId(`valor_${item.id}`)
-              .setLabel(`${item.nome} (R$ por unidade)`)
-              .setStyle(TextInputStyle.Short)
-              .setPlaceholder('Ex: 1.50 (deixe vazio se não for elegível)')
-              .setRequired(false);
-
-            modal.addComponents(new ActionRowBuilder().addComponents(valorInput));
-          }
-
+          const { modal } = construirModalPagamento(config, 1);
           await interaction.showModal(modal);
         }
 
@@ -6073,30 +6112,8 @@ module.exports = {
 
       // Handlers de confirmação para pagamentos
       if (interaction.customId === 'confirmar_sobrescrever_pagamento') {
-        const { ModalBuilder, TextInputBuilder, TextInputStyle } = require('discord.js');
         const config = await serverService.getConfig(interaction.guild.id);
-        const itens = config.farm?.itens || [];
-
-        const modal = new ModalBuilder()
-          .setCustomId('modal_cadastro_pagamento')
-          .setTitle('💰 Valor por Unidade');
-
-        // Adicionar campo para cada item (máximo 5, deixe em branco para não elegível)
-        for (let i = 0; i < Math.min(itens.length, 5); i++) {
-          const item = itens[i];
-          const valorAtual = config.farm?.pagamentos?.[item.id]?.valor_unidade ?? '';
-
-          const valorInput = new TextInputBuilder()
-            .setCustomId(`valor_${item.id}`)
-            .setLabel(`${item.nome} (R$ por unidade)`)
-            .setStyle(TextInputStyle.Short)
-            .setPlaceholder('Ex: 1.50 (deixe vazio se não for elegível)')
-            .setValue(valorAtual.toString())
-            .setRequired(false);
-
-          modal.addComponents(new ActionRowBuilder().addComponents(valorInput));
-        }
-
+        const { modal } = construirModalPagamento(config, 1);
         await interaction.showModal(modal);
       }
 
