@@ -158,6 +158,40 @@ async function marcarEntregaComoPaga(guild, config, entrega, pagoPorId) {
   await serverService.saveConfig(guild.id, config);
 }
 
+// Modais do Discord aceitam no máximo 5 campos - com mais itens que isso
+// cadastrados, a configuração de meta precisa ser paginada em vários modais
+const ITENS_POR_MODAL_META = 5;
+
+// Monta o modal de metas pra uma página específica (1 = primeiros 5 itens,
+// 2 = próximos 5, etc). customId da página 1 fica igual ao antigo
+// ('modal_cadastro_meta') pra não quebrar quem já usa esse fluxo.
+function construirModalMetas(config, pagina) {
+  const itens = config.farm?.itens || [];
+  const totalPaginas = Math.max(1, Math.ceil(itens.length / ITENS_POR_MODAL_META));
+  const inicio = (pagina - 1) * ITENS_POR_MODAL_META;
+  const itensPagina = itens.slice(inicio, inicio + ITENS_POR_MODAL_META);
+
+  const modal = new ModalBuilder()
+    .setCustomId(pagina === 1 ? 'modal_cadastro_meta' : `modal_cadastro_meta_p${pagina}`)
+    .setTitle(totalPaginas > 1 ? `🎯 Metas de Farm (${pagina}/${totalPaginas})` : '🎯 Definir Metas de Farm');
+
+  for (const item of itensPagina) {
+    const metaAtual = config.farm?.metas?.[item.id]?.meta_semanal;
+    const metaInput = new TextInputBuilder()
+      .setCustomId(`meta_${item.id}`)
+      .setLabel(`${item.nome} (quantidade/semana)`)
+      .setStyle(TextInputStyle.Short)
+      .setPlaceholder('Ex: 100')
+      .setRequired(false);
+
+    if (metaAtual) metaInput.setValue(metaAtual.toString());
+
+    modal.addComponents(new ActionRowBuilder().addComponents(metaInput));
+  }
+
+  return { modal, itensPagina, totalPaginas };
+}
+
 // Monta as opções de tipo de ADV disponíveis pra selecionar, só com os
 // cargos que realmente foram configurados (Cargos de Farm > ADV Farm 1/2)
 function opcoesAdvConfiguradas(config, guild) {
@@ -1153,16 +1187,25 @@ module.exports = {
         });
       }
 
-      if (interaction.customId === 'modal_cadastro_meta') {
+      if (interaction.customId === 'modal_cadastro_meta' || interaction.customId.startsWith('modal_cadastro_meta_p')) {
+        const pagina = interaction.customId === 'modal_cadastro_meta'
+          ? 1
+          : parseInt(interaction.customId.replace('modal_cadastro_meta_p', ''), 10);
+
         const config = await serverService.getConfig(interaction.guild.id);
         if (!config.farm) config.farm = {};
         if (!config.farm.metas) config.farm.metas = {};
 
         const itens = config.farm.itens || [];
-        let metasAdicionadas = [];
+        const totalPaginas = Math.max(1, Math.ceil(itens.length / ITENS_POR_MODAL_META));
+        const inicio = (pagina - 1) * ITENS_POR_MODAL_META;
+        // Só processa os itens que realmente apareceram NESSE modal - iterar
+        // por todos os itens cadastrados quebrava com "field not found" assim
+        // que passou de 5 itens, porque o modal só tem os campos da própria página
+        const itensPagina = itens.slice(inicio, inicio + ITENS_POR_MODAL_META);
 
-        // Processar cada item
-        for (const item of itens) {
+        let metasAdicionadas = [];
+        for (const item of itensPagina) {
           const quantidadeStr = interaction.fields.getTextInputValue(`meta_${item.id}`);
 
           if (quantidadeStr && quantidadeStr.trim()) {
@@ -1180,17 +1223,36 @@ module.exports = {
 
         await serverService.saveConfig(interaction.guild.id, config);
 
-        if (metasAdicionadas.length === 0) {
-          return await interaction.reply({
-            content: '⚠️ Nenhuma meta foi definida (campos vazios).',
+        const resumo = metasAdicionadas.length > 0
+          ? `✅ **${metasAdicionadas.length}** meta(s) definida(s):\n${metasAdicionadas.map(m => `- ${m}`).join('\n')}`
+          : '⚠️ Nenhuma meta foi definida nessa página (campos vazios).';
+
+        if (pagina < totalPaginas) {
+          const { ButtonBuilder, ButtonStyle } = require('discord.js');
+          const proximoInicio = pagina * ITENS_POR_MODAL_META;
+          const botaoContinuar = new ButtonBuilder()
+            .setCustomId(`farm_meta_pagina_${pagina + 1}`)
+            .setLabel(`➡️ Continuar (itens ${proximoInicio + 1}-${Math.min(proximoInicio + ITENS_POR_MODAL_META, itens.length)})`)
+            .setStyle(ButtonStyle.Primary);
+
+          await interaction.reply({
+            content: `${resumo}\n\nAinda faltam **${itens.length - proximoInicio}** item(ns) — o Discord só permite 5 campos por formulário.`,
+            components: [new ActionRowBuilder().addComponents(botaoContinuar)],
+            ephemeral: true,
+          });
+        } else {
+          await interaction.reply({
+            content: resumo,
             ephemeral: true,
           });
         }
+      }
 
-        await interaction.reply({
-          content: `✅ **${metasAdicionadas.length}** meta(s) definida(s):\n${metasAdicionadas.map(m => `- ${m}`).join('\n')}`,
-          ephemeral: true,
-        });
+      if (interaction.customId.startsWith('farm_meta_pagina_')) {
+        const pagina = parseInt(interaction.customId.replace('farm_meta_pagina_', ''), 10);
+        const config = await serverService.getConfig(interaction.guild.id);
+        const { modal } = construirModalMetas(config, pagina);
+        await interaction.showModal(modal);
       }
 
       if (interaction.customId === 'modal_cadastro_pagamento') {
@@ -3523,23 +3585,7 @@ module.exports = {
           }
 
           // Se não tem metas, abre o modal direto
-          const modal = new ModalBuilder()
-            .setCustomId('modal_cadastro_meta')
-            .setTitle('🎯 Definir Metas de Farm');
-
-          // Adicionar campo para cada item (máximo 5)
-          for (let i = 0; i < Math.min(itens.length, 5); i++) {
-            const item = itens[i];
-            const metaInput = new TextInputBuilder()
-              .setCustomId(`meta_${item.id}`)
-              .setLabel(`${item.nome} (quantidade/semana)`)
-              .setStyle(TextInputStyle.Short)
-              .setPlaceholder('Ex: 100')
-              .setRequired(false);
-
-            modal.addComponents(new ActionRowBuilder().addComponents(metaInput));
-          }
-
+          const { modal } = construirModalMetas(config, 1);
           await interaction.showModal(modal);
         }
 
@@ -6013,30 +6059,8 @@ module.exports = {
 
       // Handlers de confirmação para metas
       if (interaction.customId === 'confirmar_sobrescrever_meta') {
-        const { ModalBuilder, TextInputBuilder, TextInputStyle } = require('discord.js');
         const config = await serverService.getConfig(interaction.guild.id);
-        const itens = config.farm?.itens || [];
-
-        const modal = new ModalBuilder()
-          .setCustomId('modal_cadastro_meta')
-          .setTitle('🎯 Definir Metas de Farm');
-
-        // Adicionar campo para cada item (máximo 5)
-        for (let i = 0; i < Math.min(itens.length, 5); i++) {
-          const item = itens[i];
-          const metaAtual = config.farm?.metas?.[item.id]?.meta_semanal || '';
-
-          const metaInput = new TextInputBuilder()
-            .setCustomId(`meta_${item.id}`)
-            .setLabel(`${item.nome} (quantidade/semana)`)
-            .setStyle(TextInputStyle.Short)
-            .setPlaceholder('Ex: 100')
-            .setValue(metaAtual.toString())
-            .setRequired(false);
-
-          modal.addComponents(new ActionRowBuilder().addComponents(metaInput));
-        }
-
+        const { modal } = construirModalMetas(config, 1);
         await interaction.showModal(modal);
       }
 
