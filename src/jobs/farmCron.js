@@ -52,6 +52,7 @@ module.exports = {
           const cargoAdv2Id = config.farm.cargo_adv_2_id;
           const cargoGerenteIds = config.cargo_gerente_ids || [];
           const cargoLiderancaIds = config.cargo_lideranca_ids || [];
+          const cargoMoradorId = config.cargo_morador_id;
           const cargoResponsaveisIds = config.farm.cargo_responsaveis_farm || [];
 
           if (!cargoEmDiaId || !cargoAtrasadoId || !cargoAdv1Id) {
@@ -77,6 +78,19 @@ module.exports = {
               if (temCargoGerente) {
                 console.log(`⏭️ ${membro.user.tag}: Gerente/Liderança - isento de farm delivery`);
                 continue;
+              }
+
+              // Carência de 7 dias só se aplica a quem ainda é Morador (pode
+              // ter entrado na facção no meio da semana) - quem já foi
+              // promovido a Membro já está estabelecido e não tem mais essa
+              // desculpa, mesmo que o registro de abertura do baú seja antigo
+              const aindaEhMorador = cargoMoradorId && membro.roles.cache.has(cargoMoradorId);
+              if (aindaEhMorador) {
+                const dataAberturaBau = await serverService.getDataUltimaAcao(guildId, memberId, 'abrir_bau');
+                if (dataAberturaBau && (Date.now() - new Date(dataAberturaBau).getTime()) < 7 * 24 * 60 * 60 * 1000) {
+                  console.log(`⏭️ ${membro.user.tag}: Morador, abriu baú há menos de 7 dias - obrigação começa na próxima semana`);
+                  continue;
+                }
               }
 
               // Verificar se há entregas aprovadas na semana passada (consultar DB)

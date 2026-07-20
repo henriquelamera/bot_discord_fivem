@@ -179,6 +179,26 @@ async function getLogs(guildId, limit = 100) {
   }
 }
 
+// Pegar a data da ação mais recente de um usuário (ex: 'abrir_bau'), usada
+// pra saber há quanto tempo alguém está sujeito a uma obrigação recorrente
+async function getDataUltimaAcao(guildId, usuarioId, acao) {
+  try {
+    const result = await pool.query(
+      `SELECT data_log FROM logs
+       WHERE servidor_id = (SELECT id FROM servidores WHERE guild_id = $1)
+       AND usuario_id = $2
+       AND acao = $3
+       ORDER BY data_log DESC
+       LIMIT 1`,
+      [guildId, usuarioId, acao]
+    );
+    return result.rows.length > 0 ? result.rows[0].data_log : null;
+  } catch (error) {
+    console.error('Erro ao pegar última ação:', error);
+    throw error;
+  }
+}
+
 // Pegar senha do painel
 async function getSenhaPainel(guildId) {
   try {
@@ -368,6 +388,7 @@ module.exports = {
   deactivateAPIKey,
   logAction,
   getLogs,
+  getDataUltimaAcao,
   getSenhaPainel,
   validarSenhaPainel,
   getConfig,
