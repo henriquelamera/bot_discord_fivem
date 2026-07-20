@@ -6,7 +6,7 @@ const advService = require('../services/advService');
 const { dispatchButton, dispatchSelectMenu, dispatchModal } = require('../utils/handlerRegistry');
 const { marcarAguardandoImagem, desmarcarAguardandoImagem } = require('../utils/entregaMetaTracker');
 const { formatarMoeda, calcularPagamentosPorMembro } = require('../utils/farmPagamentos');
-const { postarFechamentoSemanal, removerEntregaDosFechamentosPendentes } = require('../utils/fechamentoSemanal');
+const { postarFechamentoSemanal, removerEntregaDosFechamentosPendentes, limparCardsFechamento } = require('../utils/fechamentoSemanal');
 
 // Carregar todos os handlers registrados
 require('../handlers/registerAllHandlers');
@@ -6674,6 +6674,72 @@ module.exports = {
           console.error(err);
           await interaction.editReply({ content: `❌ Erro ao gerar fechamento: ${err.message}` });
         }
+      }
+
+      if (interaction.customId === 'limpar_fechamento_cards') {
+        const config = await serverService.getConfig(interaction.guild.id);
+
+        const cargoPagamentoIds = config.farm?.cargo_pagamento || [];
+        const temPermissao = cargoPagamentoIds.length === 0 ||
+          interaction.member.roles.cache.some(role => cargoPagamentoIds.includes(role.id));
+
+        if (!temPermissao) {
+          return await interaction.reply({
+            content: '❌ Você não tem permissão para limpar os cards de fechamento.',
+            ephemeral: true,
+          });
+        }
+
+        const { ButtonBuilder, ButtonStyle } = require('discord.js');
+        const botaoConfirmar = new ButtonBuilder()
+          .setCustomId('confirmar_limpar_fechamento_cards')
+          .setLabel('✅ Sim, limpar')
+          .setStyle(ButtonStyle.Danger);
+
+        const botaoCancelar = new ButtonBuilder()
+          .setCustomId('cancelar_limpar_fechamento_cards')
+          .setLabel('❌ Não, manter')
+          .setStyle(ButtonStyle.Secondary);
+
+        const row = new ActionRowBuilder().addComponents(botaoConfirmar, botaoCancelar);
+
+        await interaction.reply({
+          content: `⚠️ **ATENÇÃO!**\n\nIsso vai **apagar todas as mensagens de fechamento** (cards pendentes e "Tudo Pago") postadas pelo bot no canal de fechamento semanal.\n\nOs pagamentos já registrados **não são afetados** - isso só limpa a visão no canal. Pendências ainda não pagas continuam pendentes no sistema e vão reaparecer na próxima vez que o fechamento for gerado.\n\n**Tem certeza que deseja continuar?**`,
+          components: [row],
+          ephemeral: true,
+        });
+      }
+
+      if (interaction.customId === 'confirmar_limpar_fechamento_cards') {
+        await interaction.update({ content: '🧹 Limpando cards...', components: [] });
+
+        try {
+          const config = await serverService.getConfig(interaction.guild.id);
+          const resultado = await limparCardsFechamento(interaction.guild, config);
+
+          if (!resultado.limpo) {
+            const motivos = {
+              canal_nao_configurado: '❌ Canal de Fechamento Semanal (ou Controle de Pagamento) não foi configurado.',
+            };
+            return await interaction.editReply({
+              content: motivos[resultado.motivo] || '❌ Não foi possível limpar os cards.',
+            });
+          }
+
+          await interaction.editReply({
+            content: `✅ **${resultado.totalApagadas}** mensagem(ns) apagada(s) em <#${resultado.canalId}>. O controle de pendências foi zerado - gere um novo fechamento quando quiser.`,
+          });
+        } catch (err) {
+          console.error(err);
+          await interaction.editReply({ content: `❌ Erro ao limpar cards: ${err.message}` });
+        }
+      }
+
+      if (interaction.customId === 'cancelar_limpar_fechamento_cards') {
+        await interaction.update({
+          content: '❌ Operação cancelada. Nada foi apagado.',
+          components: [],
+        });
       }
 
       // ===== HANDLERS DE LIMPEZA DE CONFIGURAÇÕES =====

@@ -107,4 +107,54 @@ async function removerEntregaDosFechamentosPendentes(guild, config, entrega) {
   }
 }
 
-module.exports = { postarFechamentoSemanal, removerEntregaDosFechamentosPendentes };
+// Apaga as mensagens de fechamento (cabeçalho + cards) já postadas no canal
+// configurado. Cards já quitados ficam presos no canal pra sempre marcados
+// "Tudo Pago" (perdem o rastreamento em config assim que zeram, então não tem
+// como limpar seletivamente) - então limpa tudo que o bot postou lá e zera o
+// controle de pendências, pra próxima geração começar do zero sem lixo visual
+// nem mensagens "fantasma" que causam erro ao tentar atualizar depois.
+async function limparCardsFechamento(guild, config) {
+  const canalId = config.farm?.canal_fechamento_semanal_id || config.farm?.canal_controle_pagamento_id;
+  const canal = canalId ? guild.channels.cache.get(canalId) : null;
+
+  if (!canal) {
+    return { limpo: false, motivo: 'canal_nao_configurado' };
+  }
+
+  let totalApagadas = 0;
+  let before;
+
+  while (true) {
+    const lote = await canal.messages.fetch({ limit: 100, ...(before ? { before } : {}) });
+    if (lote.size === 0) break;
+
+    const doBot = lote.filter((msg) => msg.author.id === guild.client.user.id);
+    before = lote.last().id;
+
+    if (doBot.size > 0) {
+      try {
+        const apagadas = await canal.bulkDelete(doBot, true);
+        totalApagadas += apagadas.size;
+      } catch (err) {
+        console.warn('Erro ao apagar em lote, tentando uma a uma:', err.message);
+        for (const msg of doBot.values()) {
+          try {
+            await msg.delete();
+            totalApagadas++;
+          } catch (errIndividual) {
+            console.warn(`Não foi possível apagar mensagem ${msg.id}:`, errIndividual.message);
+          }
+        }
+      }
+    }
+
+    if (lote.size < 100) break;
+  }
+
+  config.farm.fechamentos_pendentes = {};
+  await serverService.saveConfig(guild.id, config);
+
+  return { limpo: true, totalApagadas, canalId };
+}
+
+module.exports = { postarFechamentoSemanal, removerEntregaDosFechamentosPendentes, limparCardsFechamento };

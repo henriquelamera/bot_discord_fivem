@@ -33,11 +33,14 @@ module.exports = {
         'Clique no botão abaixo pra gerar, na hora, um card por pessoa com farm aprovado pendente de pagamento ' +
         '(itens, entregas incluídas e valor total), com botão pra confirmar o pagamento de tudo de uma vez.\n\n' +
         'O fechamento automático continua rodando toda segunda-feira à meia-noite - esse botão é só pra ver o ' +
-        'andamento a qualquer momento, sem precisar esperar.'
+        'andamento a qualquer momento, sem precisar esperar.\n\n' +
+        'Cards já quitados ("Tudo Pago") ficam parados no canal - use **Limpar Cards Antigos** de vez em quando ' +
+        'pra apagar tudo que já foi postado ali e começar do zero.'
       );
 
     const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId('ger_farm_fechamento_agora').setLabel('🧾 Gerar Fechamento Agora').setStyle(ButtonStyle.Primary)
+      new ButtonBuilder().setCustomId('ger_farm_fechamento_agora').setLabel('🧾 Gerar Fechamento Agora').setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId('limpar_fechamento_cards').setLabel('🧹 Limpar Cards Antigos').setStyle(ButtonStyle.Secondary)
     );
 
     try {
