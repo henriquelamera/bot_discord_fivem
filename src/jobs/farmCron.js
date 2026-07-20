@@ -48,8 +48,8 @@ module.exports = {
 
           const cargoEmDiaId = config.farm.cargo_em_dia_id;
           const cargoAtrasadoId = config.farm.cargo_atrasado_id;
-          const cargoAdv1Id = config.farm.cargo_adv_1;
-          const cargoAdv2Id = config.farm.cargo_adv_2;
+          const cargoAdv1Id = config.farm.cargo_adv_1_id;
+          const cargoAdv2Id = config.farm.cargo_adv_2_id;
           const cargoGerenteIds = config.cargo_gerente_ids || [];
           const cargoLiderancaIds = config.cargo_lideranca_ids || [];
           const cargoResponsaveisIds = config.farm.cargo_responsaveis_farm || [];

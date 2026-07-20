@@ -162,12 +162,12 @@ async function marcarEntregaComoPaga(guild, config, entrega, pagoPorId) {
 // cargos que realmente foram configurados (Cargos de Farm > ADV Farm 1/2)
 function opcoesAdvConfiguradas(config, guild) {
   const opcoes = [];
-  if (config.farm?.cargo_adv_1) {
-    const role = guild.roles.cache.get(config.farm.cargo_adv_1);
+  if (config.farm?.cargo_adv_1_id) {
+    const role = guild.roles.cache.get(config.farm.cargo_adv_1_id);
     opcoes.push({ label: `ADV 1${role ? ' - ' + role.name : ''}`, value: '1' });
   }
-  if (config.farm?.cargo_adv_2) {
-    const role = guild.roles.cache.get(config.farm.cargo_adv_2);
+  if (config.farm?.cargo_adv_2_id) {
+    const role = guild.roles.cache.get(config.farm.cargo_adv_2_id);
     opcoes.push({ label: `ADV 2${role ? ' - ' + role.name : ''}`, value: '2' });
   }
   return opcoes;
@@ -2243,12 +2243,12 @@ module.exports = {
           ? `✅ ${interaction.guild.roles.cache.get(config.farm.cargo_atrasado_id)?.name || 'ID Inválido'}`
           : '❌ Não configurado';
 
-        const advFarm1 = config.farm?.cargo_adv_1
-          ? `✅ ${interaction.guild.roles.cache.get(config.farm.cargo_adv_1)?.name || 'ID Inválido'}`
+        const advFarm1 = config.farm?.cargo_adv_1_id
+          ? `✅ ${interaction.guild.roles.cache.get(config.farm.cargo_adv_1_id)?.name || 'ID Inválido'}`
           : '❌ Não configurado';
 
-        const advFarm2 = config.farm?.cargo_adv_2
-          ? `✅ ${interaction.guild.roles.cache.get(config.farm.cargo_adv_2)?.name || 'ID Inválido'}`
+        const advFarm2 = config.farm?.cargo_adv_2_id
+          ? `✅ ${interaction.guild.roles.cache.get(config.farm.cargo_adv_2_id)?.name || 'ID Inválido'}`
           : '❌ Não configurado';
 
         // Canais Farm
@@ -5544,8 +5544,8 @@ module.exports = {
         try {
           const guildId = interaction.guild.id;
           const membro = await interaction.guild.members.fetch(entrega.usuario_id);
-          const cargoAdv1Id = config.farm?.cargo_adv_1;
-          const cargoAdv2Id = config.farm?.cargo_adv_2;
+          const cargoAdv1Id = config.farm?.cargo_adv_1_id;
+          const cargoAdv2Id = config.farm?.cargo_adv_2_id;
           const cargoAtrasadoId = config.farm?.cargo_atrasado_id;
           const cargoEmDiaId = config.farm?.cargo_em_dia_id;
           const cargoGerenteIds = config.cargo_gerente_ids || [];
@@ -6188,7 +6188,7 @@ module.exports = {
           });
         }
 
-        const cargoAdvId = pendente.tipoAdv === 1 ? config.farm?.cargo_adv_1 : config.farm?.cargo_adv_2;
+        const cargoAdvId = pendente.tipoAdv === 1 ? config.farm?.cargo_adv_1_id : config.farm?.cargo_adv_2_id;
         if (!cargoAdvId) {
           return await interaction.reply({
             content: `❌ Cargo de ADV ${pendente.tipoAdv} não foi configurado.`,
@@ -6310,7 +6310,7 @@ module.exports = {
           });
         }
 
-        const cargoAdvId = pendente.tipoAdv === 1 ? config.farm?.cargo_adv_1 : config.farm?.cargo_adv_2;
+        const cargoAdvId = pendente.tipoAdv === 1 ? config.farm?.cargo_adv_1_id : config.farm?.cargo_adv_2_id;
         if (!cargoAdvId) {
           return await interaction.reply({
             content: `❌ Cargo de ADV ${pendente.tipoAdv} não foi configurado.`,
@@ -6511,8 +6511,8 @@ module.exports = {
       if (interaction.customId === 'ger_farm_adv') {
         await interaction.deferReply({ ephemeral: true });
         const config = await serverService.getConfig(interaction.guild.id);
-        const idsAdv1 = await listarIdsComCargo(interaction.guild, config.farm?.cargo_adv_1);
-        const idsAdv2 = await listarIdsComCargo(interaction.guild, config.farm?.cargo_adv_2);
+        const idsAdv1 = await listarIdsComCargo(interaction.guild, config.farm?.cargo_adv_1_id);
+        const idsAdv2 = await listarIdsComCargo(interaction.guild, config.farm?.cargo_adv_2_id);
 
         const embed = new EmbedBuilder()
           .setTitle('⚠️ ADV Farm')
