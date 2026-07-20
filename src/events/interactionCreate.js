@@ -1248,13 +1248,6 @@ module.exports = {
         }
       }
 
-      if (interaction.customId.startsWith('farm_meta_pagina_')) {
-        const pagina = parseInt(interaction.customId.replace('farm_meta_pagina_', ''), 10);
-        const config = await serverService.getConfig(interaction.guild.id);
-        const { modal } = construirModalMetas(config, pagina);
-        await interaction.showModal(modal);
-      }
-
       if (interaction.customId === 'modal_cadastro_pagamento') {
         const config = await serverService.getConfig(interaction.guild.id);
         if (!config.farm) config.farm = {};
@@ -1831,6 +1824,13 @@ module.exports = {
       } catch (error) {
         console.error('Erro no dispatcher de button:', error);
         // Continua para fallback
+      }
+
+      if (interaction.customId.startsWith('farm_meta_pagina_')) {
+        const pagina = parseInt(interaction.customId.replace('farm_meta_pagina_', ''), 10);
+        const config = await serverService.getConfig(interaction.guild.id);
+        const { modal } = construirModalMetas(config, pagina);
+        await interaction.showModal(modal);
       }
 
       // Mapeamento rápido de handlers para evitar iteração sequencial de 4600 linhas
