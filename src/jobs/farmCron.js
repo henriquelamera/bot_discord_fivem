@@ -13,6 +13,21 @@ function isMidnight() {
   return agora.getHours() === 0 && agora.getMinutes() < 1; // Entre 00:00 e 00:01
 }
 
+// Compara o quanto foi aprovado nos últimos 7 dias com a meta semanal de
+// cada item (só considera itens que tenham meta_semanal configurada)
+function calcularItensFaltando(metas, entreguesPorItem) {
+  const faltando = [];
+  for (const meta of Object.values(metas)) {
+    const metaSemanal = meta.meta_semanal || 0;
+    if (metaSemanal <= 0) continue;
+    const entregue = entreguesPorItem[meta.nome] || 0;
+    if (entregue < metaSemanal) {
+      faltando.push({ nome: meta.nome, entregue, meta: metaSemanal });
+    }
+  }
+  return faltando;
+}
+
 module.exports = {
   initFarmCron(client) {
     let jaExecutouHoje = false;
@@ -93,13 +108,27 @@ module.exports = {
                 }
               }
 
-              // Verificar se há entregas aprovadas na semana passada (consultar DB)
+              // Verificar se a meta semanal de cada item foi cumprida (não
+              // basta ter entregue algo - precisa bater a quantidade exigida
+              // por item). Sem nenhuma meta configurada, cai no fallback de
+              // "entregou pelo menos alguma coisa aprovada".
               const agora = new Date();
-              const entregas = await deliveryService.getApprovedDeliveries(guildId, membro.id, 7);
-              const temEntregaRecente = entregas.length > 0;
+              const metas = config.farm.metas || {};
+              const temMetaConfigurada = Object.values(metas).some(m => (m.meta_semanal || 0) > 0);
 
-              // Se NÃO tem entrega recente, remover Farm em Dia e adicionar atraso
-              if (!temEntregaRecente) {
+              let metaCumprida;
+              let itensFaltando = [];
+              if (temMetaConfigurada) {
+                const entreguesPorItem = await deliveryService.getQuantidadeAprovadaUltimosDias(guildId, membro.id, 7);
+                itensFaltando = calcularItensFaltando(metas, entreguesPorItem);
+                metaCumprida = itensFaltando.length === 0;
+              } else {
+                const entregas = await deliveryService.getApprovedDeliveries(guildId, membro.id, 7);
+                metaCumprida = entregas.length > 0;
+              }
+
+              // Se a meta não foi cumprida, remover Farm em Dia e adicionar atraso
+              if (!metaCumprida) {
                 // Aplicar mudanças de role em paralelo
                 await Promise.all([
                   membro.roles.remove(cargoEmDiaId),
@@ -126,13 +155,19 @@ module.exports = {
                   mensagemADV = '🚨 LIMITE DE ADVs ATINGIDO (2/2) - SUJEITO A PD';
                 }
 
-                console.log(`⚠️ ${membro.user.tag}: Farm atrasou (semana de ${agora.toLocaleDateString('pt-BR')})`);
+                const detalheMeta = itensFaltando.length > 0
+                  ? itensFaltando.map(i => `${i.nome}: ${i.entregue}/${i.meta}`).join(', ')
+                  : 'nenhuma entrega aprovada';
+                console.log(`⚠️ ${membro.user.tag}: Farm atrasou (semana de ${agora.toLocaleDateString('pt-BR')}) - ${detalheMeta}`);
 
                 // Notificar o usuário
                 try {
+                  const listaFaltando = itensFaltando.length > 0
+                    ? `\n\n📋 **Meta incompleta:**\n${itensFaltando.map(i => `- ${i.nome}: ${i.entregue}/${i.meta}`).join('\n')}`
+                    : '';
                   const conteudo = chegouMaximo
-                    ? `🚨 Sua meta de farm não foi entregue na semana de ${agora.toLocaleDateString('pt-BR')}!\n\n**Você atingiu o LIMITE de 2 ADVs!**\n\nVocê está **sujeito a PD (Punição da Organização)**.\n\nProcure imediatamente os responsáveis pelo farm para resolver sua situação!`
-                    : `⚠️ Sua meta de farm não foi entregue na semana de ${agora.toLocaleDateString('pt-BR')}!\n\n**Cargos atualizados:**\n❌ Removido: Farm em Dia\n✔️ Adicionado: Farm Atrasado\n${mensagemADV}`;
+                    ? `🚨 Sua meta de farm não foi entregue na semana de ${agora.toLocaleDateString('pt-BR')}!${listaFaltando}\n\n**Você atingiu o LIMITE de 2 ADVs!**\n\nVocê está **sujeito a PD (Punição da Organização)**.\n\nProcure imediatamente os responsáveis pelo farm para resolver sua situação!`
+                    : `⚠️ Sua meta de farm não foi entregue na semana de ${agora.toLocaleDateString('pt-BR')}!${listaFaltando}\n\n**Cargos atualizados:**\n❌ Removido: Farm em Dia\n✔️ Adicionado: Farm Atrasado\n${mensagemADV}`;
 
                   await membro.user.send({
                     content: conteudo,

@@ -178,6 +178,36 @@ async function getApprovedDeliveries(guildId, discordId, days = 7) {
   }
 }
 
+// Soma quanto de cada item foi APROVADO nos últimos N dias (janela corrida,
+// não a semana calendário) - usado pra validar se a meta semanal de cada
+// item foi de fato cumprida, e não só "entregou alguma coisa"
+async function getQuantidadeAprovadaUltimosDias(guildId, discordId, dias = 7) {
+  try {
+    const result = await pool.query(
+      `SELECT ie.item_nome, SUM(ie.quantidade) AS total
+       FROM itens_entregues ie
+       JOIN entregas_farm e ON ie.entrega_id = e.id
+       JOIN membros m ON e.membro_id = m.id
+       JOIN servidores s ON e.servidor_id = s.id
+       WHERE m.discord_id = $1
+         AND s.guild_id = $2
+         AND e.status = 'aprovada'
+         AND e.data_aprovacao >= NOW() - INTERVAL '${dias} days'
+       GROUP BY ie.item_nome`,
+      [discordId, guildId]
+    );
+
+    const totais = {};
+    for (const row of result.rows) {
+      totais[row.item_nome] = parseInt(row.total, 10);
+    }
+    return totais;
+  } catch (error) {
+    console.error('Erro ao somar entregas aprovadas:', error);
+    throw error;
+  }
+}
+
 // Início da semana de farm vigente (segunda-feira 00:00)
 function inicioDaSemanaAtual() {
   const agora = new Date();
@@ -383,6 +413,7 @@ module.exports = {
   getDeliveryWithItems,
   getApprovedDeliveries,
   getQuantidadeEntregueSemanaAtual,
+  getQuantidadeAprovadaUltimosDias,
   getEstatisticasEntregas,
   getRankingEntregas,
   getTotaisPorItem,
