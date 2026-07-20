@@ -4,7 +4,7 @@ const memberService = require('../services/memberService');
 const deliveryService = require('../services/deliveryService');
 const advService = require('../services/advService');
 const { dispatchButton, dispatchSelectMenu, dispatchModal } = require('../utils/handlerRegistry');
-const { marcarAguardandoImagem, desmarcarAguardandoImagem } = require('../utils/entregaMetaTracker');
+const { marcarAguardandoImagem, desmarcarAguardandoImagem, salvarItensParciais, pegarItensParciais, limparItensParciais } = require('../utils/entregaMetaTracker');
 const { formatarMoeda, calcularPagamentosPorMembro } = require('../utils/farmPagamentos');
 const { postarFechamentoSemanal, removerEntregaDosFechamentosPendentes, limparCardsFechamento } = require('../utils/fechamentoSemanal');
 
@@ -187,6 +187,32 @@ function construirModalMetas(config, pagina) {
     if (metaAtual) metaInput.setValue(metaAtual.toString());
 
     modal.addComponents(new ActionRowBuilder().addComponents(metaInput));
+  }
+
+  return { modal, itensPagina, totalPaginas };
+}
+
+// Mesma paginação de construirModalMetas, só que pro modal de entrega que os
+// próprios membros preenchem - aqui os formulários se encadeiam sozinhos
+// (o próximo abre direto ao enviar o anterior, sem botão no meio)
+function construirModalEntregarMeta(itens, pagina) {
+  const totalPaginas = Math.max(1, Math.ceil(itens.length / ITENS_POR_MODAL_META));
+  const inicio = (pagina - 1) * ITENS_POR_MODAL_META;
+  const itensPagina = itens.slice(inicio, inicio + ITENS_POR_MODAL_META);
+
+  const modal = new ModalBuilder()
+    .setCustomId(pagina === 1 ? 'modal_entregar_meta' : `modal_entregar_meta_p${pagina}`)
+    .setTitle(totalPaginas > 1 ? `📦 Entregar Meta (${pagina}/${totalPaginas})` : '📦 Entregar Meta de Farm');
+
+  for (const item of itensPagina) {
+    const input = new TextInputBuilder()
+      .setCustomId(`item_${item.id}`)
+      .setLabel(`${item.nome}`)
+      .setStyle(TextInputStyle.Short)
+      .setPlaceholder('Quantidade farmada')
+      .setRequired(false);
+
+    modal.addComponents(new ActionRowBuilder().addComponents(input));
   }
 
   return { modal, itensPagina, totalPaginas };
@@ -829,13 +855,18 @@ module.exports = {
         });
       }
 
-      if (interaction.customId === 'modal_entregar_meta') {
+      if (interaction.customId === 'modal_entregar_meta' || interaction.customId.startsWith('modal_entregar_meta_p')) {
+        const pagina = interaction.customId === 'modal_entregar_meta'
+          ? 1
+          : parseInt(interaction.customId.replace('modal_entregar_meta_p', ''), 10);
+
         const config = await serverService.getConfig(interaction.guild.id);
         const guildId = interaction.guild.id;
         const itens = config.farm?.itens || [];
         const cargoAprovadoresIds = config.farm?.cargo_pagamento || [];
 
         if (!cargoAprovadoresIds || cargoAprovadoresIds.length === 0) {
+          limparItensParciais(interaction.user.id);
           return await interaction.reply({
             content: '❌ Nenhum cargo de aprovação foi configurado.',
             ephemeral: true,
@@ -851,16 +882,25 @@ module.exports = {
           : null;
 
         if (!canalAprovacaoInicial) {
+          limparItensParciais(interaction.user.id);
           return await interaction.reply({
             content: '❌ Canal de aprovações de farm não foi configurado (ou não foi encontrado). Contate um administrador antes de entregar sua meta.',
             ephemeral: true,
           });
         }
 
-        // Coletar quantidades entregues do modal
-        const itensEntregues = {};
+        const totalPaginas = Math.max(1, Math.ceil(itens.length / ITENS_POR_MODAL_META));
+        const inicio = (pagina - 1) * ITENS_POR_MODAL_META;
+        // Só lê os campos dessa página - ler todos os itens cadastrados
+        // quebrava com "field not found" a partir do 6º item, que nem existe
+        // nesse modal
+        const itensPagina = itens.slice(inicio, inicio + ITENS_POR_MODAL_META);
+
+        // Coletar quantidades entregues do modal, somando com o que já foi
+        // preenchido em páginas anteriores (se o formulário foi paginado)
+        const itensEntregues = { ...pegarItensParciais(interaction.user.id) };
         const quantidadesInvalidas = [];
-        for (const item of itens) {
+        for (const item of itensPagina) {
           const quantidade = interaction.fields.getTextInputValue(`item_${item.id}`);
           if (quantidade && quantidade.trim()) {
             const qtd = parseQuantidade(quantidade);
@@ -876,11 +916,23 @@ module.exports = {
         }
 
         if (quantidadesInvalidas.length > 0) {
+          limparItensParciais(interaction.user.id);
           return await interaction.reply({
             content: `❌ Quantidade inválida — use apenas números (ex: 2000 ou 2.000):\n${quantidadesInvalidas.join('\n')}`,
             ephemeral: true,
           });
         }
+
+        // Ainda tem página pra preencher - guarda o que já foi digitado e
+        // abre o próximo formulário direto, sem precisar de um botão no meio
+        if (pagina < totalPaginas) {
+          salvarItensParciais(interaction.user.id, itensEntregues);
+          const { modal: proximoModal } = construirModalEntregarMeta(itens, pagina + 1);
+          await interaction.showModal(proximoModal);
+          return;
+        }
+
+        limparItensParciais(interaction.user.id);
 
         if (Object.keys(itensEntregues).length === 0) {
           return await interaction.reply({
@@ -5579,23 +5631,8 @@ module.exports = {
           });
         }
 
-        const modal = new ModalBuilder()
-          .setCustomId('modal_entregar_meta')
-          .setTitle('📦 Entregar Meta de Farm');
-
-        // Adicionar um campo para cada item (máximo 5)
-        for (let i = 0; i < Math.min(itens.length, 5); i++) {
-          const item = itens[i];
-          const input = new TextInputBuilder()
-            .setCustomId(`item_${item.id}`)
-            .setLabel(`${item.nome}`)
-            .setStyle(TextInputStyle.Short)
-            .setPlaceholder('Quantidade farmada')
-            .setRequired(false);
-
-          modal.addComponents(new ActionRowBuilder().addComponents(input));
-        }
-
+        limparItensParciais(interaction.user.id);
+        const { modal } = construirModalEntregarMeta(itens, 1);
         await interaction.showModal(modal);
       }
 
