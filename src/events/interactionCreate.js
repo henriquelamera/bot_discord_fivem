@@ -2330,6 +2330,11 @@ module.exports = {
               label: 'Responsáveis por Farm',
               description: 'Cargos notificados quando atinge 2 ADVs',
               value: 'cargo_responsaveis_farm',
+            },
+            {
+              label: 'Gerente de Farm',
+              description: 'Único cargo que pode aprovar a própria entrega',
+              value: 'cargo_gerente_farm',
             }
           );
 
@@ -2440,6 +2445,10 @@ module.exports = {
           ? `✅ ${interaction.guild.roles.cache.get(config.farm.cargo_adv_2_id)?.name || 'ID Inválido'}`
           : '❌ Não configurado';
 
+        const gerenteFarm = config.farm?.cargo_gerente_farm_id
+          ? `✅ ${interaction.guild.roles.cache.get(config.farm.cargo_gerente_farm_id)?.name || 'ID Inválido'}`
+          : '❌ Não configurado';
+
         // Canais Farm
         const canalBau = config.farm?.canal_bau_id
           ? `✅ #${interaction.guild.channels.cache.get(config.farm.canal_bau_id)?.name || 'ID Inválido'}`
@@ -2502,6 +2511,7 @@ module.exports = {
           { name: '⏸️ Farm Atrasado', value: truncate(farmAtrasado), inline: true },
           { name: '⚠️ ADV 1', value: truncate(advFarm1), inline: true },
           { name: '🚨 ADV 2', value: truncate(advFarm2), inline: true },
+          { name: '👨‍🌾 Gerente de Farm', value: truncate(gerenteFarm), inline: true },
 
           { name: '📦 Abrir Baú', value: truncate(canalBau), inline: true },
           { name: '📢 Farm Aprovações', value: truncate(canalAprovacoesFarm), inline: true },
@@ -2751,6 +2761,7 @@ module.exports = {
           cargo_adv_1: 'ADV Farm 1',
           cargo_adv_2: 'ADV Farm 2',
           cargo_responsaveis_farm: 'Responsáveis por Farm',
+          cargo_gerente_farm: 'Gerente de Farm',
         };
 
         // Determinar se é múltiplo ou único
@@ -2901,7 +2912,8 @@ module.exports = {
           interaction.customId === 'select_cargo_atrasado' ||
           interaction.customId === 'select_cargo_adv_1' ||
           interaction.customId === 'select_cargo_adv_2' ||
-          interaction.customId === 'select_cargo_responsaveis_farm') {
+          interaction.customId === 'select_cargo_responsaveis_farm' ||
+          interaction.customId === 'select_cargo_gerente_farm') {
 
         const tipo = interaction.customId.replace('select_', '');
         const config = await serverService.getConfig(interaction.guild.id);
@@ -2913,6 +2925,7 @@ module.exports = {
           cargo_adv_1: 'ADV Farm 1',
           cargo_adv_2: 'ADV Farm 2',
           cargo_responsaveis_farm: 'Responsáveis por Farm',
+          cargo_gerente_farm: 'Gerente de Farm',
         };
 
         if (interaction.customId === 'select_cargo_responsaveis_farm') {
@@ -5677,10 +5690,18 @@ module.exports = {
         }
 
         if (entrega.usuario_id === interaction.user.id) {
-          return await interaction.reply({
-            content: '❌ Você não pode aprovar o seu próprio farm! Peça pra outro responsável aprovar.',
-            ephemeral: true,
-          });
+          // Único cargo isento dessa regra: Gerente de Farm - todo mundo
+          // mais precisa que outro responsável aprove, mesmo tendo outro
+          // cargo de gerência geral (Sub Líder, Supervisor etc.)
+          const cargoGerenteFarmId = config.farm?.cargo_gerente_farm_id;
+          const ehGerenteFarm = cargoGerenteFarmId && interaction.member.roles.cache.has(cargoGerenteFarmId);
+
+          if (!ehGerenteFarm) {
+            return await interaction.reply({
+              content: '❌ Você não pode aprovar o seu próprio farm! Peça pra outro responsável aprovar.',
+              ephemeral: true,
+            });
+          }
         }
 
         try {
