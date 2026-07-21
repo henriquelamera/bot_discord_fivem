@@ -924,11 +924,23 @@ module.exports = {
         }
 
         // Ainda tem página pra preencher - guarda o que já foi digitado e
-        // abre o próximo formulário direto, sem precisar de um botão no meio
+        // mostra um botão pra continuar (o Discord não aceita abrir um modal
+        // como resposta ao envio de outro modal, só em resposta a botão/select)
         if (pagina < totalPaginas) {
           salvarItensParciais(interaction.user.id, itensEntregues);
-          const { modal: proximoModal } = construirModalEntregarMeta(itens, pagina + 1);
-          await interaction.showModal(proximoModal);
+
+          const { ButtonBuilder, ButtonStyle } = require('discord.js');
+          const proximoInicio = pagina * ITENS_POR_MODAL_META;
+          const botaoContinuar = new ButtonBuilder()
+            .setCustomId(`farm_entrega_pagina_${pagina + 1}`)
+            .setLabel(`➡️ Continuar (itens ${proximoInicio + 1}-${Math.min(proximoInicio + ITENS_POR_MODAL_META, itens.length)})`)
+            .setStyle(ButtonStyle.Primary);
+
+          await interaction.reply({
+            content: `✅ Itens dessa página salvos. Ainda faltam **${itens.length - proximoInicio}** item(ns) — clique em **Continuar** pra preencher o resto (o Discord só permite 5 campos por formulário).`,
+            components: [new ActionRowBuilder().addComponents(botaoContinuar)],
+            ephemeral: true,
+          });
           return;
         }
 
@@ -1937,6 +1949,14 @@ module.exports = {
         const pagina = parseInt(interaction.customId.replace('farm_pagamento_pagina_', ''), 10);
         const config = await serverService.getConfig(interaction.guild.id);
         const { modal } = construirModalPagamento(config, pagina);
+        await interaction.showModal(modal);
+      }
+
+      if (interaction.customId.startsWith('farm_entrega_pagina_')) {
+        const pagina = parseInt(interaction.customId.replace('farm_entrega_pagina_', ''), 10);
+        const config = await serverService.getConfig(interaction.guild.id);
+        const itens = config.farm?.itens || [];
+        const { modal } = construirModalEntregarMeta(itens, pagina);
         await interaction.showModal(modal);
       }
 
