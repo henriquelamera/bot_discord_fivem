@@ -6419,6 +6419,15 @@ module.exports = {
         try {
           const membro = await interaction.guild.members.fetch(pendente.membroId);
           await membro.roles.remove(cargoAdvId);
+
+          // Garantir que existe um registro de membro no banco antes de
+          // remover o ADV (cargo atribuído manualmente sem registro formal)
+          const membroExistente = await memberService.getMember(interaction.guild.id, pendente.membroId);
+          if (!membroExistente) {
+            await memberService.saveMember(interaction.guild.id, pendente.membroId, membro.displayName, null, membro.displayName);
+            await memberService.approveMember(interaction.guild.id, pendente.membroId);
+          }
+
           await advService.removeADV(interaction.guild.id, pendente.membroId, pendente.tipoAdv);
 
           await serverService.logAction(
