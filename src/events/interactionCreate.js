@@ -5,6 +5,7 @@ const deliveryService = require('../services/deliveryService');
 const advService = require('../services/advService');
 const { dispatchButton, dispatchSelectMenu, dispatchModal } = require('../utils/handlerRegistry');
 const { marcarAguardandoImagem, desmarcarAguardandoImagem, salvarItensParciais, pegarItensParciais, limparItensParciais } = require('../utils/entregaMetaTracker');
+const { salvarRecrutador, pegarRecrutador, limparRecrutador } = require('../utils/registroTracker');
 const { formatarMoeda, calcularPagamentosPorMembro } = require('../utils/farmPagamentos');
 const { postarFechamentoSemanal, removerEntregaDosFechamentosPendentes, limparCardsFechamento } = require('../utils/fechamentoSemanal');
 
@@ -245,6 +246,38 @@ function construirModalPagamento(config, pagina) {
   }
 
   return { modal, itensPagina, totalPaginas };
+}
+
+// Monta as opções de recrutador pro registro - só gente com cargo de
+// Gerente pra cima pode ser selecionada (Discord não permite restringir um
+// User Select nativo por cargo, então usamos um Select de texto populado só
+// com quem já tem o cargo certo, limitado a 25 por causa do limite do Discord)
+async function opcoesRecrutadoresElegiveis(config, guild) {
+  const cargoGerenteIds = config.cargo_gerente_ids || [];
+  const cargoLiderancaIds = config.cargo_lideranca_ids || [];
+  const cargosElegiveis = [...cargoGerenteIds, ...cargoLiderancaIds];
+
+  if (cargosElegiveis.length === 0) return [];
+
+  await guild.members.fetch().catch(() => {});
+
+  const elegiveis = new Map();
+  for (const cargoId of cargosElegiveis) {
+    const role = guild.roles.cache.get(cargoId);
+    if (!role) continue;
+    for (const membro of role.members.values()) {
+      elegiveis.set(membro.id, membro);
+    }
+  }
+
+  return [...elegiveis.values()]
+    .sort((a, b) => a.displayName.localeCompare(b.displayName))
+    .slice(0, 25)
+    .map((membro) => ({
+      label: membro.displayName,
+      description: membro.user.tag,
+      value: membro.id,
+    }));
 }
 
 // Monta as opções de tipo de ADV disponíveis pra selecionar, só com os
@@ -1637,7 +1670,13 @@ module.exports = {
         const nomeInGame = interaction.fields.getTextInputValue('nome_in_game');
         const id = interaction.fields.getTextInputValue('id_registro');
         const telefone = interaction.fields.getTextInputValue('telefone_registro') || 'Não informado';
-        const recrutador = interaction.fields.getTextInputValue('recrutador_registro') || 'Não informado';
+
+        // Recrutador foi escolhido na etapa anterior (select menu), não é
+        // mais campo de texto - vem do tracker transiente entre as duas
+        // interações (select -> modal)
+        const recrutadorId = pegarRecrutador(interaction.user.id);
+        limparRecrutador(interaction.user.id);
+        const recrutador = recrutadorId ? `<@${recrutadorId}>` : 'Não informado';
 
         const config = await serverService.getConfig(interaction.guild.id);
 
@@ -1648,6 +1687,7 @@ module.exports = {
           id,
           telefone,
           recrutador,
+          recrutadorId,
           data: new Date().toISOString(),
         };
 
@@ -2617,6 +2657,92 @@ module.exports = {
       // NOTA: Dispatcher para selectMenus desabilitado pois há muitas variações complexas
       // Apenas os select_canal_* que salvam config estão no dispatcher
       // Tudo o mais usa o código legado que funciona bem
+
+      if (interaction.customId === 'select_recrutador_pedir_registro' ||
+          interaction.customId === 'select_recrutador_registro_direto') {
+        salvarRecrutador(interaction.user.id, interaction.values[0]);
+
+        const config = await serverService.getConfig(interaction.guild.id);
+
+        if (interaction.customId === 'select_recrutador_pedir_registro') {
+          const cargoMoradorId = config.cargo_morador_id;
+          const nomeCargo = interaction.guild.roles.cache.get(cargoMoradorId)?.name || 'Morador';
+
+          const modal = new ModalBuilder()
+            .setCustomId('modal_registro_membro')
+            .setTitle(`📋 Solicitação para ${nomeCargo}`);
+
+          const cargoInput = new TextInputBuilder()
+            .setCustomId('cargo_solicitado')
+            .setLabel('Cargo Solicitado')
+            .setStyle(TextInputStyle.Short)
+            .setValue(nomeCargo)
+            .setRequired(true);
+
+          const nomeInput = new TextInputBuilder()
+            .setCustomId('nome_in_game')
+            .setLabel('Seu nome in-game')
+            .setStyle(TextInputStyle.Short)
+            .setPlaceholder('Ex: Levi')
+            .setRequired(true);
+
+          const idInput = new TextInputBuilder()
+            .setCustomId('id_registro')
+            .setLabel('Seu ID na cidade')
+            .setStyle(TextInputStyle.Short)
+            .setPlaceholder('Ex: 1202')
+            .setRequired(true);
+
+          const telefoneInput = new TextInputBuilder()
+            .setCustomId('telefone_registro')
+            .setLabel('Seu telefone (opcional)')
+            .setStyle(TextInputStyle.Short)
+            .setPlaceholder('Ex: 1111')
+            .setRequired(false);
+
+          modal.addComponents(
+            new ActionRowBuilder().addComponents(cargoInput),
+            new ActionRowBuilder().addComponents(nomeInput),
+            new ActionRowBuilder().addComponents(idInput),
+            new ActionRowBuilder().addComponents(telefoneInput)
+          );
+
+          await interaction.showModal(modal);
+        } else {
+          const modal = new ModalBuilder()
+            .setCustomId('modal_registro_membro')
+            .setTitle('📋 REGISTRO BECKS');
+
+          const nomeInput = new TextInputBuilder()
+            .setCustomId('nome_in_game')
+            .setLabel('NOME IN-GAME')
+            .setStyle(TextInputStyle.Short)
+            .setPlaceholder('Digite o valor do campo 1')
+            .setRequired(true);
+
+          const idInput = new TextInputBuilder()
+            .setCustomId('id_registro')
+            .setLabel('ID')
+            .setStyle(TextInputStyle.Short)
+            .setPlaceholder('Digite o valor do campo 2')
+            .setRequired(true);
+
+          const telefoneInput = new TextInputBuilder()
+            .setCustomId('telefone_registro')
+            .setLabel('TELEFONE')
+            .setStyle(TextInputStyle.Short)
+            .setPlaceholder('Digite aqui')
+            .setRequired(false);
+
+          modal.addComponents(
+            new ActionRowBuilder().addComponents(nomeInput),
+            new ActionRowBuilder().addComponents(idInput),
+            new ActionRowBuilder().addComponents(telefoneInput)
+          );
+
+          await interaction.showModal(modal);
+        }
+      }
 
       if (interaction.customId === 'select_tipo_adv_registrar') {
         const tipoAdv = interaction.values[0];
@@ -7167,57 +7293,32 @@ module.exports = {
           });
         }
 
-        const nomeCargo = interaction.guild.roles.cache.get(cargoMoradorId)?.name || 'Morador';
+        // Antes do modal, pede pra selecionar quem recrutou (só cargo de
+        // Gerente pra cima aparece na lista) - Discord não deixa abrir um
+        // select menu como resposta de modal nem vice-versa, então esse
+        // passo tem que vir antes do modal, via botão/select normal
+        const { StringSelectMenuBuilder } = require('discord.js');
+        const opcoesRecrutador = await opcoesRecrutadoresElegiveis(config, interaction.guild);
 
-        // Abrir modal de registro
-        const modal = new ModalBuilder()
-          .setCustomId('modal_registro_membro')
-          .setTitle(`📋 Solicitação para ${nomeCargo}`);
+        if (opcoesRecrutador.length === 0) {
+          return await interaction.reply({
+            content: '❌ Nenhum cargo de Gerente pra cima está configurado ou tem membros no servidor. Contate um administrador antes de se registrar.',
+            ephemeral: true,
+          });
+        }
 
-        const cargoInput = new TextInputBuilder()
-          .setCustomId('cargo_solicitado')
-          .setLabel('Cargo Solicitado')
-          .setStyle(TextInputStyle.Short)
-          .setValue(nomeCargo)
-          .setRequired(true);
+        const selectRecrutador = new StringSelectMenuBuilder()
+          .setCustomId('select_recrutador_pedir_registro')
+          .setPlaceholder('Selecione quem te recrutou...')
+          .addOptions(opcoesRecrutador);
 
-        const nomeInput = new TextInputBuilder()
-          .setCustomId('nome_in_game')
-          .setLabel('Seu nome in-game')
-          .setStyle(TextInputStyle.Short)
-          .setPlaceholder('Ex: Levi')
-          .setRequired(true);
+        const rowRecrutador = new ActionRowBuilder().addComponents(selectRecrutador);
 
-        const idInput = new TextInputBuilder()
-          .setCustomId('id_registro')
-          .setLabel('Seu ID na cidade')
-          .setStyle(TextInputStyle.Short)
-          .setPlaceholder('Ex: 1202')
-          .setRequired(true);
-
-        const telefoneInput = new TextInputBuilder()
-          .setCustomId('telefone_registro')
-          .setLabel('Seu telefone (opcional)')
-          .setStyle(TextInputStyle.Short)
-          .setPlaceholder('Ex: 1111')
-          .setRequired(false);
-
-        const recrutadorInput = new TextInputBuilder()
-          .setCustomId('recrutador_registro')
-          .setLabel('Quem te recrutou? (opcional)')
-          .setStyle(TextInputStyle.Short)
-          .setPlaceholder('Nome da pessoa')
-          .setRequired(false);
-
-        modal.addComponents(
-          new ActionRowBuilder().addComponents(cargoInput),
-          new ActionRowBuilder().addComponents(nomeInput),
-          new ActionRowBuilder().addComponents(idInput),
-          new ActionRowBuilder().addComponents(telefoneInput),
-          new ActionRowBuilder().addComponents(recrutadorInput)
-        );
-
-        await interaction.showModal(modal);
+        await interaction.reply({
+          content: '**📋 Registro**\n\n**Etapa 1:** Selecione quem te recrutou abaixo.\n**Etapa 2:** Preencha seus dados no formulário que vai abrir.',
+          components: [rowRecrutador],
+          ephemeral: true,
+        });
       }
 
       if (interaction.customId === 'atualizar_registro') {
@@ -7322,46 +7423,29 @@ module.exports = {
       }
 
       if (interaction.customId.startsWith('registro_')) {
-        const modal = new ModalBuilder()
-          .setCustomId('modal_registro_membro')
-          .setTitle('📋 REGISTRO BECKS');
+        const config = await serverService.getConfig(interaction.guild.id);
+        const { StringSelectMenuBuilder } = require('discord.js');
+        const opcoesRecrutador = await opcoesRecrutadoresElegiveis(config, interaction.guild);
 
-        const nomeInput = new TextInputBuilder()
-          .setCustomId('nome_in_game')
-          .setLabel('NOME IN-GAME')
-          .setStyle(TextInputStyle.Short)
-          .setPlaceholder('Digite o valor do campo 1')
-          .setRequired(true);
+        if (opcoesRecrutador.length === 0) {
+          return await interaction.reply({
+            content: '❌ Nenhum cargo de Gerente pra cima está configurado ou tem membros no servidor. Contate um administrador antes de se registrar.',
+            ephemeral: true,
+          });
+        }
 
-        const idInput = new TextInputBuilder()
-          .setCustomId('id_registro')
-          .setLabel('ID')
-          .setStyle(TextInputStyle.Short)
-          .setPlaceholder('Digite o valor do campo 2')
-          .setRequired(true);
+        const selectRecrutador = new StringSelectMenuBuilder()
+          .setCustomId('select_recrutador_registro_direto')
+          .setPlaceholder('Selecione quem te recrutou...')
+          .addOptions(opcoesRecrutador);
 
-        const telefoneInput = new TextInputBuilder()
-          .setCustomId('telefone_registro')
-          .setLabel('TELEFONE')
-          .setStyle(TextInputStyle.Short)
-          .setPlaceholder('Digite aqui')
-          .setRequired(false);
+        const rowRecrutador = new ActionRowBuilder().addComponents(selectRecrutador);
 
-        const recrutadorInput = new TextInputBuilder()
-          .setCustomId('recrutador_registro')
-          .setLabel('RECRUTADOR(A)')
-          .setStyle(TextInputStyle.Short)
-          .setPlaceholder('Digite aqui')
-          .setRequired(false);
-
-        modal.addComponents(
-          new ActionRowBuilder().addComponents(nomeInput),
-          new ActionRowBuilder().addComponents(idInput),
-          new ActionRowBuilder().addComponents(telefoneInput),
-          new ActionRowBuilder().addComponents(recrutadorInput)
-        );
-
-        await interaction.showModal(modal);
+        await interaction.reply({
+          content: '**📋 REGISTRO BECKS**\n\n**Etapa 1:** Selecione quem te recrutou abaixo.\n**Etapa 2:** Preencha seus dados no formulário que vai abrir.',
+          components: [rowRecrutador],
+          ephemeral: true,
+        });
       }
     }
   },
