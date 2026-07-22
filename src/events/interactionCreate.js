@@ -1925,6 +1925,80 @@ module.exports = {
           });
         }
       }
+
+      // Handler para modal de rejeição
+      if (interaction.customId.startsWith('modal_recusar_farm_')) {
+        const entrega_id = interaction.customId.replace('modal_recusar_farm_', '');
+        const config = await serverService.getConfig(interaction.guild.id);
+
+        if (!config.farm?.entregas) {
+          return await interaction.reply({
+            content: '❌ Erro ao buscar entrega.',
+            ephemeral: true,
+          });
+        }
+
+        const entrega = config.farm.entregas.find((e) => String(e.id) === entrega_id);
+        if (!entrega) {
+          return await interaction.reply({
+            content: '❌ Entrega não encontrada.',
+            ephemeral: true,
+          });
+        }
+
+        try {
+          const motivo = interaction.fields.getTextInputValue('motivo_rejeicao');
+          const membro = await interaction.guild.members.fetch(entrega.usuario_id);
+
+          entrega.status = 'rejeitada';
+          entrega.data_rejeicao = new Date().toISOString();
+          entrega.rejeitador_id = interaction.user.id;
+          entrega.motivo_rejeicao = motivo;
+
+          // Patch atômico só nesta entrega, sem sobrescrever mudanças
+          // feitas em outras entregas por aprovações concorrentes
+          await serverService.patchEntregaFarm(interaction.guild.id, entrega.id, {
+            status: entrega.status,
+            data_rejeicao: entrega.data_rejeicao,
+            rejeitador_id: entrega.rejeitador_id,
+            motivo_rejeicao: entrega.motivo_rejeicao,
+          });
+
+          // Marcar rejeitada também na tabela do Postgres, pelo mesmo
+          // motivo da aprovação (consistência com ranking/estatísticas)
+          await deliveryService.rejectDelivery(entrega.id, motivo).catch((err) => {
+            console.warn('Não foi possível marcar entrega como rejeitada no Postgres:', err.message);
+          });
+
+          await atualizarHistoricoEntregaFarm(
+            interaction.guild,
+            entrega,
+            0xe74c3c,
+            '❌ Recusada',
+            [{ name: '📝 Motivo', value: motivo }]
+          );
+
+          await interaction.reply({
+            content: `❌ Entrega de ${membro.user.tag} rejeitada.`,
+            ephemeral: true,
+          });
+
+          // Notificar usuário
+          try {
+            await membro.user.send({
+              content: `❌ Sua entrega de farm foi **rejeitada**.\n\n**Motivo:** ${motivo}`,
+            });
+          } catch (err) {
+            console.warn('Não foi possível notificar usuário:', err.message);
+          }
+        } catch (err) {
+          console.error(err);
+          await interaction.reply({
+            content: `❌ Erro ao rejeitar entrega: ${err.message}`,
+            ephemeral: true,
+          });
+        }
+      }
     }
 
     if (interaction.isButton()) {
@@ -5943,80 +6017,6 @@ module.exports = {
 
         modal.addComponents(new ActionRowBuilder().addComponents(motivo));
         await interaction.showModal(modal);
-      }
-
-      // Handler para modal de rejeição
-      if (interaction.customId.startsWith('modal_recusar_farm_')) {
-        const entrega_id = interaction.customId.replace('modal_recusar_farm_', '');
-        const config = await serverService.getConfig(interaction.guild.id);
-
-        if (!config.farm?.entregas) {
-          return await interaction.reply({
-            content: '❌ Erro ao buscar entrega.',
-            ephemeral: true,
-          });
-        }
-
-        const entrega = config.farm.entregas.find((e) => String(e.id) === entrega_id);
-        if (!entrega) {
-          return await interaction.reply({
-            content: '❌ Entrega não encontrada.',
-            ephemeral: true,
-          });
-        }
-
-        try {
-          const motivo = interaction.fields.getTextInputValue('motivo_rejeicao');
-          const membro = await interaction.guild.members.fetch(entrega.usuario_id);
-
-          entrega.status = 'rejeitada';
-          entrega.data_rejeicao = new Date().toISOString();
-          entrega.rejeitador_id = interaction.user.id;
-          entrega.motivo_rejeicao = motivo;
-
-          // Patch atômico só nesta entrega, sem sobrescrever mudanças
-          // feitas em outras entregas por aprovações concorrentes
-          await serverService.patchEntregaFarm(interaction.guild.id, entrega.id, {
-            status: entrega.status,
-            data_rejeicao: entrega.data_rejeicao,
-            rejeitador_id: entrega.rejeitador_id,
-            motivo_rejeicao: entrega.motivo_rejeicao,
-          });
-
-          // Marcar rejeitada também na tabela do Postgres, pelo mesmo
-          // motivo da aprovação (consistência com ranking/estatísticas)
-          await deliveryService.rejectDelivery(entrega.id, motivo).catch((err) => {
-            console.warn('Não foi possível marcar entrega como rejeitada no Postgres:', err.message);
-          });
-
-          await atualizarHistoricoEntregaFarm(
-            interaction.guild,
-            entrega,
-            0xe74c3c,
-            '❌ Recusada',
-            [{ name: '📝 Motivo', value: motivo }]
-          );
-
-          await interaction.reply({
-            content: `❌ Entrega de ${membro.user.tag} rejeitada.`,
-            ephemeral: true,
-          });
-
-          // Notificar usuário
-          try {
-            await membro.user.send({
-              content: `❌ Sua entrega de farm foi **rejeitada**.\n\n**Motivo:** ${motivo}`,
-            });
-          } catch (err) {
-            console.warn('Não foi possível notificar usuário:', err.message);
-          }
-        } catch (err) {
-          console.error(err);
-          await interaction.reply({
-            content: `❌ Erro ao rejeitar entrega: ${err.message}`,
-            ephemeral: true,
-          });
-        }
       }
 
       if (interaction.customId.startsWith('marcar_pago_')) {
