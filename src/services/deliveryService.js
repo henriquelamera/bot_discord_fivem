@@ -1,4 +1,5 @@
 const pool = require('../db');
+const { inicioDaSemanaBrasilia } = require('../utils/horarioBrasil');
 
 // Pegar server_id e member_id em uma query
 async function getServerAndMemberId(guildId, discordId) {
@@ -208,15 +209,12 @@ async function getQuantidadeAprovadaUltimosDias(guildId, discordId, dias = 7) {
   }
 }
 
-// Início da semana de farm vigente (segunda-feira 00:00)
+// Início da semana de farm vigente (segunda-feira 00:00, horário de
+// Brasília - o processo do bot roda em UTC no Railway, então usar o fuso
+// local do servidor faria a semana virar às 21h de domingo em vez de meia-
+// noite de segunda, contando entregas de domingo à noite como semana nova)
 function inicioDaSemanaAtual() {
-  const agora = new Date();
-  const diaDaSemana = agora.getDay(); // 0=domingo, 1=segunda, ...
-  const diasDesdeSegunda = (diaDaSemana + 6) % 7; // segunda=0, ..., domingo=6
-  const inicio = new Date(agora);
-  inicio.setDate(agora.getDate() - diasDesdeSegunda);
-  inicio.setHours(0, 0, 0, 0);
-  return inicio;
+  return inicioDaSemanaBrasilia();
 }
 
 // Soma quanto de cada item o membro já entregou na semana vigente

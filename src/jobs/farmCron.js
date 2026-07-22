@@ -2,15 +2,19 @@ const serverService = require('../services/serverService');
 const deliveryService = require('../services/deliveryService');
 const memberService = require('../services/memberService');
 const { postarFechamentoSemanal } = require('../utils/fechamentoSemanal');
+const { agoraEmBrasiliaComoUTC } = require('../utils/horarioBrasil');
 
+// Usa o horário de Brasília em vez do fuso do processo (Railway roda em
+// UTC) - senão "segunda 00:00" dispara às 21h de domingo pro Brasil, e as
+// entregas de domingo à noite já contam pra semana nova incorretamente
 function isMonday() {
-  const agora = new Date();
-  return agora.getDay() === 1; // 1 = segunda-feira
+  const agora = agoraEmBrasiliaComoUTC();
+  return agora.getUTCDay() === 1; // 1 = segunda-feira
 }
 
 function isMidnight() {
-  const agora = new Date();
-  return agora.getHours() === 0 && agora.getMinutes() < 1; // Entre 00:00 e 00:01
+  const agora = agoraEmBrasiliaComoUTC();
+  return agora.getUTCHours() === 0 && agora.getUTCMinutes() < 1; // Entre 00:00 e 00:01 (Brasília)
 }
 
 // Compara o quanto foi aprovado nos últimos 7 dias com a meta semanal de
