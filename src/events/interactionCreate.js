@@ -6182,12 +6182,17 @@ module.exports = {
           });
         }
 
+        // marcarEntregaComoPaga faz várias chamadas ao Discord em sequência
+        // (histórico, card original, fechamentos pendentes, banco) - pode
+        // passar dos 3s que o Discord dá pra resposta inicial e expirar a
+        // interação com "não respondeu a tempo" mesmo processando certo
+        await interaction.deferReply({ ephemeral: true });
+
         try {
           await marcarEntregaComoPaga(interaction.guild, config, entrega, interaction.user.id);
 
-          await interaction.reply({
+          await interaction.editReply({
             content: `✅ Pagamento de ${formatarMoeda(entrega.pagamento.valor_total)} registrado!`,
-            ephemeral: true,
           });
 
           // Notificar quem entregou o farm (DM + canal privado de farm, já que
@@ -6211,10 +6216,9 @@ module.exports = {
           }
         } catch (err) {
           console.error(err);
-          await interaction.reply({
+          await interaction.editReply({
             content: `❌ Erro ao registrar pagamento: ${err.message}`,
-            ephemeral: true,
-          });
+          }).catch(() => {});
         }
       }
 
@@ -6248,6 +6252,14 @@ module.exports = {
           });
         }
 
+        // Processar o lote envolve várias chamadas ao Discord em sequência
+        // (histórico no canal da pessoa, card original, fechamentos
+        // pendentes, banco) - com mais de uma entrega isso passa fácil dos
+        // 3s que o Discord dá pra resposta inicial, e a interação expira
+        // com "não respondeu a tempo" mesmo o processamento indo adiante.
+        // Confirma o recebimento antes de começar o trabalho pesado.
+        await interaction.deferUpdate();
+
         try {
           let totalPago = 0;
 
@@ -6271,7 +6283,7 @@ module.exports = {
             .setTitle('✅ Pagamento Semanal Realizado')
             .addFields({ name: '💰 Pago por', value: `<@${interaction.user.id}>`, inline: false });
 
-          await interaction.update({ embeds: [embedPago], components: [] });
+          await interaction.editReply({ embeds: [embedPago], components: [] });
 
           // Notificar quem entregou o farm (uma vez só, com o total da semana)
           const mensagemPagamento = `💰 Seu farm dessa semana foi **pago**! Valor total: ${formatarMoeda(totalPago)}\n📋 Referente às entregas: ${lote.entregaIds.map((id) => `#${id}`).join(', ')}`;
@@ -6293,10 +6305,10 @@ module.exports = {
           }
         } catch (err) {
           console.error(err);
-          await interaction.reply({
+          await interaction.followUp({
             content: `❌ Erro ao registrar pagamento semanal: ${err.message}`,
             ephemeral: true,
-          });
+          }).catch(() => {});
         }
       }
 
