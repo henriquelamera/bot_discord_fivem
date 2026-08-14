@@ -6903,6 +6903,126 @@ module.exports = {
         await interaction.reply({ embeds: [embed], ephemeral: true });
       }
 
+      if (interaction.customId === 'ger_farm_limpar_pastas') {
+        if (!interaction.memberPermissions.has('ADMINISTRATOR')) {
+          return await interaction.reply({
+            content: '❌ Só administradores podem limpar as pastas de farm.',
+            ephemeral: true,
+          });
+        }
+
+        await interaction.deferReply({ ephemeral: true });
+
+        const config = await serverService.getConfig(interaction.guild.id);
+        const categoriaBauId = config.farm?.categoria_bau_id;
+
+        if (!categoriaBauId) {
+          return await interaction.editReply({ content: '❌ Categoria de Baú não foi configurada.' });
+        }
+
+        const categoria = interaction.guild.channels.cache.get(categoriaBauId);
+        if (!categoria) {
+          return await interaction.editReply({ content: '❌ Categoria de Baú não foi encontrada no servidor.' });
+        }
+
+        const totalPastas = categoria.children.cache.size;
+        if (totalPastas === 0) {
+          return await interaction.editReply({ content: '✅ Não há nenhuma pasta de farm pra apagar no momento.' });
+        }
+
+        const { ButtonBuilder, ButtonStyle } = require('discord.js');
+        const botaoConfirmar = new ButtonBuilder()
+          .setCustomId('confirmar_limpar_pastas_farm')
+          .setLabel('✅ Sim, apagar tudo')
+          .setStyle(ButtonStyle.Danger);
+        const botaoCancelar = new ButtonBuilder()
+          .setCustomId('cancelar_limpar_pastas_farm')
+          .setLabel('❌ Não, manter')
+          .setStyle(ButtonStyle.Secondary);
+        const row = new ActionRowBuilder().addComponents(botaoConfirmar, botaoCancelar);
+
+        await interaction.editReply({
+          content: `⚠️ **ATENÇÃO!**\n\nIsso vai **apagar ${totalPastas} pasta(s) de farm** (uma por pessoa) e **remover o cargo "Baú Aberto"** de quem ainda tiver.\n\nO histórico de entregas e pagamentos **não é afetado** - só os canais e o cargo. Quem quiser voltar a farmar vai precisar clicar em "Abrir Baú" de novo pra ganhar uma pasta nova.\n\n**Tem certeza que deseja continuar?**`,
+          components: [row],
+        });
+      }
+
+      if (interaction.customId === 'confirmar_limpar_pastas_farm') {
+        if (!interaction.memberPermissions.has('ADMINISTRATOR')) {
+          return await interaction.reply({
+            content: '❌ Só administradores podem limpar as pastas de farm.',
+            ephemeral: true,
+          });
+        }
+
+        // Apagar varios canais + remover cargos de varias pessoas pode
+        // passar dos 3s da resposta inicial - mesmo padrão do pagamento em lote
+        await interaction.deferUpdate();
+
+        const config = await serverService.getConfig(interaction.guild.id);
+        const categoriaBauId = config.farm?.categoria_bau_id;
+        const cargoBauAbertoId = config.cargo_bau_aberto_id;
+        const categoria = categoriaBauId ? interaction.guild.channels.cache.get(categoriaBauId) : null;
+
+        if (!categoria) {
+          return await interaction.editReply({ content: '❌ Categoria de Baú não foi encontrada.', components: [] });
+        }
+
+        const canais = [...categoria.children.cache.values()];
+        let pastasApagadas = 0;
+        let cargosRemovidos = 0;
+        const erros = [];
+
+        for (const canal of canais) {
+          // Dono da pasta = quem tem uma permission overwrite de MEMBRO (tipo 1),
+          // diferente das overwrites de cargo (@everyone e responsáveis por
+          // farm, tipo 0)
+          const donoOverwrite = canal.permissionOverwrites.cache.find((ow) => ow.type === 1);
+          const donoId = donoOverwrite?.id;
+
+          try {
+            await canal.delete('Limpeza de pastas de farm');
+            pastasApagadas++;
+          } catch (err) {
+            erros.push(`${canal.name}: ${err.message}`);
+            continue;
+          }
+
+          if (donoId && cargoBauAbertoId) {
+            try {
+              const membro = await interaction.guild.members.fetch(donoId).catch(() => null);
+              if (membro?.roles.cache.has(cargoBauAbertoId)) {
+                await membro.roles.remove(cargoBauAbertoId, 'Limpeza de pastas de farm');
+                cargosRemovidos++;
+              }
+            } catch (err) {
+              erros.push(`Cargo de <@${donoId}>: ${err.message}`);
+            }
+          }
+        }
+
+        await serverService.logAction(
+          interaction.guild.id,
+          interaction.user.id,
+          'limpar_pastas_farm',
+          `${pastasApagadas} pasta(s) apagada(s), ${cargosRemovidos} cargo(s) "Baú Aberto" removido(s)`
+        );
+
+        let resposta = `✅ **${pastasApagadas}** pasta(s) de farm apagada(s) e **${cargosRemovidos}** cargo(s) "Baú Aberto" removido(s).`;
+        if (erros.length > 0) {
+          resposta += `\n\n⚠️ **${erros.length}** erro(s):\n${erros.slice(0, 10).join('\n')}`;
+        }
+
+        await interaction.editReply({ content: resposta, components: [] });
+      }
+
+      if (interaction.customId === 'cancelar_limpar_pastas_farm') {
+        await interaction.update({
+          content: '❌ Operação cancelada. Nenhuma pasta foi apagada.',
+          components: [],
+        });
+      }
+
       if (interaction.customId === 'ger_farm_fechamento_agora') {
         const config = await serverService.getConfig(interaction.guild.id);
 
