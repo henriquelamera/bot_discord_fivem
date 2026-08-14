@@ -5,6 +5,11 @@ module.exports = {
   once: true,
   execute(client) {
     console.log(`Bot online como ${client.user.tag}`);
-    initFarmCron(client);
+
+    if (process.env.FARM_CRON_PAUSADO === 'true') {
+      console.log('⏸️ Farm cron job pausado (FARM_CRON_PAUSADO=true)');
+    } else {
+      initFarmCron(client);
+    }
   },
 };
