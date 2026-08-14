@@ -1678,6 +1678,10 @@ module.exports = {
         limparRecrutador(interaction.user.id);
         const recrutador = recrutadorId ? `<@${recrutadorId}>` : 'Não informado';
 
+        // Ler/salvar config e postar no canal de aprovações envolve DB +
+        // Discord em sequência - pode passar dos 3s da resposta inicial
+        await interaction.deferReply({ ephemeral: true });
+
         const config = await serverService.getConfig(interaction.guild.id);
 
         // Salvar dados do registro para usar na aprovação
@@ -1696,9 +1700,8 @@ module.exports = {
         const setChannel = interaction.guild.channels.cache.get(setChannelId);
 
         if (!setChannel) {
-          return interaction.reply({
+          return interaction.editReply({
             content: '❌ Canal de aprovações não configurado. Contate um administrador.',
-            ephemeral: true,
           });
         }
 
@@ -1732,15 +1735,13 @@ module.exports = {
           await setChannel.send({ embeds: [embed], components: [botoes] });
         } catch (err) {
           console.error('Erro ao enviar registro no canal:', err.message);
-          return await interaction.reply({
+          return await interaction.editReply({
             content: `❌ Erro ao registrar (canal sem permissão): ${err.message}. Contate um administrador.`,
-            ephemeral: true,
           });
         }
 
-        await interaction.reply({
+        await interaction.editReply({
           content: '✅ Registro recebido! Aguarde a análise da administração.',
-          ephemeral: true,
         });
       }
 
@@ -5280,6 +5281,11 @@ module.exports = {
           });
         }
 
+        // Aprovar envolve varios DB writes + chamadas ao Discord em
+        // sequencia (nickname, DM, canal) - passa fácil dos 3s da resposta
+        // inicial e expira com "não respondeu a tempo"
+        await interaction.deferReply({ ephemeral: true });
+
         try {
           // 1. Registrar servidor no banco
           await serverService.registerServer(
@@ -5364,9 +5370,8 @@ module.exports = {
             }
           }
 
-          await interaction.reply({
+          await interaction.editReply({
             content: `✅ Registro de ${membro.user.tag} aprovado!`,
-            ephemeral: true,
           });
 
           // Editar o embed da mensagem para marcar como aprovado e mostrar quem aprovou
@@ -5383,10 +5388,9 @@ module.exports = {
           });
         } catch (err) {
           console.error(err);
-          await interaction.reply({
+          await interaction.editReply({
             content: `❌ Erro ao aprovar: ${err.message}`,
-            ephemeral: true,
-          });
+          }).catch(() => {});
         }
       }
 
@@ -5406,14 +5410,15 @@ module.exports = {
           });
         }
 
+        await interaction.deferReply({ ephemeral: true });
+
         try {
           const user = await interaction.client.users.fetch(userId);
 
           await user.send('❌ Seu registro foi rejeitado. Tente novamente mais tarde.').catch(() => {});
 
-          await interaction.reply({
+          await interaction.editReply({
             content: `✅ Registro de ${user.tag} rejeitado!`,
-            ephemeral: true,
           });
 
           // Editar o embed da mensagem para marcar como rejeitado e mostrar quem rejeitou
@@ -5430,10 +5435,9 @@ module.exports = {
           });
         } catch (err) {
           console.error(err);
-          await interaction.reply({
+          await interaction.editReply({
             content: `❌ Erro ao rejeitar: ${err.message}`,
-            ephemeral: true,
-          });
+          }).catch(() => {});
         }
       }
 
@@ -5448,6 +5452,8 @@ module.exports = {
             ephemeral: true,
           });
         }
+
+        await interaction.deferReply({ ephemeral: true });
 
         try {
           const member = await interaction.guild.members.fetch(userId);
@@ -5476,19 +5482,17 @@ module.exports = {
 
           await member.send('✅ Sua atualização de registro foi aprovada!').catch(() => {});
 
-          await interaction.reply({
+          await interaction.editReply({
             content: `✅ Atualização de ${member.user.tag} aprovada!`,
-            ephemeral: true,
           });
 
           // Remover os botões da mensagem
           await interaction.message.edit({ components: [] });
         } catch (err) {
           console.error(`❌ Erro ao aprovar atualização:`, err.message);
-          await interaction.reply({
+          await interaction.editReply({
             content: `❌ Erro ao aprovar: ${err.message}`,
-            ephemeral: true,
-          });
+          }).catch(() => {});
         }
       }
 
@@ -5496,14 +5500,15 @@ module.exports = {
         const userId = interaction.customId.replace('recusar_atualizacao_', '');
         const config = await serverService.getConfig(interaction.guild.id);
 
+        await interaction.deferReply({ ephemeral: true });
+
         try {
           const user = await interaction.client.users.fetch(userId);
 
           await user.send('❌ Sua atualização de registro foi rejeitada. Tente novamente mais tarde.').catch(() => {});
 
-          await interaction.reply({
+          await interaction.editReply({
             content: `✅ Atualização de ${user.tag} rejeitada!`,
-            ephemeral: true,
           });
 
           // Remover os botões da mensagem e dados
@@ -5512,10 +5517,9 @@ module.exports = {
           await serverService.saveConfig(interaction.guild.id, config);
         } catch (err) {
           console.error(err);
-          await interaction.reply({
+          await interaction.editReply({
             content: `❌ Erro ao rejeitar: ${err.message}`,
-            ephemeral: true,
-          });
+          }).catch(() => {});
         }
       }
 
@@ -5544,24 +5548,24 @@ module.exports = {
           });
         }
 
+        await interaction.deferReply({ ephemeral: true });
+
         // Atualização de dados sem promoção: não mexe em cargo nenhum
         if (solicitacao.tierAlvo === 'manter') {
           try {
             await atualizarDadosMembro(config, interaction.guild, userId, solicitacao);
             await serverService.saveConfig(interaction.guild.id, config);
 
-            await interaction.reply({
+            await interaction.editReply({
               content: `✅ Dados de <@${userId}> atualizados!`,
-              ephemeral: true,
             });
 
             await interaction.message.edit({ components: [] });
           } catch (err) {
             console.error(err);
-            await interaction.reply({
+            await interaction.editReply({
               content: `❌ Erro ao atualizar dados: ${err.message}`,
-              ephemeral: true,
-            });
+            }).catch(() => {});
           }
           return;
         }
@@ -5574,9 +5578,8 @@ module.exports = {
         const candidatos = candidatosPorTier[solicitacao.tierAlvo] || [];
 
         if (candidatos.length === 0) {
-          return await interaction.reply({
+          return await interaction.editReply({
             content: '❌ Nenhum cargo configurado para esse tier. Contate um administrador.',
-            ephemeral: true,
           });
         }
 
@@ -5586,9 +5589,8 @@ module.exports = {
             await concederPromocaoHierarquia(config, interaction.guild, userId, solicitacao, candidatos[0], interaction.user.id);
             await serverService.saveConfig(interaction.guild.id, config);
 
-            await interaction.reply({
+            await interaction.editReply({
               content: `✅ Promoção de <@${userId}> aprovada!`,
-              ephemeral: true,
             });
 
             await interaction.message.edit({ components: [] });
@@ -5603,9 +5605,8 @@ module.exports = {
             .map(role => ({ label: role.name, value: role.id }));
 
           if (opcoes.length === 0) {
-            return await interaction.reply({
+            return await interaction.editReply({
               content: '❌ Os cargos configurados não foram encontrados no servidor.',
-              ephemeral: true,
             });
           }
 
@@ -5621,17 +5622,15 @@ module.exports = {
 
           const row = new ActionRowBuilder().addComponents(selectMenu);
 
-          await interaction.reply({
+          await interaction.editReply({
             content: `Esse tier tem mais de um cargo configurado. Selecione qual conceder a <@${userId}>:`,
             components: [row],
-            ephemeral: true,
           });
         } catch (err) {
           console.error('Erro ao aprovar promoção:', err);
-          await interaction.reply({
+          await interaction.editReply({
             content: `❌ Erro ao aprovar: ${err.message}`,
-            ephemeral: true,
-          });
+          }).catch(() => {});
         }
       }
 
@@ -5651,6 +5650,8 @@ module.exports = {
           });
         }
 
+        await interaction.deferReply({ ephemeral: true });
+
         try {
           if (config.atualizacoes_hierarquia_pendentes?.[userId]) {
             delete config.atualizacoes_hierarquia_pendentes[userId];
@@ -5660,18 +5661,16 @@ module.exports = {
           const user = await interaction.client.users.fetch(userId);
           await user.send('❌ Sua solicitação de promoção foi recusada.').catch(() => {});
 
-          await interaction.reply({
+          await interaction.editReply({
             content: `✅ Solicitação de <@${userId}> recusada!`,
-            ephemeral: true,
           });
 
           await interaction.message.edit({ components: [] });
         } catch (err) {
           console.error(err);
-          await interaction.reply({
+          await interaction.editReply({
             content: `❌ Erro ao recusar: ${err.message}`,
-            ephemeral: true,
-          });
+          }).catch(() => {});
         }
       }
 
