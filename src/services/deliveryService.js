@@ -384,6 +384,24 @@ async function deletarEntregasPorMembro(guildId, discordId) {
   }
 }
 
+// Apaga TODAS as entregas de farm do servidor (itens_entregues vai junto por
+// ON DELETE CASCADE) - usado quando a facção reseta a temporada de farm
+// (ex: mudança de cidade) e quer recomeçar a contagem do zero pra todo mundo.
+async function zerarHistoricoFarm(guildId) {
+  try {
+    const result = await pool.query(
+      `DELETE FROM entregas_farm
+       WHERE servidor_id = (SELECT id FROM servidores WHERE guild_id = $1)
+       RETURNING id`,
+      [guildId]
+    );
+    return result.rows.length;
+  } catch (error) {
+    console.error('Erro ao zerar histórico de farm:', error);
+    throw error;
+  }
+}
+
 // Pegar todas as entregas e detalhes completos
 async function getDeliveryWithItems(entregaId) {
   try {
@@ -417,5 +435,6 @@ module.exports = {
   getTotaisPorItem,
   contarEntregasPorMembro,
   deletarEntregasPorMembro,
+  zerarHistoricoFarm,
   inicioDaSemanaAtual,
 };

@@ -206,6 +206,42 @@ function truncarLabel(texto, max = 45) {
   return texto.slice(0, max - 1) + '…';
 }
 
+// Apaga todas as mensagens de um canal - bulkDelete só funciona pra
+// mensagens com menos de 14 dias, então pra mensagens mais antigas cai pra
+// deletar uma por uma (mais lento, mas o discord.js já respeita o rate
+// limit sozinho). limiteCiclos protege contra rodar pra sempre num canal
+// gigante - se bater o limite, sobra mensagem pra apagar numa próxima vez.
+async function limparMensagensCanal(canal, limiteCiclos = 50) {
+  let apagadas = 0;
+  const QUATORZE_DIAS_MS = 14 * 24 * 60 * 60 * 1000;
+
+  for (let ciclo = 0; ciclo < limiteCiclos; ciclo++) {
+    const mensagens = await canal.messages.fetch({ limit: 100 });
+    if (mensagens.size === 0) break;
+
+    const recentes = mensagens.filter((m) => Date.now() - m.createdTimestamp < QUATORZE_DIAS_MS);
+    const antigas = mensagens.filter((m) => Date.now() - m.createdTimestamp >= QUATORZE_DIAS_MS);
+
+    if (recentes.size > 0) {
+      const deletadas = await canal.bulkDelete(recentes, true);
+      apagadas += deletadas.size;
+    }
+
+    for (const msg of antigas.values()) {
+      try {
+        await msg.delete();
+        apagadas++;
+      } catch {
+        // mensagem já apagada ou sem permissão - ignora e segue
+      }
+    }
+
+    if (mensagens.size < 100) break;
+  }
+
+  return apagadas;
+}
+
 // Monta o modal de metas pra uma página específica (1 = primeiros 5 itens,
 // 2 = próximos 5, etc). customId da página 1 fica igual ao antigo
 // ('modal_cadastro_meta') pra não quebrar quem já usa esse fluxo.
@@ -2794,6 +2830,11 @@ module.exports = {
               label: 'Canal de Fechamento Semanal',
               description: 'Onde o resumo de pagamentos a fazer é postado toda segunda',
               value: 'farm_canal_fechamento',
+            },
+            {
+              label: 'Zerar Histórico de Farm (Nova Temporada)',
+              description: 'Apaga entregas, pagamentos pendentes e mensagens dos canais de farm',
+              value: 'farm_zerar_historico',
             }
           );
 
@@ -4607,6 +4648,32 @@ module.exports = {
           await interaction.reply({
             content: '**🗑️ Limpar Farm de um Membro**\n\nSelecione a pessoa:',
             components: [rowMembro],
+            ephemeral: true,
+          });
+        }
+
+        if (valor === 'farm_zerar_historico') {
+          if (!interaction.memberPermissions.has('Administrator')) {
+            return await interaction.reply({
+              content: '❌ Só administradores podem zerar o histórico de farm.',
+              ephemeral: true,
+            });
+          }
+
+          const { ButtonBuilder, ButtonStyle } = require('discord.js');
+          const botaoConfirmar = new ButtonBuilder()
+            .setCustomId('confirmar_zerar_historico_farm')
+            .setLabel('✅ Sim, zerar tudo')
+            .setStyle(ButtonStyle.Danger);
+          const botaoCancelar = new ButtonBuilder()
+            .setCustomId('cancelar_zerar_historico_farm')
+            .setLabel('❌ Não, manter')
+            .setStyle(ButtonStyle.Secondary);
+          const rowZerar = new ActionRowBuilder().addComponents(botaoConfirmar, botaoCancelar);
+
+          await interaction.reply({
+            content: '⚠️ **ATENÇÃO! Isso é irreversível.**\n\nIsso vai:\n• Apagar **todas as entregas de farm** do histórico (aprovadas, rejeitadas e pendentes)\n• Zerar **todos os pagamentos pendentes**\n• Apagar as **mensagens** dos canais de Aprovações, Controle de Pagamento, Fechamento Semanal e Gerenciamento\n\nItens, metas, valores de pagamento e cargos configurados **não são afetados** - só o histórico e as mensagens dos canais.\n\n**Tem certeza que deseja continuar?**',
+            components: [rowZerar],
             ephemeral: true,
           });
         }
@@ -7887,6 +7954,75 @@ module.exports = {
       if (interaction.customId === 'cancelar_limpar_pastas_farm') {
         await interaction.update({
           content: '❌ Operação cancelada. Nenhuma pasta foi apagada.',
+          components: [],
+        });
+      }
+
+      if (interaction.customId === 'confirmar_zerar_historico_farm') {
+        if (!interaction.memberPermissions.has('Administrator')) {
+          return await interaction.reply({
+            content: '❌ Só administradores podem zerar o histórico de farm.',
+            ephemeral: true,
+          });
+        }
+
+        // Apagar entregas do banco + mensagens de vários canais pode passar
+        // bem dos 3s da resposta inicial, principalmente em canais com
+        // muito histórico
+        await interaction.deferUpdate();
+
+        try {
+          const config = await serverService.getConfig(interaction.guild.id);
+
+          const entregasApagadas = await deliveryService.zerarHistoricoFarm(interaction.guild.id);
+
+          if (config.farm?.entregas) {
+            config.farm.entregas = [];
+          }
+          await serverService.saveConfig(interaction.guild.id, config);
+
+          const canaisIds = [
+            config.farm?.canal_aprovacoes_id,
+            config.farm?.canal_controle_pagamento_id,
+            config.farm?.canal_fechamento_semanal_id,
+            config.farm?.canal_gerenciamento_id,
+          ].filter(Boolean);
+
+          let mensagensApagadas = 0;
+          const errosCanais = [];
+
+          for (const canalId of canaisIds) {
+            const canal = interaction.guild.channels.cache.get(canalId);
+            if (!canal) continue;
+            try {
+              mensagensApagadas += await limparMensagensCanal(canal);
+            } catch (err) {
+              errosCanais.push(`#${canal.name}: ${err.message}`);
+            }
+          }
+
+          await serverService.logAction(
+            interaction.guild.id,
+            interaction.user.id,
+            'zerar_historico_farm',
+            `${entregasApagadas} entrega(s) apagada(s), ${mensagensApagadas} mensagem(ns) apagada(s) em ${canaisIds.length} canal(is)`
+          );
+
+          let resposta = `✅ **Histórico de farm zerado!**\n\n• **${entregasApagadas}** entrega(s) apagada(s) do banco\n• Pagamentos pendentes zerados\n• **${mensagensApagadas}** mensagem(ns) apagada(s) nos canais de farm`;
+          if (errosCanais.length > 0) {
+            resposta += `\n\n⚠️ **${errosCanais.length}** erro(s):\n${errosCanais.slice(0, 10).join('\n')}`;
+          }
+
+          await interaction.editReply({ content: resposta, components: [] });
+        } catch (err) {
+          console.error('Erro ao zerar histórico de farm:', err);
+          await interaction.editReply({ content: `❌ Erro ao zerar histórico: ${err.message}`, components: [] });
+        }
+      }
+
+      if (interaction.customId === 'cancelar_zerar_historico_farm') {
+        await interaction.update({
+          content: '❌ Operação cancelada. Nada foi apagado.',
           components: [],
         });
       }
