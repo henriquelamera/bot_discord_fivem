@@ -2146,43 +2146,8 @@ module.exports = {
 
         const produto = canalParcerias.name;
 
-        await interaction.reply({
-          content: '📸 Agora envie **uma imagem** aqui no canal com o print da parceria (roupa da facção). Você tem 5 minutos. Formatos aceitos: PNG, JPG, JPEG, GIF, WEBP.',
-          ephemeral: true,
-        });
-
-        marcarAguardandoImagem(interaction.channel.id);
         try {
-          const coletadas1 = await interaction.channel.awaitMessages({
-            filter: (msg) =>
-              msg.author.id === interaction.user.id &&
-              [...msg.attachments.values()].some((att) => att.contentType?.startsWith('image/')),
-            max: 1,
-            time: 5 * 60 * 1000,
-            errors: ['time'],
-          });
-
-          const msg1 = coletadas1.first();
-          const printParceriaUrl = [...msg1.attachments.values()]
-            .find((att) => att.contentType?.startsWith('image/')).url;
-
-          await interaction.followUp({
-            content: '🗺️ Agora envie o **print do mapa** com a localização da facção. Você tem 5 minutos.',
-            ephemeral: true,
-          });
-
-          const coletadas2 = await interaction.channel.awaitMessages({
-            filter: (msg) =>
-              msg.author.id === interaction.user.id &&
-              [...msg.attachments.values()].some((att) => att.contentType?.startsWith('image/')),
-            max: 1,
-            time: 5 * 60 * 1000,
-            errors: ['time'],
-          });
-
-          const msg2 = coletadas2.first();
-          const printMapaUrl = [...msg2.attachments.values()]
-            .find((att) => att.contentType?.startsWith('image/')).url;
+          const config = await serverService.getConfig(interaction.guild.id);
 
           // Darkchat/senha não vão pro canal público (visível a Morador+) -
           // só ficam salvos no banco; quem precisar consulta com o Gerente
@@ -2191,6 +2156,18 @@ module.exports = {
           const contatoDarkchat = cargoGerenteParceriasId
             ? `Consulte com <@&${cargoGerenteParceriasId}>`
             : 'Consulte com o Gerente de Parcerias';
+
+          // Publica direto, sem esperar as imagens - quem tem permissão de
+          // registrar parceria pode adicionar depois pelo botão na mensagem
+          const parceria = await parceriaService.createParceria(interaction.guild.id, {
+            registradoPorId: interaction.user.id,
+            responsavelOutraFaccao,
+            nomeFaccao,
+            produto,
+            nomeDarkchat,
+            senhaDarkchat,
+            canalId: canalParcerias.id,
+          });
 
           const embedInfo = new EmbedBuilder()
             .setTitle('🤝 Nova Parceria')
@@ -2201,51 +2178,32 @@ module.exports = {
               { name: '🎯 Responsável (outra facção)', value: responsavelOutraFaccao, inline: false },
               { name: '🏴 Nome da Facção', value: nomeFaccao, inline: false },
               { name: '📦 Produto', value: produto, inline: false },
-              { name: '🔒 Darkchat', value: contatoDarkchat, inline: false }
+              { name: '🔒 Darkchat', value: contatoDarkchat, inline: false },
+              { name: '🖼️ Imagens', value: '⏳ Ainda não adicionadas', inline: false }
             )
-            .setImage(printParceriaUrl)
             .setTimestamp();
 
-          const embedMapa = new EmbedBuilder()
-            .setColor(0x2ecc71)
-            .setTitle('🗺️ Localização da Facção')
-            .setImage(printMapaUrl);
+          const { ButtonBuilder, ButtonStyle } = require('discord.js');
+          const botaoImagens = new ButtonBuilder()
+            .setCustomId(`parceria_add_imagens_${parceria.id}`)
+            .setLabel('🖼️ Adicionar Imagens')
+            .setStyle(ButtonStyle.Secondary);
 
-          const mensagemParceria = await canalParcerias.send({ embeds: [embedInfo, embedMapa] });
+          const row = new ActionRowBuilder().addComponents(botaoImagens);
 
-          await parceriaService.createParceria(interaction.guild.id, {
-            registradoPorId: interaction.user.id,
-            responsavelOutraFaccao,
-            nomeFaccao,
-            produto,
-            nomeDarkchat,
-            senhaDarkchat,
-            printParceriaUrl,
-            printMapaUrl,
-            canalId: canalParcerias.id,
-            mensagemId: mensagemParceria.id,
-          });
+          const mensagemParceria = await canalParcerias.send({ embeds: [embedInfo], components: [row] });
+          await parceriaService.definirMensagemParceria(parceria.id, mensagemParceria.id);
 
-          await interaction.followUp({
-            content: `✅ Parceria registrada com sucesso em <#${canalParcerias.id}>!`,
+          await interaction.reply({
+            content: `✅ Parceria registrada com sucesso em <#${canalParcerias.id}>! As imagens podem ser adicionadas depois clicando no botão **Adicionar Imagens** da mensagem (só quem pode registrar parceria consegue usar).`,
             ephemeral: true,
           });
         } catch (err) {
-          if (err instanceof Map) {
-            await interaction.followUp({
-              content: '❌ Tempo esgotado! Nenhuma imagem foi recebida a tempo. Clique em **Registrar Parceria** novamente.',
-              ephemeral: true,
-            });
-            return;
-          }
-
           console.error(err);
-          await interaction.followUp({
+          await interaction.reply({
             content: `❌ Erro ao registrar parceria: ${err.message}`,
             ephemeral: true,
           });
-        } finally {
-          desmarcarAguardandoImagem(interaction.channel.id);
         }
       }
 
@@ -7987,6 +7945,127 @@ module.exports = {
           components: [row],
           ephemeral: true,
         });
+      }
+
+      if (interaction.customId.startsWith('parceria_add_imagens_')) {
+        const parceriaId = interaction.customId.replace('parceria_add_imagens_', '');
+
+        const config = await serverService.getConfig(interaction.guild.id);
+        const cargoRegistrarIds = config.parcerias?.cargo_registrar_ids || [];
+
+        const temPermissao = cargoRegistrarIds.length === 0 ||
+          interaction.member.roles.cache.some(role => cargoRegistrarIds.includes(role.id)) ||
+          interaction.memberPermissions.has('ADMINISTRATOR');
+
+        if (!temPermissao) {
+          return await interaction.reply({
+            content: '❌ Você não tem permissão para editar as imagens dessa parceria.',
+            ephemeral: true,
+          });
+        }
+
+        await interaction.reply({
+          content: '📸 Envie **uma imagem** aqui no canal com o print da parceria (roupa da facção). Você tem 5 minutos. Formatos aceitos: PNG, JPG, JPEG, GIF, WEBP.',
+          ephemeral: true,
+        });
+
+        marcarAguardandoImagem(interaction.channel.id);
+        try {
+          const coletadas1 = await interaction.channel.awaitMessages({
+            filter: (msg) =>
+              msg.author.id === interaction.user.id &&
+              [...msg.attachments.values()].some((att) => att.contentType?.startsWith('image/')),
+            max: 1,
+            time: 5 * 60 * 1000,
+            errors: ['time'],
+          });
+
+          const msg1 = coletadas1.first();
+          const printParceriaUrl = [...msg1.attachments.values()]
+            .find((att) => att.contentType?.startsWith('image/')).url;
+
+          await interaction.followUp({
+            content: '🗺️ Agora envie o **print do mapa** com a localização da facção. Você tem 5 minutos.',
+            ephemeral: true,
+          });
+
+          const coletadas2 = await interaction.channel.awaitMessages({
+            filter: (msg) =>
+              msg.author.id === interaction.user.id &&
+              [...msg.attachments.values()].some((att) => att.contentType?.startsWith('image/')),
+            max: 1,
+            time: 5 * 60 * 1000,
+            errors: ['time'],
+          });
+
+          const msg2 = coletadas2.first();
+          const printMapaUrl = [...msg2.attachments.values()]
+            .find((att) => att.contentType?.startsWith('image/')).url;
+
+          const parceria = await parceriaService.atualizarImagensParceria(parceriaId, printParceriaUrl, printMapaUrl);
+
+          if (!parceria) {
+            await interaction.followUp({
+              content: '❌ Não encontrei essa parceria no banco (pode ter sido removida). As imagens não foram salvas.',
+              ephemeral: true,
+            });
+            return;
+          }
+
+          const cargoGerenteParceriasId = config.parcerias?.cargo_gerente_parcerias_id;
+          const contatoDarkchat = cargoGerenteParceriasId
+            ? `Consulte com <@&${cargoGerenteParceriasId}>`
+            : 'Consulte com o Gerente de Parcerias';
+
+          const embedInfo = new EmbedBuilder()
+            .setTitle('🤝 Nova Parceria')
+            .setColor(0x2ecc71)
+            .addFields(
+              { name: '👤 Registrado por', value: `<@${parceria.registrado_por_id}>`, inline: true },
+              { name: '📅 Data', value: new Date(parceria.data_registro).toLocaleDateString('pt-BR'), inline: true },
+              { name: '🎯 Responsável (outra facção)', value: parceria.responsavel_outra_faccao, inline: false },
+              { name: '🏴 Nome da Facção', value: parceria.nome_faccao, inline: false },
+              { name: '📦 Produto', value: parceria.produto, inline: false },
+              { name: '🔒 Darkchat', value: contatoDarkchat, inline: false }
+            )
+            .setImage(printParceriaUrl)
+            .setTimestamp(new Date(parceria.data_registro));
+
+          const embedMapa = new EmbedBuilder()
+            .setColor(0x2ecc71)
+            .setTitle('🗺️ Localização da Facção')
+            .setImage(printMapaUrl);
+
+          const canalDestino = interaction.guild.channels.cache.get(parceria.canal_id) || interaction.channel;
+          const mensagem = parceria.mensagem_id
+            ? await canalDestino.messages.fetch(parceria.mensagem_id).catch(() => null)
+            : null;
+
+          if (mensagem) {
+            await mensagem.edit({ embeds: [embedInfo, embedMapa], components: [] });
+          }
+
+          await interaction.followUp({
+            content: '✅ Imagens adicionadas com sucesso!',
+            ephemeral: true,
+          });
+        } catch (err) {
+          if (err instanceof Map) {
+            await interaction.followUp({
+              content: '❌ Tempo esgotado! Nenhuma imagem foi recebida a tempo. Clique em **Adicionar Imagens** novamente.',
+              ephemeral: true,
+            });
+            return;
+          }
+
+          console.error(err);
+          await interaction.followUp({
+            content: `❌ Erro ao adicionar imagens: ${err.message}`,
+            ephemeral: true,
+          });
+        } finally {
+          desmarcarAguardandoImagem(interaction.channel.id);
+        }
       }
 
       // ===== CALCULADORA DE VENDAS =====
