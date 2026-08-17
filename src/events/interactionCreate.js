@@ -250,6 +250,40 @@ function construirModalPagamento(config, pagina) {
   return { modal, itensPagina, totalPaginas };
 }
 
+// Mesma paginação de construirModalPagamento, só que pra calculadora de
+// vendas - "tipo" é 'pista' ou 'parceria', cada um com seu próprio preço
+// por produto (config.vendas.precos[id].preco_pista / preco_parceria)
+function construirModalPrecoVenda(config, pagina, tipo) {
+  const produtos = config.vendas?.produtos || [];
+  const totalPaginas = Math.max(1, Math.ceil(produtos.length / ITENS_POR_MODAL_META));
+  const inicio = (pagina - 1) * ITENS_POR_MODAL_META;
+  const produtosPagina = produtos.slice(inicio, inicio + ITENS_POR_MODAL_META);
+
+  const campoPreco = tipo === 'pista' ? 'preco_pista' : 'preco_parceria';
+  const tituloTipo = tipo === 'pista' ? 'Preço de Pista' : 'Preço de Parceria';
+  const customIdBase = tipo === 'pista' ? 'modal_preco_pista_venda' : 'modal_preco_parceria_venda';
+
+  const modal = new ModalBuilder()
+    .setCustomId(pagina === 1 ? customIdBase : `${customIdBase}_p${pagina}`)
+    .setTitle(totalPaginas > 1 ? `💰 ${tituloTipo} (${pagina}/${totalPaginas})` : `💰 ${tituloTipo}`);
+
+  for (const produto of produtosPagina) {
+    const valorAtual = config.vendas?.precos?.[produto.id]?.[campoPreco];
+    const valorInput = new TextInputBuilder()
+      .setCustomId(`preco_${produto.id}`)
+      .setLabel(`${produto.nome} (R$ por unidade)`)
+      .setStyle(TextInputStyle.Short)
+      .setPlaceholder('Ex: 150.00')
+      .setRequired(false);
+
+    if (valorAtual) valorInput.setValue(valorAtual.toString());
+
+    modal.addComponents(new ActionRowBuilder().addComponents(valorInput));
+  }
+
+  return { modal, produtosPagina, totalPaginas };
+}
+
 // Monta as opções de recrutador pro registro - só gente com cargo de
 // Gerente pra cima pode ser selecionada (Discord não permite restringir um
 // User Select nativo por cargo, então usamos um Select de texto populado só
@@ -1449,6 +1483,154 @@ module.exports = {
         }
       }
 
+      if (interaction.customId === 'modal_cadastro_produto_venda') {
+        const nomesInput = interaction.fields.getTextInputValue('nome_produto_venda');
+
+        const config = await serverService.getConfig(interaction.guild.id);
+        if (!config.vendas) config.vendas = {};
+        if (!config.vendas.produtos) config.vendas.produtos = [];
+
+        const nomes = nomesInput
+          .split(',')
+          .map(nome => nome.trim())
+          .filter(nome => nome.length > 0);
+
+        if (nomes.length === 0) {
+          return await interaction.reply({
+            content: '❌ Nenhum nome de produto válido fornecido.',
+            ephemeral: true,
+          });
+        }
+
+        const produtosAdicionados = [];
+        for (const nome of nomes) {
+          const novoProduto = {
+            id: `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+            nome,
+            data_criacao: new Date().toISOString(),
+          };
+          config.vendas.produtos.push(novoProduto);
+          produtosAdicionados.push(nome);
+        }
+
+        await serverService.saveConfig(interaction.guild.id, config);
+
+        const mensagem = nomes.length === 1
+          ? `✅ Produto **${nomes[0]}** cadastrado com sucesso!`
+          : `✅ **${nomes.length} produtos** cadastrados com sucesso:\n${nomes.map(n => `- ${n}`).join('\n')}`;
+
+        await interaction.reply({
+          content: `${mensagem}\n\nAgora configure o Preço de Pista e o Preço de Parceria pra esses produtos.`,
+          ephemeral: true,
+        });
+      }
+
+      if (interaction.customId === 'modal_preco_pista_venda' || interaction.customId.startsWith('modal_preco_pista_venda_p')) {
+        const pagina = interaction.customId === 'modal_preco_pista_venda'
+          ? 1
+          : parseInt(interaction.customId.replace('modal_preco_pista_venda_p', ''), 10);
+
+        const config = await serverService.getConfig(interaction.guild.id);
+        if (!config.vendas) config.vendas = {};
+        if (!config.vendas.precos) config.vendas.precos = {};
+
+        const produtos = config.vendas.produtos || [];
+        const totalPaginas = Math.max(1, Math.ceil(produtos.length / ITENS_POR_MODAL_META));
+        const inicio = (pagina - 1) * ITENS_POR_MODAL_META;
+        const produtosPagina = produtos.slice(inicio, inicio + ITENS_POR_MODAL_META);
+
+        const precosAtualizados = [];
+        for (const produto of produtosPagina) {
+          const valorStr = interaction.fields.getTextInputValue(`preco_${produto.id}`);
+          if (valorStr && valorStr.trim()) {
+            const valor = parseFloat(valorStr.replace(',', '.'));
+            if (!isNaN(valor) && valor > 0) {
+              if (!config.vendas.precos[produto.id]) config.vendas.precos[produto.id] = { nome: produto.nome };
+              config.vendas.precos[produto.id].nome = produto.nome;
+              config.vendas.precos[produto.id].preco_pista = valor;
+              config.vendas.precos[produto.id].data_atualizacao = new Date().toISOString();
+              precosAtualizados.push(`${produto.nome}: ${formatarMoeda(valor)}`);
+            }
+          }
+        }
+
+        await serverService.saveConfig(interaction.guild.id, config);
+
+        const resposta = precosAtualizados.length > 0
+          ? `✅ Preço de Pista atualizado:\n${precosAtualizados.map(p => `- ${p}`).join('\n')}`
+          : '⚠️ Nenhum preço foi definido nessa página (campos vazios).';
+
+        if (pagina < totalPaginas) {
+          const { ButtonBuilder, ButtonStyle } = require('discord.js');
+          const proximoInicio = pagina * ITENS_POR_MODAL_META;
+          const botaoContinuar = new ButtonBuilder()
+            .setCustomId(`vendas_preco_pista_pagina_${pagina + 1}`)
+            .setLabel(`➡️ Continuar (produtos ${proximoInicio + 1}-${Math.min(proximoInicio + ITENS_POR_MODAL_META, produtos.length)})`)
+            .setStyle(ButtonStyle.Primary);
+
+          await interaction.reply({
+            content: `${resposta}\n\nAinda faltam **${produtos.length - proximoInicio}** produto(s) — o Discord só permite 5 campos por formulário.`,
+            components: [new ActionRowBuilder().addComponents(botaoContinuar)],
+            ephemeral: true,
+          });
+        } else {
+          await interaction.reply({ content: resposta, ephemeral: true });
+        }
+      }
+
+      if (interaction.customId === 'modal_preco_parceria_venda' || interaction.customId.startsWith('modal_preco_parceria_venda_p')) {
+        const pagina = interaction.customId === 'modal_preco_parceria_venda'
+          ? 1
+          : parseInt(interaction.customId.replace('modal_preco_parceria_venda_p', ''), 10);
+
+        const config = await serverService.getConfig(interaction.guild.id);
+        if (!config.vendas) config.vendas = {};
+        if (!config.vendas.precos) config.vendas.precos = {};
+
+        const produtos = config.vendas.produtos || [];
+        const totalPaginas = Math.max(1, Math.ceil(produtos.length / ITENS_POR_MODAL_META));
+        const inicio = (pagina - 1) * ITENS_POR_MODAL_META;
+        const produtosPagina = produtos.slice(inicio, inicio + ITENS_POR_MODAL_META);
+
+        const precosAtualizados = [];
+        for (const produto of produtosPagina) {
+          const valorStr = interaction.fields.getTextInputValue(`preco_${produto.id}`);
+          if (valorStr && valorStr.trim()) {
+            const valor = parseFloat(valorStr.replace(',', '.'));
+            if (!isNaN(valor) && valor > 0) {
+              if (!config.vendas.precos[produto.id]) config.vendas.precos[produto.id] = { nome: produto.nome };
+              config.vendas.precos[produto.id].nome = produto.nome;
+              config.vendas.precos[produto.id].preco_parceria = valor;
+              config.vendas.precos[produto.id].data_atualizacao = new Date().toISOString();
+              precosAtualizados.push(`${produto.nome}: ${formatarMoeda(valor)}`);
+            }
+          }
+        }
+
+        await serverService.saveConfig(interaction.guild.id, config);
+
+        const resposta = precosAtualizados.length > 0
+          ? `✅ Preço de Parceria atualizado:\n${precosAtualizados.map(p => `- ${p}`).join('\n')}`
+          : '⚠️ Nenhum preço foi definido nessa página (campos vazios).';
+
+        if (pagina < totalPaginas) {
+          const { ButtonBuilder, ButtonStyle } = require('discord.js');
+          const proximoInicio = pagina * ITENS_POR_MODAL_META;
+          const botaoContinuar = new ButtonBuilder()
+            .setCustomId(`vendas_preco_parceria_pagina_${pagina + 1}`)
+            .setLabel(`➡️ Continuar (produtos ${proximoInicio + 1}-${Math.min(proximoInicio + ITENS_POR_MODAL_META, produtos.length)})`)
+            .setStyle(ButtonStyle.Primary);
+
+          await interaction.reply({
+            content: `${resposta}\n\nAinda faltam **${produtos.length - proximoInicio}** produto(s) — o Discord só permite 5 campos por formulário.`,
+            components: [new ActionRowBuilder().addComponents(botaoContinuar)],
+            ephemeral: true,
+          });
+        } else {
+          await interaction.reply({ content: resposta, ephemeral: true });
+        }
+      }
+
       if (interaction.customId === 'modal_limite_semanal_farm') {
         const limiteStr = interaction.fields.getTextInputValue('limite_semanal');
         const limite = parseQuantidade(limiteStr);
@@ -2025,6 +2207,50 @@ module.exports = {
           desmarcarAguardandoImagem(interaction.channel.id);
         }
       }
+
+      if (interaction.customId.startsWith('modal_calc_venda_quantidade_')) {
+        const resto = interaction.customId.replace('modal_calc_venda_quantidade_', '');
+        const tipo = resto.startsWith('pista_') ? 'pista' : 'parceria';
+        const produtoId = resto.replace(`${tipo}_`, '');
+
+        const quantidadeStr = interaction.fields.getTextInputValue('quantidade_venda');
+        const quantidade = parseQuantidade(quantidadeStr);
+
+        if (isNaN(quantidade) || quantidade <= 0) {
+          return await interaction.reply({
+            content: '❌ Quantidade inválida — use apenas números (ex: 100 ou 1.000).',
+            ephemeral: true,
+          });
+        }
+
+        const config = await serverService.getConfig(interaction.guild.id);
+        const precoInfo = config.vendas?.precos?.[produtoId];
+        const preco = tipo === 'pista' ? precoInfo?.preco_pista : precoInfo?.preco_parceria;
+
+        if (!preco) {
+          const tipoLabel = tipo === 'pista' ? 'de Pista' : 'de Parceria';
+          return await interaction.reply({
+            content: `❌ Preço ${tipoLabel} não foi configurado pra esse produto. Contate um administrador.`,
+            ephemeral: true,
+          });
+        }
+
+        const valorTotal = quantidade * preco;
+        const tipoLabel = tipo === 'pista' ? 'Sem Parceria (Pista)' : 'Com Parceria';
+
+        const embed = new EmbedBuilder()
+          .setTitle('🧮 Resultado da Venda')
+          .setColor(0x2ecc71)
+          .addFields(
+            { name: '📦 Produto', value: precoInfo.nome, inline: true },
+            { name: '🏷️ Tipo', value: tipoLabel, inline: true },
+            { name: '🔢 Quantidade', value: quantidade.toString(), inline: true },
+            { name: '💵 Preço Unitário', value: formatarMoeda(preco), inline: true },
+            { name: '💰 Valor Total', value: formatarMoeda(valorTotal), inline: true }
+          );
+
+        await interaction.reply({ embeds: [embed], ephemeral: true });
+      }
     }
 
     if (interaction.isUserSelectMenu()) {
@@ -2202,6 +2428,20 @@ module.exports = {
         const config = await serverService.getConfig(interaction.guild.id);
         const itens = config.farm?.itens || [];
         const { modal } = construirModalEntregarMeta(itens, pagina);
+        await interaction.showModal(modal);
+      }
+
+      if (interaction.customId.startsWith('vendas_preco_pista_pagina_')) {
+        const pagina = parseInt(interaction.customId.replace('vendas_preco_pista_pagina_', ''), 10);
+        const config = await serverService.getConfig(interaction.guild.id);
+        const { modal } = construirModalPrecoVenda(config, pagina, 'pista');
+        await interaction.showModal(modal);
+      }
+
+      if (interaction.customId.startsWith('vendas_preco_parceria_pagina_')) {
+        const pagina = parseInt(interaction.customId.replace('vendas_preco_parceria_pagina_', ''), 10);
+        const config = await serverService.getConfig(interaction.guild.id);
+        const { modal } = construirModalPrecoVenda(config, pagina, 'parceria');
         await interaction.showModal(modal);
       }
 
@@ -2403,6 +2643,44 @@ module.exports = {
 
         await interaction.reply({
           content: '**🤝 Parcerias**\n\nSelecione a opção:',
+          components: [row],
+          ephemeral: true,
+        });
+      }
+
+      if (interaction.customId === 'cat_vendas') {
+        const { StringSelectMenuBuilder } = require('discord.js');
+
+        const selectMenu = new StringSelectMenuBuilder()
+          .setCustomId('painel_vendas')
+          .setPlaceholder('Escolha uma opção...')
+          .addOptions(
+            {
+              label: 'Criar Produtos',
+              description: 'Cadastrar produtos pra calculadora de vendas',
+              value: 'vendas_criar_produtos',
+            },
+            {
+              label: 'Preço de Pista',
+              description: 'Definir o valor de venda sem parceria de cada produto',
+              value: 'vendas_preco_pista',
+            },
+            {
+              label: 'Preço de Parceria',
+              description: 'Definir o valor de venda com parceria de cada produto',
+              value: 'vendas_preco_parceria',
+            },
+            {
+              label: 'Cargos que Podem Usar a Calculadora',
+              description: 'Quem pode usar o botão de Calculadora de Vendas',
+              value: 'vendas_cargo_calculadora',
+            }
+          );
+
+        const row = new ActionRowBuilder().addComponents(selectMenu);
+
+        await interaction.reply({
+          content: '**🧮 Vendas**\n\nSelecione a opção:',
           components: [row],
           ephemeral: true,
         });
@@ -5466,6 +5744,132 @@ module.exports = {
         }
       }
 
+      if (interaction.customId === 'painel_vendas') {
+        const valor = interaction.values[0];
+        const config = await serverService.getConfig(interaction.guild.id);
+
+        if (valor === 'vendas_criar_produtos') {
+          const modal = new ModalBuilder()
+            .setCustomId('modal_cadastro_produto_venda')
+            .setTitle('🧮 Cadastrar Produto de Venda');
+
+          const nomeInput = new TextInputBuilder()
+            .setCustomId('nome_produto_venda')
+            .setLabel('Nome do Produto (separe por vírgula p/ vários)')
+            .setStyle(TextInputStyle.Short)
+            .setPlaceholder('Ex: Maconha, Cocaína, MDMA')
+            .setRequired(true);
+
+          modal.addComponents(new ActionRowBuilder().addComponents(nomeInput));
+          await interaction.showModal(modal);
+        }
+
+        if (valor === 'vendas_preco_pista') {
+          const produtos = config.vendas?.produtos || [];
+          if (produtos.length === 0) {
+            return await interaction.reply({
+              content: '❌ Nenhum produto cadastrado ainda. Cadastre em "Criar Produtos" primeiro.',
+              ephemeral: true,
+            });
+          }
+          const { modal } = construirModalPrecoVenda(config, 1, 'pista');
+          await interaction.showModal(modal);
+        }
+
+        if (valor === 'vendas_preco_parceria') {
+          const produtos = config.vendas?.produtos || [];
+          if (produtos.length === 0) {
+            return await interaction.reply({
+              content: '❌ Nenhum produto cadastrado ainda. Cadastre em "Criar Produtos" primeiro.',
+              ephemeral: true,
+            });
+          }
+          const { modal } = construirModalPrecoVenda(config, 1, 'parceria');
+          await interaction.showModal(modal);
+        }
+
+        if (valor === 'vendas_cargo_calculadora') {
+          const { StringSelectMenuBuilder } = require('discord.js');
+          const cargos = interaction.guild.roles.cache
+            .filter(role => !role.managed && role.id !== interaction.guild.id)
+            .sort((a, b) => b.position - a.position)
+            .map(role => ({
+              label: role.name,
+              value: role.id,
+              description: `Posição: ${role.position}`,
+            }));
+
+          if (cargos.length === 0) {
+            return await interaction.reply({
+              content: '❌ Nenhum cargo encontrado no servidor.',
+              ephemeral: true,
+            });
+          }
+
+          const selectMenu = new StringSelectMenuBuilder()
+            .setCustomId('select_vendas_cargo_calculadora')
+            .setPlaceholder('Selecione os cargos...')
+            .setMinValues(1)
+            .setMaxValues(Math.min(cargos.length, 25))
+            .addOptions(cargos.slice(0, 25));
+
+          const row = new ActionRowBuilder().addComponents(selectMenu);
+
+          await interaction.reply({
+            content: '**Cargos que Podem Usar a Calculadora**\n\nSelecione quais cargos podem usar o botão de Calculadora de Vendas:',
+            components: [row],
+            ephemeral: true,
+          });
+        }
+      }
+
+      if (interaction.customId === 'select_vendas_cargo_calculadora') {
+        const cargoIds = interaction.values;
+        const config = await serverService.getConfig(interaction.guild.id);
+        if (!config.vendas) config.vendas = {};
+        config.vendas.cargo_calculadora_ids = cargoIds;
+        await serverService.saveConfig(interaction.guild.id, config);
+
+        const cargosNomes = cargoIds.map(id => interaction.guild.roles.cache.get(id)?.name || id).join(', ');
+
+        await interaction.reply({
+          content: `✅ Cargos que podem usar a calculadora configurados!\n**Cargos:** ${cargosNomes}`,
+          ephemeral: true,
+        });
+      }
+
+      if (interaction.customId === 'select_calc_venda_produto') {
+        const produtoId = interaction.values[0];
+        const config = await serverService.getConfig(interaction.guild.id);
+        const produto = (config.vendas?.produtos || []).find(p => p.id === produtoId);
+
+        if (!produto) {
+          return await interaction.reply({
+            content: '❌ Produto não encontrado.',
+            ephemeral: true,
+          });
+        }
+
+        const { ButtonBuilder, ButtonStyle } = require('discord.js');
+        const botaoPista = new ButtonBuilder()
+          .setCustomId(`calc_venda_tipo_pista_${produtoId}`)
+          .setLabel('Sem Parceria (Pista)')
+          .setStyle(ButtonStyle.Secondary);
+
+        const botaoParceria = new ButtonBuilder()
+          .setCustomId(`calc_venda_tipo_parceria_${produtoId}`)
+          .setLabel('Com Parceria')
+          .setStyle(ButtonStyle.Primary);
+
+        const row = new ActionRowBuilder().addComponents(botaoPista, botaoParceria);
+
+        await interaction.reply({
+          content: `**🧮 ${produto.nome}**\n\nÉ uma venda com parceria ou sem parceria?`,
+          components: [row],
+          ephemeral: true,
+        });
+      }
+
       if (interaction.customId === 'select_parcerias_gerente') {
         const cargoId = interaction.values[0];
         const config = await serverService.getConfig(interaction.guild.id);
@@ -7450,6 +7854,65 @@ module.exports = {
           components: [row],
           ephemeral: true,
         });
+      }
+
+      // ===== CALCULADORA DE VENDAS =====
+
+      if (interaction.customId === 'calculadora_vendas') {
+        const config = await serverService.getConfig(interaction.guild.id);
+        const cargoCalculadoraIds = config.vendas?.cargo_calculadora_ids || [];
+
+        const temPermissao = cargoCalculadoraIds.length === 0 ||
+          interaction.member.roles.cache.some(role => cargoCalculadoraIds.includes(role.id)) ||
+          interaction.memberPermissions.has('ADMINISTRATOR');
+
+        if (!temPermissao) {
+          return await interaction.reply({
+            content: '❌ Você não tem permissão para usar a calculadora de vendas.',
+            ephemeral: true,
+          });
+        }
+
+        const produtos = config.vendas?.produtos || [];
+        if (produtos.length === 0) {
+          return await interaction.reply({
+            content: '❌ Nenhum produto cadastrado ainda. Contate um administrador.',
+            ephemeral: true,
+          });
+        }
+
+        const { StringSelectMenuBuilder } = require('discord.js');
+        const selectMenu = new StringSelectMenuBuilder()
+          .setCustomId('select_calc_venda_produto')
+          .setPlaceholder('Selecione o produto...')
+          .addOptions(produtos.slice(0, 25).map(p => ({ label: p.nome, value: p.id })));
+
+        const row = new ActionRowBuilder().addComponents(selectMenu);
+
+        await interaction.reply({
+          content: '**🧮 Calculadora de Vendas**\n\nSelecione o produto:',
+          components: [row],
+          ephemeral: true,
+        });
+      }
+
+      if (interaction.customId.startsWith('calc_venda_tipo_pista_') || interaction.customId.startsWith('calc_venda_tipo_parceria_')) {
+        const tipo = interaction.customId.startsWith('calc_venda_tipo_pista_') ? 'pista' : 'parceria';
+        const produtoId = interaction.customId.replace(`calc_venda_tipo_${tipo}_`, '');
+
+        const modal = new ModalBuilder()
+          .setCustomId(`modal_calc_venda_quantidade_${tipo}_${produtoId}`)
+          .setTitle(tipo === 'pista' ? '🧮 Venda Sem Parceria' : '🧮 Venda Com Parceria');
+
+        const quantidadeInput = new TextInputBuilder()
+          .setCustomId('quantidade_venda')
+          .setLabel('Quantidade')
+          .setStyle(TextInputStyle.Short)
+          .setPlaceholder('Ex: 100')
+          .setRequired(true);
+
+        modal.addComponents(new ActionRowBuilder().addComponents(quantidadeInput));
+        await interaction.showModal(modal);
       }
 
       if (interaction.customId === 'ger_farm_fechamento_agora') {

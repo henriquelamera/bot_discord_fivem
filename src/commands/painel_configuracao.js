@@ -67,6 +67,10 @@ module.exports = {
         .setLabel('🤝 Parcerias')
         .setStyle(ButtonStyle.Primary),
       new ButtonBuilder()
+        .setCustomId('cat_vendas')
+        .setLabel('🧮 Vendas')
+        .setStyle(ButtonStyle.Primary),
+      new ButtonBuilder()
         .setCustomId('cat_status')
         .setLabel('✅ Status')
         .setStyle(ButtonStyle.Secondary),
