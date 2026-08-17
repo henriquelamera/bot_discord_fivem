@@ -56,8 +56,9 @@
   /* ===== Cabeçalho ===== */
   .header {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
-    gap: 16px;
+    gap: 12px 16px;
     margin-bottom: 24px;
   }
   .header .logo {
@@ -79,6 +80,25 @@
     font-size: 13px;
     color: var(--muted);
   }
+  .header-usuario {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 12.5px;
+    color: var(--muted);
+    text-align: right;
+  }
+  .header-usuario .nome-usuario { color: var(--text); font-weight: 600; }
+  .header-usuario a {
+    color: var(--muted);
+    text-decoration: none;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 6px 10px;
+    white-space: nowrap;
+  }
+  .header-usuario a:hover { border-color: var(--border-strong); color: var(--text); }
 
   /* ===== Card principal (grid responsivo) ===== */
   .card-main {
@@ -203,6 +223,18 @@
   }
   .btn-secundario:hover { background: rgba(245,165,36,0.12); }
   .btn-secundario:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(245,165,36,0.3); }
+
+  .campo-vendedor-fixo {
+    min-height: var(--btn-min);
+    display: flex;
+    align-items: center;
+    background: var(--card-2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 14px;
+    color: var(--text);
+    font-size: 15px;
+  }
 
   /* ===== Quantidade ===== */
   .qtd-control {
@@ -465,6 +497,10 @@
         <h1>Calculadora de Vendas</h1>
         <p>Selecione o produto, o tipo de venda e a quantidade</p>
       </div>
+      <div class="header-usuario">
+        <span>Registrando como<br><span class="nome-usuario" id="nomeUsuarioHeader">…</span></span>
+        <a href="/logout">Sair</a>
+      </div>
     </header>
 
     <form class="card-main" id="formVenda" novalidate>
@@ -505,8 +541,8 @@
       </div>
 
       <div class="campo campo-nome">
-        <label for="registradoPor">Seu nome — <span class="label-opcional">opcional</span></label>
-        <input id="registradoPor" name="registradoPor" type="text" placeholder="Quem está registrando" autocomplete="off">
+        <label>Vendedor</label>
+        <div class="campo-vendedor-fixo" id="vendedorNome">Carregando…</div>
       </div>
 
       <div class="campo campo-quantidade">
@@ -569,6 +605,7 @@
   let produtos = [];
   let faccoesParceria = []; // [{id, nome}]
   let tipoSelecionado = 'pista';
+  let usuarioAtual = null; // {id, nome}
 
   const fmtBRL = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
   const formatarMoeda = (v) => fmtBRL.format(v);
@@ -581,7 +618,8 @@
   const produtoSelect = el('produto');
   const faccaoSelect = el('faccaoSelect');
   const quantidadeInput = el('quantidade');
-  const registradoPorInput = el('registradoPor');
+  const vendedorNome = el('vendedorNome');
+  const nomeUsuarioHeader = el('nomeUsuarioHeader');
   const campoFaccao = el('campoFaccao');
   const campoFaccaoPista = el('campoFaccaoPista');
   const faccaoPistaInput = el('faccaoPistaInput');
@@ -608,8 +646,25 @@
     return Number.isInteger(n) && n > 0 ? n : null;
   }
 
+  async function fetchAutenticado(url, opts) {
+    const res = await fetch(url, opts);
+    if (res.status === 401) {
+      window.location.href = '/login';
+      throw new Error('Sessão expirada');
+    }
+    return res;
+  }
+
+  async function carregarUsuario() {
+    const res = await fetchAutenticado('/api/vendas/me');
+    usuarioAtual = await res.json();
+    vendedorNome.textContent = usuarioAtual.nome;
+    nomeUsuarioHeader.textContent = usuarioAtual.nome;
+    atualizarResumo();
+  }
+
   async function carregarProdutos() {
-    const res = await fetch('/api/vendas/produtos');
+    const res = await fetchAutenticado('/api/vendas/produtos');
     produtos = await res.json();
     produtoSelect.innerHTML = produtos.map((p) => `<option value="${p.id}">${p.nome}</option>`).join('');
     atualizarPrecosBotoesTipo();
@@ -617,7 +672,7 @@
   }
 
   async function carregarFaccoes() {
-    const res = await fetch('/api/vendas/faccoes-parceria');
+    const res = await fetchAutenticado('/api/vendas/faccoes-parceria');
     faccoesParceria = await res.json();
     faccaoSelect.innerHTML = '<option value="">Não identificar parceria</option>' +
       faccoesParceria.map((f) => `<option value="${f.id}">${f.nome}</option>`).join('');
@@ -683,7 +738,6 @@
   });
 
   produtoSelect.addEventListener('change', () => { atualizarPrecosBotoesTipo(); atualizarResumo(); });
-  registradoPorInput.addEventListener('input', atualizarResumo);
   faccaoPistaInput.addEventListener('input', atualizarResumo);
 
   function atualizarResumo() {
@@ -693,7 +747,7 @@
 
     el('resProduto').textContent = p ? p.nome : '—';
     el('resModalidade').textContent = tipoSelecionado === 'pista' ? 'Pista' : 'Com parceria';
-    el('resVendedor').textContent = registradoPorInput.value.trim() || 'Não informado';
+    el('resVendedor').textContent = (usuarioAtual && usuarioAtual.nome) || 'Carregando…';
     el('resPreco').textContent = preco ? formatarMoeda(preco) : '—';
     el('resQuantidade').textContent = quantidade ?? '—';
 
@@ -741,11 +795,10 @@
       quantidade,
       parceriaId: tipoSelecionado === 'parceria' ? (faccaoSelect.value || null) : null,
       faccaoNome: tipoSelecionado === 'pista' ? faccaoPistaInput.value.trim() : undefined,
-      registradoPor: registradoPorInput.value.trim(),
     };
 
     try {
-      const res = await fetch('/api/vendas/registrar', {
+      const res = await fetchAutenticado('/api/vendas/registrar', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -791,6 +844,7 @@
     enviarVenda();
   });
 
+  carregarUsuario();
   carregarProdutos();
   carregarFaccoes();
   atualizarResumo();

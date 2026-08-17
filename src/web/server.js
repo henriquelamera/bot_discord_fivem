@@ -1,21 +1,156 @@
 const express = require('express');
 const path = require('path');
+const crypto = require('crypto');
 const serverService = require('../services/serverService');
 const vendaService = require('../services/vendaService');
 
-// Calculadora de vendas web - roda no mesmo processo/serviço do bot. Sem
-// autenticação por escolha (link direto pro time de vendas usar), então
-// não sabemos "quem" está acessando - o campo "registrado por" no formulário
-// é auto-declarado, não verificado.
+const SESSAO_DURACAO_MS = 12 * 60 * 60 * 1000; // 12h
+const COOKIE_NOME = 'rbk_sessao';
+
+// Calculadora de vendas web - roda no mesmo processo/serviço do bot. Acesso
+// exige login via Discord OAuth2 e um dos cargos configurados em
+// "Cargos que Podem Usar a Calculadora" - sem isso não dá pra nem ver a
+// página. A identidade (nome/id Discord) vem da sessão verificada, nunca do
+// que o cliente manda no corpo da requisição.
 function iniciarServidorWeb(client) {
   const app = express();
   const PORT = process.env.PORT || 3000;
   const guildId = process.env.GUILD_ID;
+  const sessionSecret = process.env.SESSION_SECRET;
+  const redirectUri = `https://${process.env.RAILWAY_PUBLIC_DOMAIN}/auth/discord/callback`;
+
+  if (!sessionSecret) {
+    console.error('⚠️ SESSION_SECRET não configurado - login da calculadora de vendas vai falhar.');
+  }
+
+  function assinarSessao(payload) {
+    const json = Buffer.from(JSON.stringify(payload)).toString('base64url');
+    const hmac = crypto.createHmac('sha256', sessionSecret || '').update(json).digest('base64url');
+    return `${json}.${hmac}`;
+  }
+
+  function verificarSessao(valor) {
+    if (!valor) return null;
+    const [json, hmac] = valor.split('.');
+    if (!json || !hmac) return null;
+    const esperado = crypto.createHmac('sha256', sessionSecret || '').update(json).digest('base64url');
+    const bufA = Buffer.from(hmac);
+    const bufB = Buffer.from(esperado);
+    if (bufA.length !== bufB.length || !crypto.timingSafeEqual(bufA, bufB)) return null;
+    try {
+      const payload = JSON.parse(Buffer.from(json, 'base64url').toString('utf8'));
+      if (!payload.exp || payload.exp < Date.now()) return null;
+      return payload;
+    } catch {
+      return null;
+    }
+  }
+
+  function lerSessaoDoRequest(req) {
+    const raw = req.headers.cookie || '';
+    const par = raw.split(';').map((s) => s.trim()).find((s) => s.startsWith(`${COOKIE_NOME}=`));
+    if (!par) return null;
+    return verificarSessao(decodeURIComponent(par.slice(COOKIE_NOME.length + 1)));
+  }
+
+  function requireAuth(req, res, next) {
+    const sessao = lerSessaoDoRequest(req);
+    if (!sessao) {
+      if (req.path.startsWith('/api/')) return res.status(401).json({ error: 'Não autenticado.' });
+      return res.redirect('/login');
+    }
+    req.discordUser = sessao;
+    next();
+  }
 
   app.use(express.json());
-  app.use(express.static(path.join(__dirname, 'public')));
 
-  app.get('/api/vendas/produtos', async (req, res) => {
+  app.get('/login', (req, res) => {
+    const url = new URL('https://discord.com/oauth2/authorize');
+    url.searchParams.set('client_id', process.env.CLIENT_ID);
+    url.searchParams.set('redirect_uri', redirectUri);
+    url.searchParams.set('response_type', 'code');
+    url.searchParams.set('scope', 'identify');
+    res.redirect(url.toString());
+  });
+
+  app.get('/logout', (req, res) => {
+    res.setHeader('Set-Cookie', `${COOKIE_NOME}=; Path=/; HttpOnly; Max-Age=0`);
+    res.redirect('/login');
+  });
+
+  app.get('/auth/discord/callback', async (req, res) => {
+    const { code } = req.query;
+    if (!code) return res.status(400).send('Código de autorização ausente.');
+
+    try {
+      const tokenRes = await fetch('https://discord.com/api/oauth2/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          client_id: process.env.CLIENT_ID,
+          client_secret: process.env.DISCORD_CLIENT_SECRET,
+          grant_type: 'authorization_code',
+          code,
+          redirect_uri: redirectUri,
+        }),
+      });
+      if (!tokenRes.ok) throw new Error('Falha ao trocar código por token de acesso');
+      const tokenData = await tokenRes.json();
+
+      const userRes = await fetch('https://discord.com/api/users/@me', {
+        headers: { Authorization: `Bearer ${tokenData.access_token}` },
+      });
+      if (!userRes.ok) throw new Error('Falha ao buscar dados do usuário Discord');
+      const usuarioDiscord = await userRes.json();
+
+      const guild = client.guilds.cache.get(guildId);
+      const membro = guild ? await guild.members.fetch(usuarioDiscord.id).catch(() => null) : null;
+
+      if (!membro) {
+        return res.status(403).send('Você precisa estar no servidor Discord da facção pra usar a calculadora.');
+      }
+
+      const config = await serverService.getConfig(guildId);
+      const cargoCalculadoraIds = config.vendas?.cargo_calculadora_ids || [];
+      const temPermissao =
+        membro.permissions.has('ADMINISTRATOR') ||
+        (cargoCalculadoraIds.length > 0 && membro.roles.cache.some((r) => cargoCalculadoraIds.includes(r.id)));
+
+      if (!temPermissao) {
+        return res.status(403).send('Você não tem o cargo necessário pra usar a calculadora de vendas. Fale com um administrador.');
+      }
+
+      const nomeExibicao = membro.nickname || usuarioDiscord.global_name || usuarioDiscord.username;
+      const sessao = assinarSessao({
+        id: usuarioDiscord.id,
+        username: usuarioDiscord.username,
+        nome: nomeExibicao,
+        exp: Date.now() + SESSAO_DURACAO_MS,
+      });
+
+      res.setHeader(
+        'Set-Cookie',
+        `${COOKIE_NOME}=${encodeURIComponent(sessao)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${Math.floor(SESSAO_DURACAO_MS / 1000)}; Secure`
+      );
+      res.redirect('/');
+    } catch (err) {
+      console.error('Erro no login via Discord:', err);
+      res.status(500).send('Erro ao autenticar com o Discord. Tente novamente.');
+    }
+  });
+
+  app.use(express.static(path.join(__dirname, 'public'), { index: false }));
+
+  app.get('/', requireAuth, (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+  });
+
+  app.get('/api/vendas/me', requireAuth, (req, res) => {
+    res.json({ id: req.discordUser.id, nome: req.discordUser.nome });
+  });
+
+  app.get('/api/vendas/produtos', requireAuth, async (req, res) => {
     try {
       const config = await serverService.getConfig(guildId);
       const produtos = config.vendas?.produtos || [];
@@ -35,7 +170,7 @@ function iniciarServidorWeb(client) {
     }
   });
 
-  app.get('/api/vendas/faccoes-parceria', async (req, res) => {
+  app.get('/api/vendas/faccoes-parceria', requireAuth, async (req, res) => {
     try {
       const faccoes = await vendaService.listarFaccoesParceria(guildId);
       res.json(faccoes);
@@ -45,9 +180,11 @@ function iniciarServidorWeb(client) {
     }
   });
 
-  app.post('/api/vendas/registrar', async (req, res) => {
+  app.post('/api/vendas/registrar', requireAuth, async (req, res) => {
     try {
-      const { produtoId, tipo, quantidade, parceriaId, faccaoNome, registradoPor } = req.body;
+      const { produtoId, tipo, quantidade, parceriaId, faccaoNome } = req.body;
+      const registradoPor = req.discordUser.nome;
+      const registradoPorDiscordId = req.discordUser.id;
 
       if (!produtoId || !['pista', 'parceria'].includes(tipo) || !Number.isInteger(quantidade) || quantidade <= 0) {
         return res.status(400).json({ error: 'Dados inválidos.' });
@@ -96,7 +233,8 @@ function iniciarServidorWeb(client) {
         valorTotal,
         parceriaId: tipo === 'parceria' ? (parceriaId || null) : null,
         faccaoNome: faccaoNomeFinal,
-        registradoPor: registradoPor || null,
+        registradoPor,
+        registradoPorDiscordId,
       });
 
       // Publicar no canal de vendas confirmadas, se configurado

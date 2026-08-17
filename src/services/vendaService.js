@@ -13,9 +13,10 @@ async function registrarVenda(guildId, dados) {
     const result = await pool.query(
       `INSERT INTO vendas_registradas (
          servidor_id, produto_id, produto_nome, tipo, quantidade,
-         preco_unitario, valor_total, parceria_id, faccao_nome, registrado_por
+         preco_unitario, valor_total, parceria_id, faccao_nome, registrado_por,
+         registrado_por_discord_id
        )
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
        RETURNING *`,
       [
         servidorId,
@@ -28,6 +29,7 @@ async function registrarVenda(guildId, dados) {
         dados.parceriaId || null,
         dados.faccaoNome || null,
         dados.registradoPor || null,
+        dados.registradoPorDiscordId || null,
       ]
     );
     return result.rows[0];
