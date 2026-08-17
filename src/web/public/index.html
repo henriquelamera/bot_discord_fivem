@@ -499,6 +499,11 @@
         </div>
       </div>
 
+      <div class="campo campo-faccao" id="campoFaccaoPista">
+        <label for="faccaoPistaInput">Nome da facção/comprador — <span class="label-opcional">opcional</span></label>
+        <input id="faccaoPistaInput" name="faccaoPistaInput" type="text" placeholder="Ex: Facção Vermelha" autocomplete="off">
+      </div>
+
       <div class="campo campo-nome">
         <label for="registradoPor">Seu nome — <span class="label-opcional">opcional</span></label>
         <input id="registradoPor" name="registradoPor" type="text" placeholder="Quem está registrando" autocomplete="off">
@@ -578,6 +583,8 @@
   const quantidadeInput = el('quantidade');
   const registradoPorInput = el('registradoPor');
   const campoFaccao = el('campoFaccao');
+  const campoFaccaoPista = el('campoFaccaoPista');
+  const faccaoPistaInput = el('faccaoPistaInput');
   const avisoSemFaccao = el('avisoSemFaccao');
   const seloAviso = el('seloAviso');
   const btnRegistrar = el('btnRegistrar');
@@ -632,9 +639,11 @@
 
     if (tipo === 'parceria') {
       campoFaccao.classList.remove('oculto');
+      campoFaccaoPista.classList.add('oculto');
       avisoSemFaccao.classList.toggle('oculto', !!faccaoSelect.value);
     } else {
       campoFaccao.classList.add('oculto');
+      campoFaccaoPista.classList.remove('oculto');
       faccaoSelect.value = ''; // limpa parceria selecionada ao trocar pra pista
       avisoSemFaccao.classList.add('oculto');
     }
@@ -675,6 +684,7 @@
 
   produtoSelect.addEventListener('change', () => { atualizarPrecosBotoesTipo(); atualizarResumo(); });
   registradoPorInput.addEventListener('input', atualizarResumo);
+  faccaoPistaInput.addEventListener('input', atualizarResumo);
 
   function atualizarResumo() {
     const p = produtoAtual();
@@ -700,7 +710,7 @@
         seloAviso.classList.remove('oculto');
       }
     } else {
-      resFaccao.textContent = '—';
+      resFaccao.textContent = faccaoPistaInput.value.trim() || 'Não informado';
       resFaccao.classList.remove('faccao-nao-identificada');
       seloAviso.classList.add('oculto');
     }
@@ -730,7 +740,7 @@
       tipo: tipoSelecionado,
       quantidade,
       parceriaId: tipoSelecionado === 'parceria' ? (faccaoSelect.value || null) : null,
-      faccaoNome: tipoSelecionado === 'pista' ? '' : undefined,
+      faccaoNome: tipoSelecionado === 'pista' ? faccaoPistaInput.value.trim() : undefined,
       registradoPor: registradoPorInput.value.trim(),
     };
 
