@@ -7,6 +7,7 @@ const fs = require('fs');
 const path = require('path');
 const { Client, GatewayIntentBits, Collection, REST, Routes } = require('discord.js');
 const { initializeDatabase } = require('./src/initDb');
+const { iniciarServidorWeb } = require('./src/web/server');
 
 const client = new Client({
   intents: [
@@ -58,4 +59,6 @@ async function registrarComandos() {
   } catch (err) {
     console.error('❌ Erro ao registrar comandos:', err.message);
   }
+
+  iniciarServidorWeb(client);
 })();

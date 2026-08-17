@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Calculadora de Vendas — RBK</title>
+<style>
+  :root {
+    --bg: #0b0f1a;
+    --card: #131a2b;
+    --border: #232c42;
+    --text: #e8ecf5;
+    --muted: #8b93a7;
+    --accent: #3b82f6;
+    --accent-hover: #2563eb;
+    --success: #22c55e;
+    --danger: #ef4444;
+    --warn: #f59e0b;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: radial-gradient(circle at top, #101827 0%, var(--bg) 60%);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+    display: flex;
+    justify-content: center;
+    padding: 32px 16px;
+  }
+  .wrap { width: 100%; max-width: 460px; }
+  .header { display: flex; align-items: center; gap: 12px; margin-bottom: 24px; }
+  .header img { width: 44px; height: 44px; border-radius: 8px; }
+  .header h1 { font-size: 18px; margin: 0; }
+  .header p { margin: 2px 0 0; font-size: 13px; color: var(--muted); }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 20px;
+    margin-bottom: 16px;
+  }
+  label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 6px; margin-top: 14px; }
+  label:first-child { margin-top: 0; }
+  select, input {
+    width: 100%;
+    background: #0e1526;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+    color: var(--text);
+    font-size: 14px;
+  }
+  select:focus, input:focus { outline: none; border-color: var(--accent); }
+  .tipo-row { display: flex; gap: 10px; margin-top: 6px; }
+  .tipo-btn {
+    flex: 1;
+    padding: 10px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: #0e1526;
+    color: var(--muted);
+    text-align: center;
+    cursor: pointer;
+    font-size: 13px;
+    user-select: none;
+  }
+  .tipo-btn.ativo { border-color: var(--accent); color: var(--text); background: rgba(59,130,246,0.12); }
+  .resultado {
+    display: none;
+    text-align: center;
+    padding: 18px;
+    margin-top: 16px;
+    border-radius: 10px;
+    background: rgba(34,197,94,0.08);
+    border: 1px solid rgba(34,197,94,0.3);
+  }
+  .resultado .valor { font-size: 28px; font-weight: 700; color: var(--success); }
+  .resultado .detalhe { font-size: 12px; color: var(--muted); margin-top: 4px; }
+  button.primary {
+    width: 100%;
+    padding: 12px;
+    border-radius: 8px;
+    border: none;
+    background: var(--accent);
+    color: white;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    margin-top: 14px;
+  }
+  button.primary:hover { background: var(--accent-hover); }
+  button.primary:disabled { opacity: 0.5; cursor: not-allowed; }
+  .aviso {
+    display: none;
+    font-size: 12px;
+    color: var(--warn);
+    background: rgba(245,158,11,0.1);
+    border: 1px solid rgba(245,158,11,0.3);
+    border-radius: 8px;
+    padding: 10px 12px;
+    margin-top: 12px;
+  }
+  .msg-final {
+    display: none;
+    text-align: center;
+    font-size: 13px;
+    padding: 12px;
+    border-radius: 8px;
+    margin-top: 14px;
+  }
+  .msg-final.ok { background: rgba(34,197,94,0.1); border: 1px solid rgba(34,197,94,0.3); color: var(--success); }
+  .msg-final.erro { background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.3); color: var(--danger); }
+  .oculto { display: none !important; }
+  .rodape { text-align: center; font-size: 11px; color: var(--muted); margin-top: 20px; }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="header">
+      <img src="/rbk_logo.gif" alt="RBK">
+      <div>
+        <h1>Calculadora de Vendas</h1>
+        <p>Selecione o produto, o tipo de venda e a quantidade</p>
+      </div>
+    </div>
+
+    <div class="card">
+      <label for="produto">Produto</label>
+      <select id="produto"></select>
+
+      <label>Tipo de venda</label>
+      <div class="tipo-row">
+        <div class="tipo-btn ativo" data-tipo="pista">Sem Parceria (Pista)</div>
+        <div class="tipo-btn" data-tipo="parceria">Com Parceria</div>
+      </div>
+
+      <label for="quantidade">Quantidade</label>
+      <input id="quantidade" type="number" min="1" placeholder="Ex: 100">
+
+      <div class="resultado" id="resultado">
+        <div class="valor" id="valorTotal">R$ 0,00</div>
+        <div class="detalhe" id="detalheCalculo"></div>
+      </div>
+
+      <button class="primary" id="btnRegistrar" disabled>Registrar Venda</button>
+    </div>
+
+    <div class="card oculto" id="cardRegistro">
+      <div id="campoFaccaoParceria" class="oculto">
+        <label for="faccaoSelect">Facção (parceria)</label>
+        <select id="faccaoSelect">
+          <option value="">Não identificar parceria</option>
+        </select>
+        <div class="aviso" id="avisoSemFaccao">⚠️ Venda com parceria sem facção identificada. Você pode registrar assim mesmo.</div>
+      </div>
+
+      <div id="campoFaccaoTexto" class="oculto">
+        <label for="faccaoTexto">Nome da facção/comprador</label>
+        <input id="faccaoTexto" type="text" placeholder="Opcional">
+      </div>
+
+      <label for="registradoPor">Seu nome</label>
+      <input id="registradoPor" type="text" placeholder="Quem está registrando (opcional)">
+
+      <button class="primary" id="btnConfirmar">Confirmar Registro</button>
+
+      <div class="msg-final" id="msgFinal"></div>
+    </div>
+
+    <div class="rodape">Bot RBK · Calculadora interna de vendas</div>
+  </div>
+
+<script>
+let produtos = [];
+let faccoesParceria = [];
+let tipoSelecionado = 'pista';
+
+const formatarMoeda = (v) => 'R$ ' + v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+async function carregarProdutos() {
+  const res = await fetch('/api/vendas/produtos');
+  produtos = await res.json();
+  const select = document.getElementById('produto');
+  select.innerHTML = produtos.map(p => `<option value="${p.id}">${p.nome}</option>`).join('');
+  calcular();
+}
+
+async function carregarFaccoes() {
+  const res = await fetch('/api/vendas/faccoes-parceria');
+  faccoesParceria = await res.json();
+  const select = document.getElementById('faccaoSelect');
+  select.innerHTML = '<option value="">Não identificar parceria</option>' +
+    faccoesParceria.map(f => `<option value="${f}">${f}</option>`).join('');
+}
+
+function produtoAtual() {
+  const id = document.getElementById('produto').value;
+  return produtos.find(p => p.id === id);
+}
+
+function precoAtual() {
+  const p = produtoAtual();
+  if (!p) return null;
+  return tipoSelecionado === 'pista' ? p.preco_pista : p.preco_parceria;
+}
+
+function calcular() {
+  const preco = precoAtual();
+  const quantidade = parseInt(document.getElementById('quantidade').value, 10);
+  const resultado = document.getElementById('resultado');
+  const btnRegistrar = document.getElementById('btnRegistrar');
+
+  if (!preco || !quantidade || quantidade <= 0) {
+    resultado.style.display = 'none';
+    btnRegistrar.disabled = true;
+    return;
+  }
+
+  const total = preco * quantidade;
+  document.getElementById('valorTotal').textContent = formatarMoeda(total);
+  document.getElementById('detalheCalculo').textContent =
+    `${quantidade} x ${formatarMoeda(preco)}`;
+  resultado.style.display = 'block';
+  btnRegistrar.disabled = false;
+}
+
+document.querySelectorAll('.tipo-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tipo-btn').forEach(b => b.classList.remove('ativo'));
+    btn.classList.add('ativo');
+    tipoSelecionado = btn.dataset.tipo;
+    calcular();
+  });
+});
+
+document.getElementById('produto').addEventListener('change', calcular);
+document.getElementById('quantidade').addEventListener('input', calcular);
+
+document.getElementById('btnRegistrar').addEventListener('click', () => {
+  document.getElementById('cardRegistro').classList.remove('oculto');
+  document.getElementById('campoFaccaoParceria').classList.toggle('oculto', tipoSelecionado !== 'parceria');
+  document.getElementById('campoFaccaoTexto').classList.toggle('oculto', tipoSelecionado !== 'pista');
+  document.getElementById('avisoSemFaccao').style.display = 'none';
+  document.getElementById('msgFinal').style.display = 'none';
+  document.getElementById('cardRegistro').scrollIntoView({ behavior: 'smooth' });
+});
+
+document.getElementById('faccaoSelect')?.addEventListener('change', (e) => {
+  document.getElementById('avisoSemFaccao').style.display = e.target.value ? 'none' : 'block';
+});
+
+document.getElementById('btnConfirmar').addEventListener('click', async () => {
+  const produto = produtoAtual();
+  const quantidade = parseInt(document.getElementById('quantidade').value, 10);
+  const faccaoNome = tipoSelecionado === 'parceria'
+    ? document.getElementById('faccaoSelect').value
+    : document.getElementById('faccaoTexto').value.trim();
+  const registradoPor = document.getElementById('registradoPor').value.trim();
+
+  const msgFinal = document.getElementById('msgFinal');
+  const btnConfirmar = document.getElementById('btnConfirmar');
+  btnConfirmar.disabled = true;
+
+  try {
+    const res = await fetch('/api/vendas/registrar', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ produtoId: produto.id, tipo: tipoSelecionado, quantidade, faccaoNome, registradoPor }),
+    });
+    const data = await res.json();
+
+    if (!res.ok) {
+      msgFinal.className = 'msg-final erro';
+      msgFinal.textContent = '❌ ' + (data.error || 'Erro ao registrar venda.');
+    } else {
+      msgFinal.className = 'msg-final ok';
+      msgFinal.textContent = '✅ Venda registrada com sucesso!' + (data.aviso ? ' ⚠️ ' + data.aviso : '');
+    }
+    msgFinal.style.display = 'block';
+  } catch (err) {
+    msgFinal.className = 'msg-final erro';
+    msgFinal.textContent = '❌ Erro de conexão ao registrar venda.';
+    msgFinal.style.display = 'block';
+  } finally {
+    btnConfirmar.disabled = false;
+  }
+});
+
+carregarProdutos();
+carregarFaccoes();
+</script>
+</body>
+</html>

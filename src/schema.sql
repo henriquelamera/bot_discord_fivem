@@ -118,6 +118,21 @@ CREATE TABLE IF NOT EXISTS parcerias (
 ALTER TABLE parcerias ADD COLUMN IF NOT EXISTS nome_darkchat VARCHAR(150);
 ALTER TABLE parcerias ADD COLUMN IF NOT EXISTS senha_darkchat VARCHAR(150);
 
+-- Tabela de Vendas Registradas (pela calculadora web)
+CREATE TABLE IF NOT EXISTS vendas_registradas (
+  id SERIAL PRIMARY KEY,
+  servidor_id INT REFERENCES servidores(id) ON DELETE CASCADE,
+  produto_id VARCHAR(100),
+  produto_nome VARCHAR(150) NOT NULL,
+  tipo VARCHAR(20) NOT NULL, -- 'pista' ou 'parceria'
+  quantidade INT NOT NULL,
+  preco_unitario NUMERIC(12,2) NOT NULL,
+  valor_total NUMERIC(12,2) NOT NULL,
+  faccao_nome VARCHAR(150), -- selecionada (parceria) ou digitada (pista) - pode ficar vazia mesmo em venda de parceria
+  registrado_por VARCHAR(150), -- nome auto-declarado, sem autenticação
+  data_registro TIMESTAMP DEFAULT NOW()
+);
+
 -- Criar índices para melhor performance
 CREATE INDEX IF NOT EXISTS idx_servidores_guild_id ON servidores(guild_id);
 CREATE INDEX IF NOT EXISTS idx_api_keys_chave ON api_keys(chave_token);
@@ -131,3 +146,4 @@ CREATE INDEX IF NOT EXISTS idx_advs_membro ON advs(membro_id);
 CREATE INDEX IF NOT EXISTS idx_logs_servidor ON logs(servidor_id);
 CREATE INDEX IF NOT EXISTS idx_historico_servidor ON historico_cargos(servidor_id);
 CREATE INDEX IF NOT EXISTS idx_parcerias_servidor ON parcerias(servidor_id);
+CREATE INDEX IF NOT EXISTS idx_vendas_registradas_servidor ON vendas_registradas(servidor_id);

@@ -2715,6 +2715,11 @@ module.exports = {
               label: 'Cargos que Podem Usar a Calculadora',
               description: 'Quem pode usar o botão de Calculadora de Vendas',
               value: 'vendas_cargo_calculadora',
+            },
+            {
+              label: 'Canal de Vendas Confirmadas',
+              description: 'Onde as vendas registradas pela calculadora web aparecem',
+              value: 'vendas_canal_confirmadas',
             }
           );
 
@@ -5862,6 +5867,93 @@ module.exports = {
             ephemeral: true,
           });
         }
+
+        if (valor === 'vendas_canal_confirmadas') {
+          const { ChannelType } = require('discord.js');
+          const categorias = interaction.guild.channels.cache
+            .filter(ch => ch.type === ChannelType.GuildCategory)
+            .map(cat => ({
+              label: cat.name,
+              value: cat.id,
+              description: `${cat.children.cache.size} canais`,
+            }));
+
+          if (categorias.length === 0) {
+            return await interaction.reply({
+              content: '❌ Nenhuma categoria encontrada.',
+              ephemeral: true,
+            });
+          }
+
+          const selectMenu = new StringSelectMenuBuilder()
+            .setCustomId('select_categoria_vendas_canal')
+            .setPlaceholder('Selecione a categoria...')
+            .addOptions(categorias.slice(0, 25));
+
+          const row = new ActionRowBuilder().addComponents(selectMenu);
+
+          await interaction.reply({
+            content: '**Canal de Vendas Confirmadas**\n\n**Passo 1:** Selecione a categoria:',
+            components: [row],
+            ephemeral: true,
+          });
+        }
+      }
+
+      if (interaction.customId === 'select_categoria_vendas_canal') {
+        const categoriaId = interaction.values[0];
+        const { ChannelType, StringSelectMenuBuilder } = require('discord.js');
+
+        const categoria = interaction.guild.channels.cache.get(categoriaId);
+        if (!categoria) {
+          return await interaction.reply({
+            content: '❌ Categoria não encontrada.',
+            ephemeral: true,
+          });
+        }
+
+        const canais = categoria.children.cache
+          .filter(ch => ch.type === ChannelType.GuildText)
+          .map(canal => ({
+            label: `#${canal.name}`,
+            value: canal.id,
+            description: canal.topic || 'Sem descrição',
+          }));
+
+        if (canais.length === 0) {
+          return await interaction.reply({
+            content: '❌ Nenhum canal de texto encontrado nesta categoria.',
+            ephemeral: true,
+          });
+        }
+
+        const selectMenu = new StringSelectMenuBuilder()
+          .setCustomId('select_canal_vendas_confirmadas')
+          .setPlaceholder('Selecione o canal...')
+          .addOptions(canais.slice(0, 25));
+
+        const row = new ActionRowBuilder().addComponents(selectMenu);
+
+        await interaction.reply({
+          content: `**Passo 2:** Canal de Vendas Confirmadas\n\nSelecione o canal em **${categoria.name}**:`,
+          components: [row],
+          ephemeral: true,
+        });
+      }
+
+      if (interaction.customId === 'select_canal_vendas_confirmadas') {
+        const canalId = interaction.values[0];
+        const config = await serverService.getConfig(interaction.guild.id);
+        if (!config.vendas) config.vendas = {};
+        config.vendas.canal_vendas_id = canalId;
+        await serverService.saveConfig(interaction.guild.id, config);
+
+        const canal = interaction.guild.channels.cache.get(canalId);
+
+        await interaction.reply({
+          content: `✅ Canal de Vendas Confirmadas configurado!\n**Canal:** #${canal.name}`,
+          ephemeral: true,
+        });
       }
 
       if (interaction.customId === 'select_vendas_cargo_calculadora') {
