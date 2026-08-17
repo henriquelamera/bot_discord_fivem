@@ -7,6 +7,7 @@ const parceriaService = require('../services/parceriaService');
 const { dispatchButton, dispatchSelectMenu, dispatchModal } = require('../utils/handlerRegistry');
 const { marcarAguardandoImagem, desmarcarAguardandoImagem, salvarItensParciais, pegarItensParciais, limparItensParciais } = require('../utils/entregaMetaTracker');
 const { salvarRecrutador, pegarRecrutador, limparRecrutador } = require('../utils/registroTracker');
+const { salvarProdutoParceria, pegarProdutoParceria, limparProdutoParceria } = require('../utils/parceriaTracker');
 const { formatarMoeda, calcularPagamentosPorMembro } = require('../utils/farmPagamentos');
 const { postarFechamentoSemanal, removerEntregaDosFechamentosPendentes, limparCardsFechamento } = require('../utils/fechamentoSemanal');
 
@@ -1900,22 +1901,27 @@ module.exports = {
       if (interaction.customId === 'modal_registrar_parceria') {
         const responsavelOutraFaccao = interaction.fields.getTextInputValue('responsavel_outra_faccao');
         const nomeFaccao = interaction.fields.getTextInputValue('nome_faccao');
-        const produto = interaction.fields.getTextInputValue('produto');
         const nomeDarkchat = interaction.fields.getTextInputValue('nome_darkchat');
         const senhaDarkchat = interaction.fields.getTextInputValue('senha_darkchat');
 
-        const config = await serverService.getConfig(interaction.guild.id);
-        const canalParceriasId = config.parcerias?.canal_parcerias_id;
-        const canalParcerias = canalParceriasId
-          ? interaction.guild.channels.cache.get(canalParceriasId)
+        // O produto foi escolhido na etapa anterior (select menu) - vem do
+        // tracker transiente entre as duas interações (select -> modal). O
+        // canal do produto escolhido é tanto o "produto" quanto o destino
+        // onde a parceria é publicada.
+        const canalProdutoId = pegarProdutoParceria(interaction.user.id);
+        limparProdutoParceria(interaction.user.id);
+        const canalParcerias = canalProdutoId
+          ? interaction.guild.channels.cache.get(canalProdutoId)
           : null;
 
         if (!canalParcerias) {
           return await interaction.reply({
-            content: '❌ Canal de Parcerias não foi configurado (ou não foi encontrado). Contate um administrador.',
+            content: '❌ Não foi possível identificar o produto selecionado (demorou muito pra preencher o formulário?). Clique em **Registrar Parceria** novamente.',
             ephemeral: true,
           });
         }
+
+        const produto = canalParcerias.name;
 
         await interaction.reply({
           content: '📸 Agora envie **uma imagem** aqui no canal com o print da parceria (roupa da facção). Você tem 5 minutos. Formatos aceitos: PNG, JPG, JPEG, GIF, WEBP.',
@@ -2382,9 +2388,9 @@ module.exports = {
               value: 'parcerias_cargo_registrar',
             },
             {
-              label: 'Canal de Parcerias',
-              description: 'Onde as parcerias registradas são publicadas',
-              value: 'parcerias_canal',
+              label: 'Categoria de Produtos',
+              description: 'Categoria com um canal por produto - a parceria vai pro canal do produto escolhido',
+              value: 'parcerias_categoria_produtos',
             },
             {
               label: 'Gerente de Parcerias',
@@ -2762,8 +2768,8 @@ module.exports = {
         const cargosAprovacaoAdv = safeValue(cargosAprovacaoAdvNomes);
 
         // Parcerias
-        const canalParcerias = config.parcerias?.canal_parcerias_id
-          ? `✅ #${interaction.guild.channels.cache.get(config.parcerias.canal_parcerias_id)?.name || 'ID Inválido'}`
+        const categoriaProdutosParcerias = config.parcerias?.categoria_produtos_id
+          ? `✅ ${interaction.guild.channels.cache.get(config.parcerias.categoria_produtos_id)?.name || 'ID Inválido'}`
           : '❌ Não configurado';
 
         const cargosParceriasNomes = config.parcerias?.cargo_registrar_ids?.length > 0
@@ -2810,7 +2816,7 @@ module.exports = {
           { name: '⚠️ Podem Dar ADV', value: truncate(cargosRegistroAdv), inline: false },
           { name: '✅ Aprovam ADV', value: truncate(cargosAprovacaoAdv), inline: false },
 
-          { name: '🤝 Canal de Parcerias', value: truncate(canalParcerias), inline: true },
+          { name: '🤝 Categoria de Produtos', value: truncate(categoriaProdutosParcerias), inline: true },
           { name: '🤝 Gerente de Parcerias', value: truncate(gerenteParcerias), inline: true },
           { name: '🤝 Podem Registrar Parceria', value: truncate(cargosParcerias), inline: false }
         );
@@ -5397,7 +5403,7 @@ module.exports = {
           });
         }
 
-        if (valor === 'parcerias_canal') {
+        if (valor === 'parcerias_categoria_produtos') {
           const { ChannelType } = require('discord.js');
           const categorias = interaction.guild.channels.cache
             .filter(ch => ch.type === ChannelType.GuildCategory)
@@ -5415,14 +5421,14 @@ module.exports = {
           }
 
           const selectMenu = new StringSelectMenuBuilder()
-            .setCustomId('select_categoria_parcerias_canal')
+            .setCustomId('select_parcerias_categoria_produtos')
             .setPlaceholder('Selecione a categoria...')
             .addOptions(categorias.slice(0, 25));
 
           const row = new ActionRowBuilder().addComponents(selectMenu);
 
           await interaction.reply({
-            content: '**Canal de Parcerias**\n\n**Passo 1:** Selecione a categoria:',
+            content: '**Categoria de Produtos**\n\nSelecione a categoria que tem um canal por produto (ex: drogas, armas, contrabando...):',
             components: [row],
             ephemeral: true,
           });
@@ -5490,60 +5496,66 @@ module.exports = {
         });
       }
 
-      if (interaction.customId === 'select_categoria_parcerias_canal') {
+      if (interaction.customId === 'select_parcerias_categoria_produtos') {
         const categoriaId = interaction.values[0];
-        const { ChannelType, StringSelectMenuBuilder } = require('discord.js');
+        const config = await serverService.getConfig(interaction.guild.id);
+        if (!config.parcerias) config.parcerias = {};
+        config.parcerias.categoria_produtos_id = categoriaId;
+        await serverService.saveConfig(interaction.guild.id, config);
 
         const categoria = interaction.guild.channels.cache.get(categoriaId);
-        if (!categoria) {
-          return await interaction.reply({
-            content: '❌ Categoria não encontrada.',
-            ephemeral: true,
-          });
-        }
-
-        const canais = categoria.children.cache
-          .filter(ch => ch.type === ChannelType.GuildText)
-          .map(canal => ({
-            label: `#${canal.name}`,
-            value: canal.id,
-            description: canal.topic || 'Sem descrição',
-          }));
-
-        if (canais.length === 0) {
-          return await interaction.reply({
-            content: '❌ Nenhum canal de texto encontrado nesta categoria.',
-            ephemeral: true,
-          });
-        }
-
-        const selectMenu = new StringSelectMenuBuilder()
-          .setCustomId('select_canal_parcerias_canal')
-          .setPlaceholder('Selecione o canal...')
-          .addOptions(canais.slice(0, 25));
-
-        const row = new ActionRowBuilder().addComponents(selectMenu);
+        const { ChannelType } = require('discord.js');
+        const totalCanais = categoria.children.cache.filter(ch => ch.type === ChannelType.GuildText).size;
 
         await interaction.reply({
-          content: `**Passo 2:** Canal de Parcerias\n\nSelecione o canal em **${categoria.name}**:`,
-          components: [row],
+          content: `✅ Categoria de Produtos configurada!\n**Categoria:** ${categoria.name} (${totalCanais} canal(is) de produto)`,
           ephemeral: true,
         });
       }
 
-      if (interaction.customId === 'select_canal_parcerias_canal') {
-        const canalId = interaction.values[0];
-        const config = await serverService.getConfig(interaction.guild.id);
-        if (!config.parcerias) config.parcerias = {};
-        config.parcerias.canal_parcerias_id = canalId;
-        await serverService.saveConfig(interaction.guild.id, config);
+      if (interaction.customId === 'select_parceria_produto') {
+        salvarProdutoParceria(interaction.user.id, interaction.values[0]);
 
-        const canal = interaction.guild.channels.cache.get(canalId);
+        const modal = new ModalBuilder()
+          .setCustomId('modal_registrar_parceria')
+          .setTitle('🤝 Registrar Parceria');
 
-        await interaction.reply({
-          content: `✅ Canal de Parcerias configurado!\n**Canal:** #${canal.name}`,
-          ephemeral: true,
-        });
+        const responsavelInput = new TextInputBuilder()
+          .setCustomId('responsavel_outra_faccao')
+          .setLabel('Responsável da outra facção')
+          .setStyle(TextInputStyle.Short)
+          .setPlaceholder('Nome de quem negociou a parceria')
+          .setRequired(true);
+
+        const faccaoInput = new TextInputBuilder()
+          .setCustomId('nome_faccao')
+          .setLabel('Nome da Facção')
+          .setStyle(TextInputStyle.Short)
+          .setPlaceholder('Ex: Los Santos Vagos')
+          .setRequired(true);
+
+        const darkchatInput = new TextInputBuilder()
+          .setCustomId('nome_darkchat')
+          .setLabel('Nome do Darkchat criado')
+          .setStyle(TextInputStyle.Short)
+          .setPlaceholder('Nome do grupo/canal do darkchat')
+          .setRequired(true);
+
+        const senhaInput = new TextInputBuilder()
+          .setCustomId('senha_darkchat')
+          .setLabel('Senha do Darkchat')
+          .setStyle(TextInputStyle.Short)
+          .setPlaceholder('Senha de acesso')
+          .setRequired(true);
+
+        modal.addComponents(
+          new ActionRowBuilder().addComponents(responsavelInput),
+          new ActionRowBuilder().addComponents(faccaoInput),
+          new ActionRowBuilder().addComponents(darkchatInput),
+          new ActionRowBuilder().addComponents(senhaInput)
+        );
+
+        await interaction.showModal(modal);
       }
 
       if (interaction.customId === 'selecionar_admin_limpar') {
@@ -7401,61 +7413,43 @@ module.exports = {
           });
         }
 
-        if (!config.parcerias?.canal_parcerias_id) {
+        const categoriaProdutosId = config.parcerias?.categoria_produtos_id;
+        const categoriaProdutos = categoriaProdutosId
+          ? interaction.guild.channels.cache.get(categoriaProdutosId)
+          : null;
+
+        if (!categoriaProdutos) {
           return await interaction.reply({
-            content: '❌ Canal de Parcerias não foi configurado. Contate um administrador.',
+            content: '❌ Categoria de Produtos não foi configurada (ou não foi encontrada). Contate um administrador.',
             ephemeral: true,
           });
         }
 
-        const modal = new ModalBuilder()
-          .setCustomId('modal_registrar_parceria')
-          .setTitle('🤝 Registrar Parceria');
+        const { ChannelType, StringSelectMenuBuilder } = require('discord.js');
+        const opcoesProduto = categoriaProdutos.children.cache
+          .filter(ch => ch.type === ChannelType.GuildText)
+          .map(ch => ({ label: ch.name, value: ch.id }))
+          .slice(0, 25);
 
-        const responsavelInput = new TextInputBuilder()
-          .setCustomId('responsavel_outra_faccao')
-          .setLabel('Responsável da outra facção')
-          .setStyle(TextInputStyle.Short)
-          .setPlaceholder('Nome de quem negociou a parceria')
-          .setRequired(true);
+        if (opcoesProduto.length === 0) {
+          return await interaction.reply({
+            content: '❌ Nenhum canal de produto encontrado na categoria configurada. Contate um administrador.',
+            ephemeral: true,
+          });
+        }
 
-        const faccaoInput = new TextInputBuilder()
-          .setCustomId('nome_faccao')
-          .setLabel('Nome da Facção')
-          .setStyle(TextInputStyle.Short)
-          .setPlaceholder('Ex: Los Santos Vagos')
-          .setRequired(true);
+        const selectMenu = new StringSelectMenuBuilder()
+          .setCustomId('select_parceria_produto')
+          .setPlaceholder('Selecione o produto...')
+          .addOptions(opcoesProduto);
 
-        const produtoInput = new TextInputBuilder()
-          .setCustomId('produto')
-          .setLabel('Produto')
-          .setStyle(TextInputStyle.Short)
-          .setPlaceholder('Ex: Armas, Drogas, etc.')
-          .setRequired(true);
+        const row = new ActionRowBuilder().addComponents(selectMenu);
 
-        const darkchatInput = new TextInputBuilder()
-          .setCustomId('nome_darkchat')
-          .setLabel('Nome do Darkchat criado')
-          .setStyle(TextInputStyle.Short)
-          .setPlaceholder('Nome do grupo/canal do darkchat')
-          .setRequired(true);
-
-        const senhaInput = new TextInputBuilder()
-          .setCustomId('senha_darkchat')
-          .setLabel('Senha do Darkchat')
-          .setStyle(TextInputStyle.Short)
-          .setPlaceholder('Senha de acesso')
-          .setRequired(true);
-
-        modal.addComponents(
-          new ActionRowBuilder().addComponents(responsavelInput),
-          new ActionRowBuilder().addComponents(faccaoInput),
-          new ActionRowBuilder().addComponents(produtoInput),
-          new ActionRowBuilder().addComponents(darkchatInput),
-          new ActionRowBuilder().addComponents(senhaInput)
-        );
-
-        await interaction.showModal(modal);
+        await interaction.reply({
+          content: '**🤝 Registrar Parceria**\n\n**Etapa 1:** Selecione o produto da parceria abaixo.\n**Etapa 2:** Preencha os dados no formulário que vai abrir.',
+          components: [row],
+          ephemeral: true,
+        });
       }
 
       if (interaction.customId === 'ger_farm_fechamento_agora') {
