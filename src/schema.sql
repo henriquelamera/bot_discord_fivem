@@ -95,6 +95,21 @@ CREATE TABLE IF NOT EXISTS historico_cargos (
   data_acao TIMESTAMP DEFAULT NOW()
 );
 
+-- Tabela de Parcerias
+CREATE TABLE IF NOT EXISTS parcerias (
+  id SERIAL PRIMARY KEY,
+  servidor_id INT REFERENCES servidores(id) ON DELETE CASCADE,
+  registrado_por_id VARCHAR(20) NOT NULL,
+  responsavel_outra_faccao VARCHAR(150) NOT NULL,
+  nome_faccao VARCHAR(150) NOT NULL,
+  produto VARCHAR(150) NOT NULL,
+  print_parceria_url TEXT,
+  print_mapa_url TEXT,
+  canal_id VARCHAR(20),
+  mensagem_id VARCHAR(20),
+  data_registro TIMESTAMP DEFAULT NOW()
+);
+
 -- Criar índices para melhor performance
 CREATE INDEX IF NOT EXISTS idx_servidores_guild_id ON servidores(guild_id);
 CREATE INDEX IF NOT EXISTS idx_api_keys_chave ON api_keys(chave_token);
@@ -107,3 +122,4 @@ CREATE INDEX IF NOT EXISTS idx_advs_servidor ON advs(servidor_id);
 CREATE INDEX IF NOT EXISTS idx_advs_membro ON advs(membro_id);
 CREATE INDEX IF NOT EXISTS idx_logs_servidor ON logs(servidor_id);
 CREATE INDEX IF NOT EXISTS idx_historico_servidor ON historico_cargos(servidor_id);
+CREATE INDEX IF NOT EXISTS idx_parcerias_servidor ON parcerias(servidor_id);

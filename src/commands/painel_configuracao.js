@@ -63,6 +63,10 @@ module.exports = {
 
     const botoes2 = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
+        .setCustomId('cat_parcerias')
+        .setLabel('🤝 Parcerias')
+        .setStyle(ButtonStyle.Primary),
+      new ButtonBuilder()
         .setCustomId('cat_status')
         .setLabel('✅ Status')
         .setStyle(ButtonStyle.Secondary),

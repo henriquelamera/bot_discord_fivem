@@ -3,6 +3,7 @@ const serverService = require('../services/serverService');
 const memberService = require('../services/memberService');
 const deliveryService = require('../services/deliveryService');
 const advService = require('../services/advService');
+const parceriaService = require('../services/parceriaService');
 const { dispatchButton, dispatchSelectMenu, dispatchModal } = require('../utils/handlerRegistry');
 const { marcarAguardandoImagem, desmarcarAguardandoImagem, salvarItensParciais, pegarItensParciais, limparItensParciais } = require('../utils/entregaMetaTracker');
 const { salvarRecrutador, pegarRecrutador, limparRecrutador } = require('../utils/registroTracker');
@@ -1895,6 +1896,116 @@ module.exports = {
           });
         }
       }
+
+      if (interaction.customId === 'modal_registrar_parceria') {
+        const responsavelOutraFaccao = interaction.fields.getTextInputValue('responsavel_outra_faccao');
+        const nomeFaccao = interaction.fields.getTextInputValue('nome_faccao');
+        const produto = interaction.fields.getTextInputValue('produto');
+
+        const config = await serverService.getConfig(interaction.guild.id);
+        const canalParceriasId = config.parcerias?.canal_parcerias_id;
+        const canalParcerias = canalParceriasId
+          ? interaction.guild.channels.cache.get(canalParceriasId)
+          : null;
+
+        if (!canalParcerias) {
+          return await interaction.reply({
+            content: '❌ Canal de Parcerias não foi configurado (ou não foi encontrado). Contate um administrador.',
+            ephemeral: true,
+          });
+        }
+
+        await interaction.reply({
+          content: '📸 Agora envie **uma imagem** aqui no canal com o print da parceria (roupa da facção). Você tem 5 minutos. Formatos aceitos: PNG, JPG, JPEG, GIF, WEBP.',
+          ephemeral: true,
+        });
+
+        marcarAguardandoImagem(interaction.channel.id);
+        try {
+          const coletadas1 = await interaction.channel.awaitMessages({
+            filter: (msg) =>
+              msg.author.id === interaction.user.id &&
+              [...msg.attachments.values()].some((att) => att.contentType?.startsWith('image/')),
+            max: 1,
+            time: 5 * 60 * 1000,
+            errors: ['time'],
+          });
+
+          const msg1 = coletadas1.first();
+          const printParceriaUrl = [...msg1.attachments.values()]
+            .find((att) => att.contentType?.startsWith('image/')).url;
+
+          await interaction.followUp({
+            content: '🗺️ Agora envie o **print do mapa** com a localização da facção. Você tem 5 minutos.',
+            ephemeral: true,
+          });
+
+          const coletadas2 = await interaction.channel.awaitMessages({
+            filter: (msg) =>
+              msg.author.id === interaction.user.id &&
+              [...msg.attachments.values()].some((att) => att.contentType?.startsWith('image/')),
+            max: 1,
+            time: 5 * 60 * 1000,
+            errors: ['time'],
+          });
+
+          const msg2 = coletadas2.first();
+          const printMapaUrl = [...msg2.attachments.values()]
+            .find((att) => att.contentType?.startsWith('image/')).url;
+
+          const embedInfo = new EmbedBuilder()
+            .setTitle('🤝 Nova Parceria')
+            .setColor(0x2ecc71)
+            .addFields(
+              { name: '👤 Registrado por', value: `<@${interaction.user.id}>`, inline: true },
+              { name: '📅 Data', value: new Date().toLocaleDateString('pt-BR'), inline: true },
+              { name: '🎯 Responsável (outra facção)', value: responsavelOutraFaccao, inline: false },
+              { name: '🏴 Nome da Facção', value: nomeFaccao, inline: false },
+              { name: '📦 Produto', value: produto, inline: false }
+            )
+            .setImage(printParceriaUrl)
+            .setTimestamp();
+
+          const embedMapa = new EmbedBuilder()
+            .setColor(0x2ecc71)
+            .setTitle('🗺️ Localização da Facção')
+            .setImage(printMapaUrl);
+
+          const mensagemParceria = await canalParcerias.send({ embeds: [embedInfo, embedMapa] });
+
+          await parceriaService.createParceria(interaction.guild.id, {
+            registradoPorId: interaction.user.id,
+            responsavelOutraFaccao,
+            nomeFaccao,
+            produto,
+            printParceriaUrl,
+            printMapaUrl,
+            canalId: canalParcerias.id,
+            mensagemId: mensagemParceria.id,
+          });
+
+          await interaction.followUp({
+            content: `✅ Parceria registrada com sucesso em <#${canalParcerias.id}>!`,
+            ephemeral: true,
+          });
+        } catch (err) {
+          if (err instanceof Map) {
+            await interaction.followUp({
+              content: '❌ Tempo esgotado! Nenhuma imagem foi recebida a tempo. Clique em **Registrar Parceria** novamente.',
+              ephemeral: true,
+            });
+            return;
+          }
+
+          console.error(err);
+          await interaction.followUp({
+            content: `❌ Erro ao registrar parceria: ${err.message}`,
+            ephemeral: true,
+          });
+        } finally {
+          desmarcarAguardandoImagem(interaction.channel.id);
+        }
+      }
     }
 
     if (interaction.isUserSelectMenu()) {
@@ -2240,6 +2351,34 @@ module.exports = {
 
         await interaction.reply({
           content: '**🔴 Cargos**\n\nSelecione a opção:',
+          components: [row],
+          ephemeral: true,
+        });
+      }
+
+      if (interaction.customId === 'cat_parcerias') {
+        const { StringSelectMenuBuilder } = require('discord.js');
+
+        const selectMenu = new StringSelectMenuBuilder()
+          .setCustomId('painel_parcerias')
+          .setPlaceholder('Escolha uma opção...')
+          .addOptions(
+            {
+              label: 'Cargos que Podem Registrar',
+              description: 'Quem pode usar o botão de Registrar Parceria',
+              value: 'parcerias_cargo_registrar',
+            },
+            {
+              label: 'Canal de Parcerias',
+              description: 'Onde as parcerias registradas são publicadas',
+              value: 'parcerias_canal',
+            }
+          );
+
+        const row = new ActionRowBuilder().addComponents(selectMenu);
+
+        await interaction.reply({
+          content: '**🤝 Parcerias**\n\nSelecione a opção:',
           components: [row],
           ephemeral: true,
         });
@@ -2604,6 +2743,16 @@ module.exports = {
           : '';
         const cargosAprovacaoAdv = safeValue(cargosAprovacaoAdvNomes);
 
+        // Parcerias
+        const canalParcerias = config.parcerias?.canal_parcerias_id
+          ? `✅ #${interaction.guild.channels.cache.get(config.parcerias.canal_parcerias_id)?.name || 'ID Inválido'}`
+          : '❌ Não configurado';
+
+        const cargosParceriasNomes = config.parcerias?.cargo_registrar_ids?.length > 0
+          ? config.parcerias.cargo_registrar_ids.map(id => interaction.guild.roles.cache.get(id)?.name).filter(Boolean).join(', ')
+          : '';
+        const cargosParcerias = safeValue(cargosParceriasNomes);
+
         const truncate = (str, max = 1024) => {
           if (!str) return '❌';
           return str.length > max ? str.substring(0, max - 3) + '...' : str;
@@ -2637,7 +2786,10 @@ module.exports = {
           { name: '💰 Podem Pagar', value: truncate(cargosPagamento), inline: false },
           { name: '👨‍🌾 Responsáveis', value: truncate(cargosResponsaveis), inline: false },
           { name: '⚠️ Podem Dar ADV', value: truncate(cargosRegistroAdv), inline: false },
-          { name: '✅ Aprovam ADV', value: truncate(cargosAprovacaoAdv), inline: false }
+          { name: '✅ Aprovam ADV', value: truncate(cargosAprovacaoAdv), inline: false },
+
+          { name: '🤝 Canal de Parcerias', value: truncate(canalParcerias), inline: true },
+          { name: '🤝 Podem Registrar Parceria', value: truncate(cargosParcerias), inline: false }
         );
 
         await interaction.reply({
@@ -5185,6 +5337,146 @@ module.exports = {
         }
       }
 
+      if (interaction.customId === 'painel_parcerias') {
+        const valor = interaction.values[0];
+        const { StringSelectMenuBuilder } = require('discord.js');
+
+        if (valor === 'parcerias_cargo_registrar') {
+          const cargos = interaction.guild.roles.cache
+            .filter(role => !role.managed && role.id !== interaction.guild.id)
+            .sort((a, b) => b.position - a.position)
+            .map(role => ({
+              label: role.name,
+              value: role.id,
+              description: `Posição: ${role.position}`,
+            }));
+
+          if (cargos.length === 0) {
+            return await interaction.reply({
+              content: '❌ Nenhum cargo encontrado no servidor.',
+              ephemeral: true,
+            });
+          }
+
+          const selectMenu = new StringSelectMenuBuilder()
+            .setCustomId('select_parcerias_cargo_registrar')
+            .setPlaceholder('Selecione os cargos...')
+            .setMinValues(1)
+            .setMaxValues(Math.min(cargos.length, 25))
+            .addOptions(cargos.slice(0, 25));
+
+          const row = new ActionRowBuilder().addComponents(selectMenu);
+
+          await interaction.reply({
+            content: '**Cargos que Podem Registrar Parceria**\n\nSelecione quais cargos podem usar o botão de Registrar Parceria:',
+            components: [row],
+            ephemeral: true,
+          });
+        }
+
+        if (valor === 'parcerias_canal') {
+          const { ChannelType } = require('discord.js');
+          const categorias = interaction.guild.channels.cache
+            .filter(ch => ch.type === ChannelType.GuildCategory)
+            .map(cat => ({
+              label: cat.name,
+              value: cat.id,
+              description: `${cat.children.cache.size} canais`,
+            }));
+
+          if (categorias.length === 0) {
+            return await interaction.reply({
+              content: '❌ Nenhuma categoria encontrada.',
+              ephemeral: true,
+            });
+          }
+
+          const selectMenu = new StringSelectMenuBuilder()
+            .setCustomId('select_categoria_parcerias_canal')
+            .setPlaceholder('Selecione a categoria...')
+            .addOptions(categorias.slice(0, 25));
+
+          const row = new ActionRowBuilder().addComponents(selectMenu);
+
+          await interaction.reply({
+            content: '**Canal de Parcerias**\n\n**Passo 1:** Selecione a categoria:',
+            components: [row],
+            ephemeral: true,
+          });
+        }
+      }
+
+      if (interaction.customId === 'select_parcerias_cargo_registrar') {
+        const cargoIds = interaction.values;
+        const config = await serverService.getConfig(interaction.guild.id);
+        if (!config.parcerias) config.parcerias = {};
+        config.parcerias.cargo_registrar_ids = cargoIds;
+        await serverService.saveConfig(interaction.guild.id, config);
+
+        const cargosNomes = cargoIds.map(id => interaction.guild.roles.cache.get(id)?.name || id).join(', ');
+
+        await interaction.reply({
+          content: `✅ Cargos que podem registrar parceria configurados!\n**Cargos:** ${cargosNomes}`,
+          ephemeral: true,
+        });
+      }
+
+      if (interaction.customId === 'select_categoria_parcerias_canal') {
+        const categoriaId = interaction.values[0];
+        const { ChannelType, StringSelectMenuBuilder } = require('discord.js');
+
+        const categoria = interaction.guild.channels.cache.get(categoriaId);
+        if (!categoria) {
+          return await interaction.reply({
+            content: '❌ Categoria não encontrada.',
+            ephemeral: true,
+          });
+        }
+
+        const canais = categoria.children.cache
+          .filter(ch => ch.type === ChannelType.GuildText)
+          .map(canal => ({
+            label: `#${canal.name}`,
+            value: canal.id,
+            description: canal.topic || 'Sem descrição',
+          }));
+
+        if (canais.length === 0) {
+          return await interaction.reply({
+            content: '❌ Nenhum canal de texto encontrado nesta categoria.',
+            ephemeral: true,
+          });
+        }
+
+        const selectMenu = new StringSelectMenuBuilder()
+          .setCustomId('select_canal_parcerias_canal')
+          .setPlaceholder('Selecione o canal...')
+          .addOptions(canais.slice(0, 25));
+
+        const row = new ActionRowBuilder().addComponents(selectMenu);
+
+        await interaction.reply({
+          content: `**Passo 2:** Canal de Parcerias\n\nSelecione o canal em **${categoria.name}**:`,
+          components: [row],
+          ephemeral: true,
+        });
+      }
+
+      if (interaction.customId === 'select_canal_parcerias_canal') {
+        const canalId = interaction.values[0];
+        const config = await serverService.getConfig(interaction.guild.id);
+        if (!config.parcerias) config.parcerias = {};
+        config.parcerias.canal_parcerias_id = canalId;
+        await serverService.saveConfig(interaction.guild.id, config);
+
+        const canal = interaction.guild.channels.cache.get(canalId);
+
+        await interaction.reply({
+          content: `✅ Canal de Parcerias configurado!\n**Canal:** #${canal.name}`,
+          ephemeral: true,
+        });
+      }
+
       if (interaction.customId === 'selecionar_admin_limpar') {
         const opcao = interaction.values[0];
         const { ButtonBuilder, ButtonStyle } = require('discord.js');
@@ -7021,6 +7313,64 @@ module.exports = {
           content: '❌ Operação cancelada. Nenhuma pasta foi apagada.',
           components: [],
         });
+      }
+
+      // ===== PARCERIAS =====
+
+      if (interaction.customId === 'registrar_parceria') {
+        const config = await serverService.getConfig(interaction.guild.id);
+        const cargoRegistrarIds = config.parcerias?.cargo_registrar_ids || [];
+
+        const temPermissao = cargoRegistrarIds.length === 0 ||
+          interaction.member.roles.cache.some(role => cargoRegistrarIds.includes(role.id)) ||
+          interaction.memberPermissions.has('ADMINISTRATOR');
+
+        if (!temPermissao) {
+          return await interaction.reply({
+            content: '❌ Você não tem permissão para registrar parcerias.',
+            ephemeral: true,
+          });
+        }
+
+        if (!config.parcerias?.canal_parcerias_id) {
+          return await interaction.reply({
+            content: '❌ Canal de Parcerias não foi configurado. Contate um administrador.',
+            ephemeral: true,
+          });
+        }
+
+        const modal = new ModalBuilder()
+          .setCustomId('modal_registrar_parceria')
+          .setTitle('🤝 Registrar Parceria');
+
+        const responsavelInput = new TextInputBuilder()
+          .setCustomId('responsavel_outra_faccao')
+          .setLabel('Responsável da outra facção')
+          .setStyle(TextInputStyle.Short)
+          .setPlaceholder('Nome de quem negociou a parceria')
+          .setRequired(true);
+
+        const faccaoInput = new TextInputBuilder()
+          .setCustomId('nome_faccao')
+          .setLabel('Nome da Facção')
+          .setStyle(TextInputStyle.Short)
+          .setPlaceholder('Ex: Los Santos Vagos')
+          .setRequired(true);
+
+        const produtoInput = new TextInputBuilder()
+          .setCustomId('produto')
+          .setLabel('Produto')
+          .setStyle(TextInputStyle.Short)
+          .setPlaceholder('Ex: Armas, Drogas, etc.')
+          .setRequired(true);
+
+        modal.addComponents(
+          new ActionRowBuilder().addComponents(responsavelInput),
+          new ActionRowBuilder().addComponents(faccaoInput),
+          new ActionRowBuilder().addComponents(produtoInput)
+        );
+
+        await interaction.showModal(modal);
       }
 
       if (interaction.customId === 'ger_farm_fechamento_agora') {
