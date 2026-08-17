@@ -18,6 +18,25 @@ const client = new Client({
   ],
 });
 
+// Rede de segurança global: sem isso, QUALQUER erro não tratado em qualquer
+// handler de interação (ex: responder uma interação que já expirou, uma
+// permissão de cargo com nome errado, um import faltando) derruba o
+// processo inteiro e desconecta todo mundo, não só quem causou o erro. Só
+// loga e segue - erros individuais continuam devendo ser corrigidos na
+// origem, isso aqui é só pra não deixar um bug pequeno virar uma queda
+// geral do bot.
+client.on('error', (err) => {
+  console.error('❌ Erro não tratado no Client do Discord:', err);
+});
+
+process.on('unhandledRejection', (err) => {
+  console.error('❌ Promise rejeitada sem tratamento:', err);
+});
+
+process.on('uncaughtException', (err) => {
+  console.error('❌ Exceção não capturada:', err);
+});
+
 client.commands = new Collection();
 
 const commandsPath = path.join(__dirname, 'src', 'commands');
