@@ -7966,10 +7966,17 @@ module.exports = {
           });
         }
 
-        // Apagar entregas do banco + mensagens de vários canais pode passar
-        // bem dos 3s da resposta inicial, principalmente em canais com
-        // muito histórico
-        await interaction.deferUpdate();
+        // Remove os botões e mostra que tá processando JÁ na primeira resposta
+        // - com só deferUpdate() a mensagem fica parada sem nenhum feedback
+        // visual enquanto apaga entregas + mensagens de vários canais (pode
+        // levar bastante tempo em canais com muito histórico), e a pessoa
+        // acaba clicando de novo achando que travou - o que já aconteceu:
+        // vários cliques chegaram a disparar execuções paralelas da mesma
+        // operação. Editar aqui de cara e tirar os botões fecha essa janela.
+        await interaction.update({
+          content: '⏳ Zerando histórico de farm... isso pode levar alguns segundos (ou minutos, se os canais tiverem muito histórico). Não feche nem clique de novo.',
+          components: [],
+        });
 
         try {
           const config = await serverService.getConfig(interaction.guild.id);
@@ -8016,7 +8023,7 @@ module.exports = {
           await interaction.editReply({ content: resposta, components: [] });
         } catch (err) {
           console.error('Erro ao zerar histórico de farm:', err);
-          await interaction.editReply({ content: `❌ Erro ao zerar histórico: ${err.message}`, components: [] });
+          await interaction.editReply({ content: `❌ Erro ao zerar histórico: ${err.message}`, components: [] }).catch(() => {});
         }
       }
 
