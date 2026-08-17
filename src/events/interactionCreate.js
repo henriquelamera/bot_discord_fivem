@@ -2124,8 +2124,8 @@ module.exports = {
       if (interaction.customId === 'modal_registrar_parceria') {
         const responsavelOutraFaccao = interaction.fields.getTextInputValue('responsavel_outra_faccao');
         const nomeFaccao = interaction.fields.getTextInputValue('nome_faccao');
-        const nomeDarkchat = interaction.fields.getTextInputValue('nome_darkchat');
-        const senhaDarkchat = interaction.fields.getTextInputValue('senha_darkchat');
+        const nomeDarkchat = interaction.fields.getTextInputValue('nome_darkchat').trim() || null;
+        const senhaDarkchat = interaction.fields.getTextInputValue('senha_darkchat').trim() || null;
 
         // O produto foi escolhido na etapa anterior (select menu) - vem do
         // tracker transiente entre as duas interações (select -> modal). O
@@ -6034,14 +6034,14 @@ module.exports = {
           .setLabel('Nome do Darkchat criado')
           .setStyle(TextInputStyle.Short)
           .setPlaceholder('Nome do grupo/canal do darkchat')
-          .setRequired(true);
+          .setRequired(false);
 
         const senhaInput = new TextInputBuilder()
           .setCustomId('senha_darkchat')
           .setLabel('Senha do Darkchat')
           .setStyle(TextInputStyle.Short)
           .setPlaceholder('Senha de acesso')
-          .setRequired(true);
+          .setRequired(false);
 
         modal.addComponents(
           new ActionRowBuilder().addComponents(responsavelInput),
@@ -7965,7 +7965,7 @@ module.exports = {
         }
 
         await interaction.reply({
-          content: '📸 Envie **uma imagem** aqui no canal com o print da parceria (roupa da facção). Você tem 5 minutos. Formatos aceitos: PNG, JPG, JPEG, GIF, WEBP.',
+          content: '📸 Envie **uma imagem** aqui no canal com o print da parceria (roupa da facção). Você tem 5 minutos. Formatos aceitos: PNG, JPG, JPEG, GIF, WEBP.\n\n💡 As mensagens com as imagens são apagadas automaticamente depois, pra não poluir o canal.',
           ephemeral: true,
         });
 
@@ -7981,8 +7981,7 @@ module.exports = {
           });
 
           const msg1 = coletadas1.first();
-          const printParceriaUrl = [...msg1.attachments.values()]
-            .find((att) => att.contentType?.startsWith('image/')).url;
+          const anexo1 = [...msg1.attachments.values()].find((att) => att.contentType?.startsWith('image/'));
 
           await interaction.followUp({
             content: '🗺️ Agora envie o **print do mapa** com a localização da facção. Você tem 5 minutos.',
@@ -7999,10 +7998,9 @@ module.exports = {
           });
 
           const msg2 = coletadas2.first();
-          const printMapaUrl = [...msg2.attachments.values()]
-            .find((att) => att.contentType?.startsWith('image/')).url;
+          const anexo2 = [...msg2.attachments.values()].find((att) => att.contentType?.startsWith('image/'));
 
-          const parceria = await parceriaService.atualizarImagensParceria(parceriaId, printParceriaUrl, printMapaUrl);
+          const parceria = await parceriaService.buscarParceriaPorId(parceriaId);
 
           if (!parceria) {
             await interaction.followUp({
@@ -8017,6 +8015,12 @@ module.exports = {
             ? `Consulte com <@&${cargoGerenteParceriasId}>`
             : 'Consulte com o Gerente de Parcerias';
 
+          // Reanexa as imagens direto na mensagem da parceria (em vez de
+          // linkar pras mensagens de upload) pra poder apagar essas
+          // mensagens depois sem quebrar a imagem que fica salva
+          const nomeArquivo1 = `parceria_${anexo1.name}`;
+          const nomeArquivo2 = `mapa_${anexo2.name}`;
+
           const embedInfo = new EmbedBuilder()
             .setTitle('🤝 Nova Parceria')
             .setColor(0x2ecc71)
@@ -8028,22 +8032,44 @@ module.exports = {
               { name: '📦 Produto', value: parceria.produto, inline: false },
               { name: '🔒 Darkchat', value: contatoDarkchat, inline: false }
             )
-            .setImage(printParceriaUrl)
+            .setImage(`attachment://${nomeArquivo1}`)
             .setTimestamp(new Date(parceria.data_registro));
 
           const embedMapa = new EmbedBuilder()
             .setColor(0x2ecc71)
             .setTitle('🗺️ Localização da Facção')
-            .setImage(printMapaUrl);
+            .setImage(`attachment://${nomeArquivo2}`);
+
+          const { AttachmentBuilder } = require('discord.js');
+          const arquivo1 = new AttachmentBuilder(anexo1.url, { name: nomeArquivo1 });
+          const arquivo2 = new AttachmentBuilder(anexo2.url, { name: nomeArquivo2 });
 
           const canalDestino = interaction.guild.channels.cache.get(parceria.canal_id) || interaction.channel;
           const mensagem = parceria.mensagem_id
             ? await canalDestino.messages.fetch(parceria.mensagem_id).catch(() => null)
             : null;
 
+          let printParceriaUrlFinal = anexo1.url;
+          let printMapaUrlFinal = anexo2.url;
+
           if (mensagem) {
-            await mensagem.edit({ embeds: [embedInfo, embedMapa], components: [] });
+            const mensagemEditada = await mensagem.edit({
+              embeds: [embedInfo, embedMapa],
+              components: [],
+              files: [arquivo1, arquivo2],
+            });
+
+            const anexosFinais = [...mensagemEditada.attachments.values()];
+            printParceriaUrlFinal = anexosFinais.find((a) => a.name === nomeArquivo1)?.url || printParceriaUrlFinal;
+            printMapaUrlFinal = anexosFinais.find((a) => a.name === nomeArquivo2)?.url || printMapaUrlFinal;
+
+            // Só apaga as mensagens de upload depois que a imagem já está
+            // salva de vez na mensagem da parceria
+            await msg1.delete().catch(() => {});
+            await msg2.delete().catch(() => {});
           }
+
+          await parceriaService.atualizarImagensParceria(parceriaId, printParceriaUrlFinal, printMapaUrlFinal);
 
           await interaction.followUp({
             content: '✅ Imagens adicionadas com sucesso!',
