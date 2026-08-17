@@ -4588,7 +4588,7 @@ module.exports = {
           const cargoAprovadoresIds = config.farm?.cargo_pagamento || [];
           const temPermissao = cargoAprovadoresIds.length === 0 ||
             interaction.member.roles.cache.some(role => cargoAprovadoresIds.includes(role.id)) ||
-            interaction.memberPermissions.has('ADMINISTRATOR');
+            interaction.memberPermissions.has('Administrator');
 
           if (!temPermissao) {
             return await interaction.reply({
@@ -5827,7 +5827,7 @@ module.exports = {
         }
 
         if (valor === 'vendas_canal_confirmadas') {
-          const { ChannelType } = require('discord.js');
+          const { ChannelType, StringSelectMenuBuilder } = require('discord.js');
           const categorias = interaction.guild.channels.cache
             .filter(ch => ch.type === ChannelType.GuildCategory)
             .map(cat => ({
@@ -6140,7 +6140,7 @@ module.exports = {
         const cargosAprovacaoIds = config.aprovacoes?.cargo_ids || [];
         const temPermissaoAprovar = cargosAprovacaoIds.length === 0 ||
           interaction.member.roles.cache.some(role => cargosAprovacaoIds.includes(role.id)) ||
-          interaction.memberPermissions.has('ADMINISTRATOR');
+          interaction.memberPermissions.has('Administrator');
 
         if (!temPermissaoAprovar) {
           return await interaction.reply({
@@ -6269,7 +6269,7 @@ module.exports = {
         const cargosAprovacaoIds = config.aprovacoes?.cargo_ids || [];
         const temPermissaoAprovar = cargosAprovacaoIds.length === 0 ||
           interaction.member.roles.cache.some(role => cargosAprovacaoIds.includes(role.id)) ||
-          interaction.memberPermissions.has('ADMINISTRATOR');
+          interaction.memberPermissions.has('Administrator');
 
         if (!temPermissaoAprovar) {
           return await interaction.reply({
@@ -6398,7 +6398,7 @@ module.exports = {
         const cargosAprovacaoIds = config.aprovacoes?.cargo_ids || [];
         const temPermissaoAprovar = cargosAprovacaoIds.length === 0 ||
           interaction.member.roles.cache.some(role => cargosAprovacaoIds.includes(role.id)) ||
-          interaction.memberPermissions.has('ADMINISTRATOR');
+          interaction.memberPermissions.has('Administrator');
 
         if (!temPermissaoAprovar) {
           return await interaction.reply({
@@ -6509,7 +6509,7 @@ module.exports = {
         const cargosAprovacaoIds = config.aprovacoes?.cargo_ids || [];
         const temPermissaoAprovar = cargosAprovacaoIds.length === 0 ||
           interaction.member.roles.cache.some(role => cargosAprovacaoIds.includes(role.id)) ||
-          interaction.memberPermissions.has('ADMINISTRATOR');
+          interaction.memberPermissions.has('Administrator');
 
         if (!temPermissaoAprovar) {
           return await interaction.reply({
@@ -7217,7 +7217,7 @@ module.exports = {
         const cargosAdvIds = config.farm?.cargo_registro_adv || [];
         const temPermissao = cargosAdvIds.length === 0 ||
           interaction.member.roles.cache.some(role => cargosAdvIds.includes(role.id)) ||
-          interaction.memberPermissions.has('ADMINISTRATOR');
+          interaction.memberPermissions.has('Administrator');
 
         if (!temPermissao) {
           return await interaction.reply({
@@ -7256,7 +7256,7 @@ module.exports = {
         const cargosAdvIds = config.farm?.cargo_registro_adv || [];
         const temPermissao = cargosAdvIds.length === 0 ||
           interaction.member.roles.cache.some(role => cargosAdvIds.includes(role.id)) ||
-          interaction.memberPermissions.has('ADMINISTRATOR');
+          interaction.memberPermissions.has('Administrator');
 
         if (!temPermissao) {
           return await interaction.reply({
@@ -7295,7 +7295,7 @@ module.exports = {
         const cargosAprovacaoIds = config.farm?.cargo_aprovacao_adv || [];
         const temPermissao = cargosAprovacaoIds.length === 0 ||
           interaction.member.roles.cache.some(role => cargosAprovacaoIds.includes(role.id)) ||
-          interaction.memberPermissions.has('ADMINISTRATOR');
+          interaction.memberPermissions.has('Administrator');
 
         if (!temPermissao) {
           return await interaction.reply({
@@ -7374,7 +7374,7 @@ module.exports = {
         const cargosAprovacaoIds = config.farm?.cargo_aprovacao_adv || [];
         const temPermissao = cargosAprovacaoIds.length === 0 ||
           interaction.member.roles.cache.some(role => cargosAprovacaoIds.includes(role.id)) ||
-          interaction.memberPermissions.has('ADMINISTRATOR');
+          interaction.memberPermissions.has('Administrator');
 
         if (!temPermissao) {
           return await interaction.reply({
@@ -7417,7 +7417,7 @@ module.exports = {
         const cargosAprovacaoIds = config.farm?.cargo_aprovacao_adv || [];
         const temPermissao = cargosAprovacaoIds.length === 0 ||
           interaction.member.roles.cache.some(role => cargosAprovacaoIds.includes(role.id)) ||
-          interaction.memberPermissions.has('ADMINISTRATOR');
+          interaction.memberPermissions.has('Administrator');
 
         if (!temPermissao) {
           return await interaction.reply({
@@ -7496,7 +7496,7 @@ module.exports = {
         const cargosAprovacaoIds = config.farm?.cargo_aprovacao_adv || [];
         const temPermissao = cargosAprovacaoIds.length === 0 ||
           interaction.member.roles.cache.some(role => cargosAprovacaoIds.includes(role.id)) ||
-          interaction.memberPermissions.has('ADMINISTRATOR');
+          interaction.memberPermissions.has('Administrator');
 
         if (!temPermissao) {
           return await interaction.reply({
@@ -7772,7 +7772,7 @@ module.exports = {
       }
 
       if (interaction.customId === 'ger_farm_limpar_pastas') {
-        if (!interaction.memberPermissions.has('ADMINISTRATOR')) {
+        if (!interaction.memberPermissions.has('Administrator')) {
           return await interaction.reply({
             content: '❌ Só administradores podem limpar as pastas de farm.',
             ephemeral: true,
@@ -7816,7 +7816,7 @@ module.exports = {
       }
 
       if (interaction.customId === 'confirmar_limpar_pastas_farm') {
-        if (!interaction.memberPermissions.has('ADMINISTRATOR')) {
+        if (!interaction.memberPermissions.has('Administrator')) {
           return await interaction.reply({
             content: '❌ Só administradores podem limpar as pastas de farm.',
             ephemeral: true,
@@ -7899,7 +7899,7 @@ module.exports = {
 
         const temPermissao = cargoRegistrarIds.length === 0 ||
           interaction.member.roles.cache.some(role => cargoRegistrarIds.includes(role.id)) ||
-          interaction.memberPermissions.has('ADMINISTRATOR');
+          interaction.memberPermissions.has('Administrator');
 
         if (!temPermissao) {
           return await interaction.reply({
@@ -7955,7 +7955,7 @@ module.exports = {
 
         const temPermissao = cargoRegistrarIds.length === 0 ||
           interaction.member.roles.cache.some(role => cargoRegistrarIds.includes(role.id)) ||
-          interaction.memberPermissions.has('ADMINISTRATOR');
+          interaction.memberPermissions.has('Administrator');
 
         if (!temPermissao) {
           return await interaction.reply({
@@ -8076,7 +8076,7 @@ module.exports = {
 
         const temPermissao = cargoCalculadoraIds.length === 0 ||
           interaction.member.roles.cache.some(role => cargoCalculadoraIds.includes(role.id)) ||
-          interaction.memberPermissions.has('ADMINISTRATOR');
+          interaction.memberPermissions.has('Administrator');
 
         if (!temPermissao) {
           return await interaction.reply({

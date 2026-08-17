@@ -114,7 +114,7 @@ function iniciarServidorWeb(client) {
       const config = await serverService.getConfig(guildId);
       const cargoCalculadoraIds = config.vendas?.cargo_calculadora_ids || [];
       const temPermissao =
-        membro.permissions.has('ADMINISTRATOR') ||
+        membro.permissions.has('Administrator') ||
         (cargoCalculadoraIds.length > 0 && membro.roles.cache.some((r) => cargoCalculadoraIds.includes(r.id)));
 
       if (!temPermissao) {

@@ -17,7 +17,7 @@ module.exports = {
 
   async execute(interaction) {
     // Verificar se é admin
-    if (!interaction.memberPermissions.has('ADMINISTRATOR')) {
+    if (!interaction.memberPermissions.has('Administrator')) {
       return await interaction.reply({
         content: '❌ Apenas administradores podem definir a senha!',
         ephemeral: true,

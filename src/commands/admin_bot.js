@@ -9,7 +9,7 @@ module.exports = {
 
   async execute(interaction) {
     // Verificar se é admin do servidor
-    if (!interaction.memberPermissions.has('ADMINISTRATOR')) {
+    if (!interaction.memberPermissions.has('Administrator')) {
       // Verificar se tem senha configurada
       const temSenha = await serverService.getSenhaPainel(interaction.guild.id);
 
