@@ -31,20 +31,20 @@ module.exports = {
       name: 'rbk_logo.gif',
     });
 
+    const urlCalculadora = `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`;
+
     const embed = new EmbedBuilder()
       .setTitle('🧮 Calculadora de Vendas')
       .setColor(0x1a2332)
       .setThumbnail('attachment://rbk_logo.gif')
       .setDescription(
-        'Clique no botão abaixo pra calcular o valor de uma venda.\n\n' +
-        '**Etapa 1:** Selecione o produto.\n' +
-        '**Etapa 2:** Escolha se é venda com ou sem parceria.\n' +
-        '**Etapa 3:** Informe a quantidade.\n\n' +
-        `O bot calcula o valor total na hora, só pra você ver.`
+        'Clique no botão abaixo pra abrir a calculadora de vendas.\n\n' +
+        'Lá você escolhe o produto, o tipo de venda (com ou sem parceria) e a quantidade, ' +
+        'e já pode registrar a venda direto.'
       );
 
     const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId('calculadora_vendas').setLabel('🧮 Calculadora de Vendas').setStyle(ButtonStyle.Primary)
+      new ButtonBuilder().setLabel('🧮 Calculadora de Vendas').setStyle(ButtonStyle.Link).setURL(urlCalculadora)
     );
 
     try {
