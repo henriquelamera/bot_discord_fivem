@@ -13,10 +13,10 @@ async function createParceria(guildId, dados) {
     const result = await pool.query(
       `INSERT INTO parcerias (
          servidor_id, registrado_por_id, responsavel_outra_faccao,
-         nome_faccao, produto, print_parceria_url, print_mapa_url,
-         canal_id, mensagem_id
+         nome_faccao, produto, nome_darkchat, senha_darkchat,
+         print_parceria_url, print_mapa_url, canal_id, mensagem_id
        )
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
        RETURNING *`,
       [
         servidorId,
@@ -24,6 +24,8 @@ async function createParceria(guildId, dados) {
         dados.responsavelOutraFaccao,
         dados.nomeFaccao,
         dados.produto,
+        dados.nomeDarkchat,
+        dados.senhaDarkchat,
         dados.printParceriaUrl,
         dados.printMapaUrl,
         dados.canalId,

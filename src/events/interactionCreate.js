@@ -1901,6 +1901,8 @@ module.exports = {
         const responsavelOutraFaccao = interaction.fields.getTextInputValue('responsavel_outra_faccao');
         const nomeFaccao = interaction.fields.getTextInputValue('nome_faccao');
         const produto = interaction.fields.getTextInputValue('produto');
+        const nomeDarkchat = interaction.fields.getTextInputValue('nome_darkchat');
+        const senhaDarkchat = interaction.fields.getTextInputValue('senha_darkchat');
 
         const config = await serverService.getConfig(interaction.guild.id);
         const canalParceriasId = config.parcerias?.canal_parcerias_id;
@@ -1953,6 +1955,14 @@ module.exports = {
           const printMapaUrl = [...msg2.attachments.values()]
             .find((att) => att.contentType?.startsWith('image/')).url;
 
+          // Darkchat/senha não vão pro canal público (visível a Morador+) -
+          // só ficam salvos no banco; quem precisar consulta com o Gerente
+          // de Parcerias configurado
+          const cargoGerenteParceriasId = config.parcerias?.cargo_gerente_parcerias_id;
+          const contatoDarkchat = cargoGerenteParceriasId
+            ? `Consulte com <@&${cargoGerenteParceriasId}>`
+            : 'Consulte com o Gerente de Parcerias';
+
           const embedInfo = new EmbedBuilder()
             .setTitle('🤝 Nova Parceria')
             .setColor(0x2ecc71)
@@ -1961,7 +1971,8 @@ module.exports = {
               { name: '📅 Data', value: new Date().toLocaleDateString('pt-BR'), inline: true },
               { name: '🎯 Responsável (outra facção)', value: responsavelOutraFaccao, inline: false },
               { name: '🏴 Nome da Facção', value: nomeFaccao, inline: false },
-              { name: '📦 Produto', value: produto, inline: false }
+              { name: '📦 Produto', value: produto, inline: false },
+              { name: '🔒 Darkchat', value: contatoDarkchat, inline: false }
             )
             .setImage(printParceriaUrl)
             .setTimestamp();
@@ -1978,6 +1989,8 @@ module.exports = {
             responsavelOutraFaccao,
             nomeFaccao,
             produto,
+            nomeDarkchat,
+            senhaDarkchat,
             printParceriaUrl,
             printMapaUrl,
             canalId: canalParcerias.id,
@@ -2372,6 +2385,11 @@ module.exports = {
               label: 'Canal de Parcerias',
               description: 'Onde as parcerias registradas são publicadas',
               value: 'parcerias_canal',
+            },
+            {
+              label: 'Gerente de Parcerias',
+              description: 'Único cargo consultado pra saber darkchat/senha',
+              value: 'parcerias_gerente',
             }
           );
 
@@ -2753,6 +2771,10 @@ module.exports = {
           : '';
         const cargosParcerias = safeValue(cargosParceriasNomes);
 
+        const gerenteParcerias = config.parcerias?.cargo_gerente_parcerias_id
+          ? `✅ ${interaction.guild.roles.cache.get(config.parcerias.cargo_gerente_parcerias_id)?.name || 'ID Inválido'}`
+          : '❌ Não configurado';
+
         const truncate = (str, max = 1024) => {
           if (!str) return '❌';
           return str.length > max ? str.substring(0, max - 3) + '...' : str;
@@ -2789,6 +2811,7 @@ module.exports = {
           { name: '✅ Aprovam ADV', value: truncate(cargosAprovacaoAdv), inline: false },
 
           { name: '🤝 Canal de Parcerias', value: truncate(canalParcerias), inline: true },
+          { name: '🤝 Gerente de Parcerias', value: truncate(gerenteParcerias), inline: true },
           { name: '🤝 Podem Registrar Parceria', value: truncate(cargosParcerias), inline: false }
         );
 
@@ -5404,6 +5427,52 @@ module.exports = {
             ephemeral: true,
           });
         }
+
+        if (valor === 'parcerias_gerente') {
+          const cargos = interaction.guild.roles.cache
+            .filter(role => !role.managed && role.id !== interaction.guild.id)
+            .sort((a, b) => b.position - a.position)
+            .map(role => ({
+              label: role.name,
+              value: role.id,
+              description: `Posição: ${role.position}`,
+            }));
+
+          if (cargos.length === 0) {
+            return await interaction.reply({
+              content: '❌ Nenhum cargo encontrado no servidor.',
+              ephemeral: true,
+            });
+          }
+
+          const selectMenu = new StringSelectMenuBuilder()
+            .setCustomId('select_parcerias_gerente')
+            .setPlaceholder('Selecione o cargo...')
+            .addOptions(cargos.slice(0, 25));
+
+          const row = new ActionRowBuilder().addComponents(selectMenu);
+
+          await interaction.reply({
+            content: '**Gerente de Parcerias**\n\nSelecione o cargo (só ele é mencionado como contato pro darkchat/senha):',
+            components: [row],
+            ephemeral: true,
+          });
+        }
+      }
+
+      if (interaction.customId === 'select_parcerias_gerente') {
+        const cargoId = interaction.values[0];
+        const config = await serverService.getConfig(interaction.guild.id);
+        if (!config.parcerias) config.parcerias = {};
+        config.parcerias.cargo_gerente_parcerias_id = cargoId;
+        await serverService.saveConfig(interaction.guild.id, config);
+
+        const cargo = interaction.guild.roles.cache.get(cargoId);
+
+        await interaction.reply({
+          content: `✅ Gerente de Parcerias configurado!\n**Cargo:** ${cargo.name}`,
+          ephemeral: true,
+        });
       }
 
       if (interaction.customId === 'select_parcerias_cargo_registrar') {
@@ -7364,10 +7433,26 @@ module.exports = {
           .setPlaceholder('Ex: Armas, Drogas, etc.')
           .setRequired(true);
 
+        const darkchatInput = new TextInputBuilder()
+          .setCustomId('nome_darkchat')
+          .setLabel('Nome do Darkchat criado')
+          .setStyle(TextInputStyle.Short)
+          .setPlaceholder('Nome do grupo/canal do darkchat')
+          .setRequired(true);
+
+        const senhaInput = new TextInputBuilder()
+          .setCustomId('senha_darkchat')
+          .setLabel('Senha do Darkchat')
+          .setStyle(TextInputStyle.Short)
+          .setPlaceholder('Senha de acesso')
+          .setRequired(true);
+
         modal.addComponents(
           new ActionRowBuilder().addComponents(responsavelInput),
           new ActionRowBuilder().addComponents(faccaoInput),
-          new ActionRowBuilder().addComponents(produtoInput)
+          new ActionRowBuilder().addComponents(produtoInput),
+          new ActionRowBuilder().addComponents(darkchatInput),
+          new ActionRowBuilder().addComponents(senhaInput)
         );
 
         await interaction.showModal(modal);

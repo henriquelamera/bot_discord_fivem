@@ -103,12 +103,20 @@ CREATE TABLE IF NOT EXISTS parcerias (
   responsavel_outra_faccao VARCHAR(150) NOT NULL,
   nome_faccao VARCHAR(150) NOT NULL,
   produto VARCHAR(150) NOT NULL,
+  nome_darkchat VARCHAR(150),
+  senha_darkchat VARCHAR(150),
   print_parceria_url TEXT,
   print_mapa_url TEXT,
   canal_id VARCHAR(20),
   mensagem_id VARCHAR(20),
   data_registro TIMESTAMP DEFAULT NOW()
 );
+
+-- Colunas de darkchat adicionadas depois - ALTER separado pra quem já tinha
+-- a tabela criada sem elas (CREATE TABLE IF NOT EXISTS não adiciona coluna
+-- em tabela existente)
+ALTER TABLE parcerias ADD COLUMN IF NOT EXISTS nome_darkchat VARCHAR(150);
+ALTER TABLE parcerias ADD COLUMN IF NOT EXISTS senha_darkchat VARCHAR(150);
 
 -- Criar índices para melhor performance
 CREATE INDEX IF NOT EXISTS idx_servidores_guild_id ON servidores(guild_id);
