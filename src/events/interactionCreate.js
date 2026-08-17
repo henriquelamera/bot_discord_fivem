@@ -80,6 +80,37 @@ function parseQuantidade(texto) {
   return parseInt(t.replace(/[.,\s]/g, ''), 10);
 }
 
+// Converte texto de preço digitado pelo usuário pra número, no padrão
+// brasileiro (ponto = separador de milhar, vírgula = decimal). "74.000"
+// vira 74000, não 74 - o parseFloat puro (JS/EUA) entende ponto como
+// decimal e cortaria pra 74.00, exatamente o bug que gerou essa função.
+function parsePrecoBR(texto) {
+  const t = String(texto ?? '').trim();
+  if (!t) return NaN;
+
+  const temVirgula = t.includes(',');
+  const temPonto = t.includes('.');
+
+  if (temVirgula) {
+    // Vírgula presente = é o separador decimal; qualquer ponto antes dela
+    // é separador de milhar ("74.000,50" -> "74000.50")
+    return parseFloat(t.replace(/\./g, '').replace(',', '.'));
+  }
+
+  if (temPonto) {
+    // Só ponto, sem vírgula: ambíguo. Se todo grupo depois de um ponto tem
+    // exatamente 3 dígitos, é separador de milhar ("74.000" -> 74000,
+    // "1.234.567" -> 1234567). Senão, é decimal normal ("74.50" -> 74.5).
+    const partes = t.split('.');
+    const pareceMilhar = partes.length > 1 && partes.slice(1).every((p) => p.length === 3);
+    if (pareceMilhar) {
+      return parseFloat(t.replace(/\./g, ''));
+    }
+  }
+
+  return parseFloat(t);
+}
+
 // Monta o texto "Nome: quantidade" por item, um por linha
 function formatarTotaisPorItem(totais) {
   if (totais.length === 0) return 'Nenhum item entregue ainda.';
@@ -1443,7 +1474,7 @@ module.exports = {
           const valorStr = interaction.fields.getTextInputValue(`valor_${item.id}`);
 
           if (valorStr && valorStr.trim()) {
-            const valor = parseFloat(valorStr.replace(',', '.'));
+            const valor = parsePrecoBR(valorStr);
             if (!isNaN(valor) && valor > 0) {
               config.farm.pagamentos[item.id] = {
                 nome: item.nome,
@@ -1553,7 +1584,7 @@ module.exports = {
         for (const produto of produtosPagina) {
           const valorStr = interaction.fields.getTextInputValue(`preco_${produto.id}`);
           if (valorStr && valorStr.trim()) {
-            const valor = parseFloat(valorStr.replace(',', '.'));
+            const valor = parsePrecoBR(valorStr);
             if (!isNaN(valor) && valor > 0) {
               if (!config.vendas.precos[produto.id]) config.vendas.precos[produto.id] = { nome: produto.nome };
               config.vendas.precos[produto.id].nome = produto.nome;
@@ -1606,7 +1637,7 @@ module.exports = {
         for (const produto of produtosPagina) {
           const valorStr = interaction.fields.getTextInputValue(`preco_${produto.id}`);
           if (valorStr && valorStr.trim()) {
-            const valor = parseFloat(valorStr.replace(',', '.'));
+            const valor = parsePrecoBR(valorStr);
             if (!isNaN(valor) && valor > 0) {
               if (!config.vendas.precos[produto.id]) config.vendas.precos[produto.id] = { nome: produto.nome };
               config.vendas.precos[produto.id].nome = produto.nome;
