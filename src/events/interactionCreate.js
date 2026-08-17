@@ -165,6 +165,16 @@ async function marcarEntregaComoPaga(guild, config, entrega, pagoPorId) {
 // cadastrados, a configuração de meta precisa ser paginada em vários modais
 const ITENS_POR_MODAL_META = 5;
 
+// Label de campo de modal tem limite RÍGIDO de 45 caracteres no Discord -
+// passar disso lança um erro síncrono não capturado no meio da montagem do
+// modal (ExpectedConstraintError), que derruba o bot inteiro. Sempre que um
+// nome de item/produto (livre, sem limite de tamanho nosso) entra num label,
+// trunca com essa função em vez de concatenar direto.
+function truncarLabel(texto, max = 45) {
+  if (texto.length <= max) return texto;
+  return texto.slice(0, max - 1) + '…';
+}
+
 // Monta o modal de metas pra uma página específica (1 = primeiros 5 itens,
 // 2 = próximos 5, etc). customId da página 1 fica igual ao antigo
 // ('modal_cadastro_meta') pra não quebrar quem já usa esse fluxo.
@@ -182,7 +192,7 @@ function construirModalMetas(config, pagina) {
     const metaAtual = config.farm?.metas?.[item.id]?.meta_semanal;
     const metaInput = new TextInputBuilder()
       .setCustomId(`meta_${item.id}`)
-      .setLabel(`${item.nome} (quantidade/semana)`)
+      .setLabel(truncarLabel(`${item.nome} (quantidade/semana)`))
       .setStyle(TextInputStyle.Short)
       .setPlaceholder('Ex: 100')
       .setRequired(false);
@@ -210,7 +220,7 @@ function construirModalEntregarMeta(itens, pagina) {
   for (const item of itensPagina) {
     const input = new TextInputBuilder()
       .setCustomId(`item_${item.id}`)
-      .setLabel(`${item.nome}`)
+      .setLabel(truncarLabel(`${item.nome}`))
       .setStyle(TextInputStyle.Short)
       .setPlaceholder('Quantidade farmada')
       .setRequired(false);
@@ -237,7 +247,7 @@ function construirModalPagamento(config, pagina) {
     const valorAtual = config.farm?.pagamentos?.[item.id]?.valor_unidade;
     const valorInput = new TextInputBuilder()
       .setCustomId(`valor_${item.id}`)
-      .setLabel(`${item.nome} (R$ por unidade)`)
+      .setLabel(truncarLabel(`${item.nome} (R$ por unidade)`))
       .setStyle(TextInputStyle.Short)
       .setPlaceholder('Ex: 1.50 (deixe vazio se não for elegível)')
       .setRequired(false);
@@ -271,7 +281,7 @@ function construirModalPrecoVenda(config, pagina, tipo) {
     const valorAtual = config.vendas?.precos?.[produto.id]?.[campoPreco];
     const valorInput = new TextInputBuilder()
       .setCustomId(`preco_${produto.id}`)
-      .setLabel(`${produto.nome} (R$ por unidade)`)
+      .setLabel(truncarLabel(`${produto.nome} (R$ por unidade)`))
       .setStyle(TextInputStyle.Short)
       .setPlaceholder('Ex: 150.00')
       .setRequired(false);
@@ -5755,7 +5765,7 @@ module.exports = {
 
           const nomeInput = new TextInputBuilder()
             .setCustomId('nome_produto_venda')
-            .setLabel('Nome do Produto (separe por vírgula p/ vários)')
+            .setLabel('Nome do Produto (vírgula p/ vários)')
             .setStyle(TextInputStyle.Short)
             .setPlaceholder('Ex: Maconha, Cocaína, MDMA')
             .setRequired(true);
