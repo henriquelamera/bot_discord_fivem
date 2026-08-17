@@ -2,293 +2,789 @@
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Calculadora de Vendas — RBK</title>
 <style>
   :root {
-    --bg: #0b0f1a;
-    --card: #131a2b;
-    --border: #232c42;
-    --text: #e8ecf5;
+    --bg: #060a14;
+    --bg-grid: #0a1120;
+    --card: #0e1526;
+    --card-2: #0b1120;
+    --border: #1d2942;
+    --border-strong: #2a3a5c;
+    --text: #eef1f8;
     --muted: #8b93a7;
+    --muted-2: #667085;
     --accent: #3b82f6;
+    --accent-2: #60a5fa;
     --accent-hover: #2563eb;
     --success: #22c55e;
     --danger: #ef4444;
-    --warn: #f59e0b;
+    --warn: #f5a524;
+    --warn-bg: rgba(245, 165, 36, 0.1);
+    --warn-border: rgba(245, 165, 36, 0.35);
+    --radius: 14px;
+    --btn-min: 44px;
   }
+
   * { box-sizing: border-box; }
+
+  html, body {
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
   body {
     margin: 0;
     min-height: 100vh;
-    background: radial-gradient(circle at top, #101827 0%, var(--bg) 60%);
+    background: var(--bg);
+    background-image:
+      linear-gradient(rgba(59,130,246,0.05) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(59,130,246,0.05) 1px, transparent 1px);
+    background-size: 42px 42px;
     color: var(--text);
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
-    display: flex;
-    justify-content: center;
-    padding: 32px 16px;
+    -webkit-font-smoothing: antialiased;
   }
-  .wrap { width: 100%; max-width: 460px; }
-  .header { display: flex; align-items: center; gap: 12px; margin-bottom: 24px; }
-  .header img { width: 44px; height: 44px; border-radius: 8px; }
-  .header h1 { font-size: 18px; margin: 0; }
-  .header p { margin: 2px 0 0; font-size: 13px; color: var(--muted); }
-  .card {
+
+  .page {
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 28px 16px 32px;
+  }
+
+  /* ===== Cabeçalho ===== */
+  .header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 24px;
+  }
+  .header .logo {
+    width: 56px;
+    height: 56px;
+    border-radius: 12px;
+    border: 1px solid var(--border-strong);
+    flex-shrink: 0;
+  }
+  .header h1 {
+    font-size: 26px;
+    margin: 0;
+    font-weight: 800;
+    font-style: italic;
+    letter-spacing: 0.3px;
+  }
+  .header p {
+    margin: 2px 0 0;
+    font-size: 13px;
+    color: var(--muted);
+  }
+
+  /* ===== Card principal (grid responsivo) ===== */
+  .card-main {
     background: var(--card);
     border: 1px solid var(--border);
-    border-radius: 14px;
-    padding: 20px;
-    margin-bottom: 16px;
+    border-radius: var(--radius);
+    padding: 24px;
+    display: grid;
+    gap: 0 32px;
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "produto"
+      "tipo"
+      "faccao"
+      "nome"
+      "quantidade"
+      "resumo"
+      "botao";
   }
-  label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 6px; margin-top: 14px; }
-  label:first-child { margin-top: 0; }
-  select, input {
-    width: 100%;
-    background: #0e1526;
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 10px 12px;
-    color: var(--text);
-    font-size: 14px;
-  }
-  select:focus, input:focus { outline: none; border-color: var(--accent); }
-  .tipo-row { display: flex; gap: 10px; margin-top: 6px; }
-  .tipo-btn {
-    flex: 1;
-    padding: 10px;
-    border-radius: 8px;
-    border: 1px solid var(--border);
-    background: #0e1526;
+
+  .campo { grid-area: produto; } /* sobrescrito individualmente abaixo */
+  .campo-produto { grid-area: produto; }
+  .campo-tipo { grid-area: tipo; }
+  .campo-faccao { grid-area: faccao; }
+  .campo-nome { grid-area: nome; }
+  .campo-quantidade { grid-area: quantidade; }
+  .col-resumo { grid-area: resumo; }
+  .area-botao { grid-area: botao; }
+
+  .campo { margin-top: 18px; }
+  .campo:first-child, .campo-produto { margin-top: 0; }
+
+  label {
+    display: block;
+    font-size: 13px;
     color: var(--muted);
-    text-align: center;
+    margin-bottom: 7px;
+    font-weight: 500;
+  }
+  .label-opcional { color: var(--muted-2); font-weight: 400; }
+
+  select, input[type="text"], input[type="number"] {
+    width: 100%;
+    min-height: var(--btn-min);
+    background: var(--card-2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 14px;
+    color: var(--text);
+    font-size: 15px;
+    font-family: inherit;
+    transition: border-color 0.15s, box-shadow 0.15s;
+  }
+  select:hover, input:hover { border-color: var(--border-strong); }
+  select:focus-visible, input:focus-visible {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(59,130,246,0.25);
+  }
+  select:disabled, input:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  /* ===== Tipo de venda ===== */
+  .tipo-row { display: flex; flex-wrap: wrap; gap: 10px; }
+  .tipo-btn {
+    flex: 1 1 160px;
+    min-height: var(--btn-min);
+    padding: 10px 14px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: var(--card-2);
+    color: var(--muted);
+    text-align: left;
     cursor: pointer;
     font-size: 13px;
-    user-select: none;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    transition: border-color 0.15s, background 0.15s, color 0.15s;
   }
-  .tipo-btn.ativo { border-color: var(--accent); color: var(--text); background: rgba(59,130,246,0.12); }
-  .resultado {
-    display: none;
-    text-align: center;
-    padding: 18px;
-    margin-top: 16px;
+  .tipo-btn:hover { border-color: var(--border-strong); }
+  .tipo-btn:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(59,130,246,0.25); }
+  .tipo-btn .tipo-nome { font-weight: 600; color: inherit; }
+  .tipo-btn .tipo-preco { font-size: 12px; color: var(--muted-2); }
+  .tipo-btn.ativo {
+    border-color: var(--accent);
+    background: rgba(59,130,246,0.12);
+    color: var(--text);
+  }
+  .tipo-btn.ativo .tipo-preco { color: var(--accent-2); }
+
+  /* ===== Facção / aviso ===== */
+  .oculto { display: none !important; }
+
+  .aviso-parceria {
+    margin-top: 12px;
+    background: var(--warn-bg);
+    border: 1px solid var(--warn-border);
     border-radius: 10px;
-    background: rgba(34,197,94,0.08);
-    border: 1px solid rgba(34,197,94,0.3);
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
   }
-  .resultado .valor { font-size: 28px; font-weight: 700; color: var(--success); }
-  .resultado .detalhe { font-size: 12px; color: var(--muted); margin-top: 4px; }
-  button.primary {
-    width: 100%;
-    padding: 12px;
+  .aviso-parceria p {
+    margin: 0;
+    font-size: 12.5px;
+    color: var(--warn);
+    line-height: 1.4;
+  }
+
+  .btn-secundario {
+    min-height: var(--btn-min);
+    padding: 8px 16px;
     border-radius: 8px;
+    border: 1px solid var(--warn-border);
+    background: transparent;
+    color: var(--warn);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .btn-secundario:hover { background: rgba(245,165,36,0.12); }
+  .btn-secundario:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(245,165,36,0.3); }
+
+  /* ===== Quantidade ===== */
+  .qtd-control {
+    display: flex;
+    align-items: stretch;
+    gap: 8px;
+  }
+  .qtd-btn {
+    width: var(--btn-min);
+    min-height: var(--btn-min);
+    flex-shrink: 0;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: var(--card-2);
+    color: var(--text);
+    font-size: 20px;
+    line-height: 1;
+    cursor: pointer;
+  }
+  .qtd-btn:hover { border-color: var(--border-strong); background: #101a30; }
+  .qtd-btn:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(59,130,246,0.25); }
+  #quantidade { text-align: center; font-weight: 700; font-size: 17px; }
+  /* remove as setinhas nativas do input number */
+  #quantidade::-webkit-outer-spin-button,
+  #quantidade::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  #quantidade { -moz-appearance: textfield; }
+
+  .qtd-atalhos { display: flex; gap: 8px; margin-top: 10px; }
+  .atalho-btn {
+    flex: 1;
+    min-height: 38px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--card-2);
+    color: var(--muted);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .atalho-btn:hover { border-color: var(--accent); color: var(--text); }
+  .atalho-btn:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(59,130,246,0.25); }
+  .atalho-btn.ativo { border-color: var(--accent); color: var(--accent-2); background: rgba(59,130,246,0.1); }
+
+  /* ===== Resumo ===== */
+  .col-resumo {
+    margin-top: 22px;
+    background: var(--card-2);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 18px;
+    align-self: start;
+  }
+  .col-resumo h2 {
+    font-size: 15px;
+    margin: 0 0 14px;
+    font-weight: 700;
+  }
+  .resumo-lista { margin: 0; }
+  .resumo-linha {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 10px;
+    padding: 9px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 13.5px;
+  }
+  .resumo-linha:last-child { border-bottom: none; }
+  .resumo-linha dt { color: var(--muted); margin: 0; flex-shrink: 0; }
+  .resumo-linha dd {
+    margin: 0;
+    text-align: right;
+    color: var(--text);
+    font-weight: 500;
+    overflow-wrap: anywhere;
+  }
+  .resumo-linha dd.faccao-nao-identificada { color: var(--warn); }
+
+  .valor-total-wrap {
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px solid var(--border-strong);
+  }
+  .valor-total-label {
+    display: block;
+    font-size: 12.5px;
+    color: var(--muted);
+    margin-bottom: 4px;
+  }
+  .valor-total {
+    display: block;
+    font-size: clamp(22px, 6vw, 30px);
+    font-weight: 800;
+    color: var(--accent-2);
+    overflow-wrap: anywhere;
+    line-height: 1.15;
+  }
+
+  .selo-aviso {
+    margin-top: 12px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--warn);
+    background: var(--warn-bg);
+    border: 1px solid var(--warn-border);
+    border-radius: 8px;
+    padding: 7px 10px;
+  }
+
+  /* ===== Botão registrar ===== */
+  .area-botao { margin-top: 22px; }
+  .btn-registrar {
+    width: 100%;
+    min-height: 52px;
+    border-radius: 12px;
     border: none;
     background: var(--accent);
     color: white;
-    font-size: 14px;
-    font-weight: 600;
+    font-size: 15px;
+    font-weight: 700;
     cursor: pointer;
-    margin-top: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    transition: background 0.15s, opacity 0.15s;
   }
-  button.primary:hover { background: var(--accent-hover); }
-  button.primary:disabled { opacity: 0.5; cursor: not-allowed; }
-  .aviso {
-    display: none;
-    font-size: 12px;
-    color: var(--warn);
-    background: rgba(245,158,11,0.1);
-    border: 1px solid rgba(245,158,11,0.3);
-    border-radius: 8px;
-    padding: 10px 12px;
-    margin-top: 12px;
+  .btn-registrar:hover:not(:disabled) { background: var(--accent-hover); }
+  .btn-registrar:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(59,130,246,0.4); }
+  .btn-registrar:disabled { opacity: 0.55; cursor: not-allowed; }
+  .btn-registrar .spinner {
+    width: 16px; height: 16px;
+    border: 2px solid rgba(255,255,255,0.4);
+    border-top-color: white;
+    border-radius: 50%;
+    animation: girar 0.7s linear infinite;
   }
+  @keyframes girar { to { transform: rotate(360deg); } }
+
   .msg-final {
-    display: none;
+    margin-top: 12px;
     text-align: center;
     font-size: 13px;
     padding: 12px;
-    border-radius: 8px;
-    margin-top: 14px;
+    border-radius: 10px;
+    line-height: 1.4;
   }
   .msg-final.ok { background: rgba(34,197,94,0.1); border: 1px solid rgba(34,197,94,0.3); color: var(--success); }
   .msg-final.erro { background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.3); color: var(--danger); }
-  .oculto { display: none !important; }
-  .rodape { text-align: center; font-size: 11px; color: var(--muted); margin-top: 20px; }
+
+  .rodape { text-align: center; font-size: 11.5px; color: var(--muted-2); margin-top: 22px; }
+
+  /* ===== Modal ===== */
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(3,6,14,0.72);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    z-index: 100;
+  }
+  .modal-box {
+    width: 100%;
+    max-width: 420px;
+    background: var(--card);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius);
+    padding: 22px;
+  }
+  .modal-box h2 {
+    margin: 0 0 10px;
+    font-size: 17px;
+    color: var(--warn);
+  }
+  .modal-box p {
+    margin: 0 0 20px;
+    font-size: 13.5px;
+    color: var(--muted);
+    line-height: 1.5;
+  }
+  .modal-botoes { display: flex; flex-direction: column; gap: 10px; }
+  .modal-botoes button {
+    min-height: var(--btn-min);
+    border-radius: 10px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  #modalVoltar {
+    border: 1px solid var(--border-strong);
+    background: var(--card-2);
+    color: var(--text);
+  }
+  #modalVoltar:hover { border-color: var(--accent); }
+  #modalContinuar {
+    border: none;
+    background: var(--accent);
+    color: white;
+  }
+  #modalContinuar:hover { background: var(--accent-hover); }
+  .modal-botoes button:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(59,130,246,0.35); }
+
+  /* ===================== TABLET / DESKTOP (>=768px) ===================== */
+  @media (min-width: 768px) {
+    .tipo-btn { flex: 1 1 0; }
+  }
+
+  /* ===================== DESKTOP (>=1024px) ===================== */
+  @media (min-width: 1024px) {
+    .page { padding-top: 40px; }
+    .card-main {
+      grid-template-columns: 1fr 320px;
+      column-gap: 32px;
+      grid-template-areas:
+        "produto    resumo"
+        "tipo       resumo"
+        "faccao     resumo"
+        "nome       resumo"
+        "quantidade resumo"
+        "botao      botao";
+    }
+    .col-resumo { margin-top: 0; }
+    .area-botao { margin-top: 26px; }
+  }
+
+  /* ===================== MOBILE (<768px) — botão fixo ===================== */
+  @media (max-width: 767px) {
+    .page { padding: 20px 16px 16px; }
+    .header .logo { width: 44px; height: 44px; }
+    .header h1 { font-size: 21px; }
+
+    .card-main { padding: 18px; padding-bottom: 8px; }
+
+    /* espaço reservado pro botão fixo não cobrir conteúdo */
+    .area-botao-espaco { height: calc(64px + env(safe-area-inset-bottom, 0px)); }
+
+    .area-botao {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      padding: 10px 16px calc(10px + env(safe-area-inset-bottom, 0px));
+      background: linear-gradient(180deg, rgba(6,10,20,0) 0%, var(--bg) 35%);
+      z-index: 40;
+    }
+    .msg-final { margin-bottom: 4px; }
+  }
 </style>
 </head>
 <body>
-  <div class="wrap">
-    <div class="header">
-      <img src="/rbk_logo.gif" alt="RBK">
+  <div class="page">
+    <header class="header">
+      <img src="/rbk_logo.gif" alt="Logo RBK" class="logo">
       <div>
         <h1>Calculadora de Vendas</h1>
         <p>Selecione o produto, o tipo de venda e a quantidade</p>
       </div>
-    </div>
+    </header>
 
-    <div class="card">
-      <label for="produto">Produto</label>
-      <select id="produto"></select>
-
-      <label>Tipo de venda</label>
-      <div class="tipo-row">
-        <div class="tipo-btn ativo" data-tipo="pista">Sem Parceria (Pista)</div>
-        <div class="tipo-btn" data-tipo="parceria">Com Parceria</div>
+    <form class="card-main" id="formVenda" novalidate>
+      <div class="campo campo-produto">
+        <label for="produto">Produto</label>
+        <select id="produto" name="produto" required></select>
       </div>
 
-      <label for="quantidade">Quantidade</label>
-      <input id="quantidade" type="number" min="1" placeholder="Ex: 100">
-
-      <div class="resultado" id="resultado">
-        <div class="valor" id="valorTotal">R$ 0,00</div>
-        <div class="detalhe" id="detalheCalculo"></div>
+      <div class="campo campo-tipo">
+        <label id="tipoLabel">Tipo de venda</label>
+        <div class="tipo-row" role="radiogroup" aria-labelledby="tipoLabel">
+          <button type="button" class="tipo-btn ativo" data-tipo="pista" role="radio" aria-checked="true" id="btnTipoPista">
+            <span class="tipo-nome">Sem Parceria (Pista)</span>
+            <span class="tipo-preco" id="precoPistaLabel">—</span>
+          </button>
+          <button type="button" class="tipo-btn" data-tipo="parceria" role="radio" aria-checked="false" id="btnTipoParceria">
+            <span class="tipo-nome">Com Parceria</span>
+            <span class="tipo-preco" id="precoParceriaLabel">—</span>
+          </button>
+        </div>
       </div>
 
-      <button class="primary" id="btnRegistrar" disabled>Registrar Venda</button>
-    </div>
-
-    <div class="card oculto" id="cardRegistro">
-      <div id="campoFaccaoParceria" class="oculto">
-        <label for="faccaoSelect">Facção (parceria)</label>
-        <select id="faccaoSelect">
+      <div class="campo campo-faccao oculto" id="campoFaccao">
+        <label for="faccaoSelect">Facção (parceria) — <span class="label-opcional">opcional</span></label>
+        <select id="faccaoSelect" name="faccao">
           <option value="">Não identificar parceria</option>
         </select>
-        <div class="aviso" id="avisoSemFaccao">⚠️ Venda com parceria sem facção identificada. Você pode registrar assim mesmo.</div>
+
+        <div class="aviso-parceria oculto" id="avisoSemFaccao">
+          <p>⚠️ O ideal é cadastrar a parceria antes de realizar vendas com parceria.</p>
+          <button type="button" class="btn-secundario" id="btnCadastrarParceria">Cadastrar parceria</button>
+        </div>
       </div>
 
-      <div id="campoFaccaoTexto" class="oculto">
-        <label for="faccaoTexto">Nome da facção/comprador</label>
-        <input id="faccaoTexto" type="text" placeholder="Opcional">
+      <div class="campo campo-nome">
+        <label for="registradoPor">Seu nome — <span class="label-opcional">opcional</span></label>
+        <input id="registradoPor" name="registradoPor" type="text" placeholder="Quem está registrando" autocomplete="off">
       </div>
 
-      <label for="registradoPor">Seu nome</label>
-      <input id="registradoPor" type="text" placeholder="Quem está registrando (opcional)">
+      <div class="campo campo-quantidade">
+        <label for="quantidade">Quantidade</label>
+        <div class="qtd-control">
+          <button type="button" class="qtd-btn" id="qtdMenos" aria-label="Diminuir quantidade">−</button>
+          <input id="quantidade" name="quantidade" type="number" min="1" step="1" value="1" inputmode="numeric" required>
+          <button type="button" class="qtd-btn" id="qtdMais" aria-label="Aumentar quantidade">+</button>
+        </div>
+        <div class="qtd-atalhos">
+          <button type="button" class="atalho-btn" data-qtd="10" aria-label="Definir quantidade para 10">10</button>
+          <button type="button" class="atalho-btn" data-qtd="50" aria-label="Definir quantidade para 50">50</button>
+          <button type="button" class="atalho-btn" data-qtd="100" aria-label="Definir quantidade para 100">100</button>
+        </div>
+      </div>
 
-      <button class="primary" id="btnConfirmar">Confirmar Registro</button>
+      <aside class="col-resumo" aria-live="polite">
+        <h2>Resumo da venda</h2>
+        <dl class="resumo-lista">
+          <div class="resumo-linha"><dt>Produto</dt><dd id="resProduto">—</dd></div>
+          <div class="resumo-linha"><dt>Modalidade</dt><dd id="resModalidade">—</dd></div>
+          <div class="resumo-linha"><dt>Facção</dt><dd id="resFaccao">—</dd></div>
+          <div class="resumo-linha"><dt>Vendedor</dt><dd id="resVendedor">—</dd></div>
+          <div class="resumo-linha"><dt>Preço unitário</dt><dd id="resPreco">—</dd></div>
+          <div class="resumo-linha"><dt>Quantidade</dt><dd id="resQuantidade">—</dd></div>
+        </dl>
+        <div class="valor-total-wrap">
+          <span class="valor-total-label">Valor total</span>
+          <span class="valor-total" id="resValorTotal">R$ 0,00</span>
+        </div>
+        <div class="selo-aviso oculto" id="seloAviso">⚠️ Parceria não identificada</div>
+      </aside>
 
-      <div class="msg-final" id="msgFinal"></div>
+      <div class="area-botao">
+        <button type="submit" class="btn-registrar" id="btnRegistrar">
+          <span id="btnRegistrarSpinner" class="spinner oculto"></span>
+          <span id="btnRegistrarTexto">Registrar venda</span>
+        </button>
+        <div class="msg-final oculto" id="msgFinal" role="status" aria-live="polite"></div>
+      </div>
+    </form>
+    <div class="area-botao-espaco"></div>
+
+    <footer class="rodape">Bot RBK · Calculadora interna de vendas</footer>
+  </div>
+
+  <div class="modal-overlay oculto" id="modalConfirmacao" role="dialog" aria-modal="true" aria-labelledby="modalTitulo">
+    <div class="modal-box">
+      <h2 id="modalTitulo">Parceria não identificada</h2>
+      <p>Esta venda será registrada com preço de parceria, mas sem uma facção identificada. O ideal é cadastrar ou selecionar a parceria antes de continuar.</p>
+      <div class="modal-botoes">
+        <button type="button" id="modalVoltar">Voltar e cadastrar</button>
+        <button type="button" id="modalContinuar">Continuar sem identificar</button>
+      </div>
     </div>
-
-    <div class="rodape">Bot RBK · Calculadora interna de vendas</div>
   </div>
 
 <script>
-let produtos = [];
-let faccoesParceria = [];
-let tipoSelecionado = 'pista';
+(function () {
+  let produtos = [];
+  let faccoesParceria = []; // [{id, nome}]
+  let tipoSelecionado = 'pista';
 
-const formatarMoeda = (v) => 'R$ ' + v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const fmtBRL = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
+  const formatarMoeda = (v) => fmtBRL.format(v);
+  const formatarCompacto = (v) => {
+    if (v >= 1000) return (v / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + 'K';
+    return formatarMoeda(v);
+  };
 
-async function carregarProdutos() {
-  const res = await fetch('/api/vendas/produtos');
-  produtos = await res.json();
-  const select = document.getElementById('produto');
-  select.innerHTML = produtos.map(p => `<option value="${p.id}">${p.nome}</option>`).join('');
-  calcular();
-}
+  const el = (id) => document.getElementById(id);
+  const produtoSelect = el('produto');
+  const faccaoSelect = el('faccaoSelect');
+  const quantidadeInput = el('quantidade');
+  const registradoPorInput = el('registradoPor');
+  const campoFaccao = el('campoFaccao');
+  const avisoSemFaccao = el('avisoSemFaccao');
+  const seloAviso = el('seloAviso');
+  const btnRegistrar = el('btnRegistrar');
+  const btnRegistrarTexto = el('btnRegistrarTexto');
+  const btnRegistrarSpinner = el('btnRegistrarSpinner');
+  const msgFinal = el('msgFinal');
+  const modal = el('modalConfirmacao');
 
-async function carregarFaccoes() {
-  const res = await fetch('/api/vendas/faccoes-parceria');
-  faccoesParceria = await res.json();
-  const select = document.getElementById('faccaoSelect');
-  select.innerHTML = '<option value="">Não identificar parceria</option>' +
-    faccoesParceria.map(f => `<option value="${f}">${f}</option>`).join('');
-}
-
-function produtoAtual() {
-  const id = document.getElementById('produto').value;
-  return produtos.find(p => p.id === id);
-}
-
-function precoAtual() {
-  const p = produtoAtual();
-  if (!p) return null;
-  return tipoSelecionado === 'pista' ? p.preco_pista : p.preco_parceria;
-}
-
-function calcular() {
-  const preco = precoAtual();
-  const quantidade = parseInt(document.getElementById('quantidade').value, 10);
-  const resultado = document.getElementById('resultado');
-  const btnRegistrar = document.getElementById('btnRegistrar');
-
-  if (!preco || !quantidade || quantidade <= 0) {
-    resultado.style.display = 'none';
-    btnRegistrar.disabled = true;
-    return;
+  function produtoAtual() {
+    return produtos.find((p) => p.id === produtoSelect.value);
   }
 
-  const total = preco * quantidade;
-  document.getElementById('valorTotal').textContent = formatarMoeda(total);
-  document.getElementById('detalheCalculo').textContent =
-    `${quantidade} x ${formatarMoeda(preco)}`;
-  resultado.style.display = 'block';
-  btnRegistrar.disabled = false;
-}
+  function precoAtual() {
+    const p = produtoAtual();
+    if (!p) return null;
+    return tipoSelecionado === 'pista' ? p.preco_pista : p.preco_parceria;
+  }
 
-document.querySelectorAll('.tipo-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.tipo-btn').forEach(b => b.classList.remove('ativo'));
-    btn.classList.add('ativo');
-    tipoSelecionado = btn.dataset.tipo;
-    calcular();
-  });
-});
+  function quantidadeValida() {
+    const n = parseInt(quantidadeInput.value, 10);
+    return Number.isInteger(n) && n > 0 ? n : null;
+  }
 
-document.getElementById('produto').addEventListener('change', calcular);
-document.getElementById('quantidade').addEventListener('input', calcular);
+  async function carregarProdutos() {
+    const res = await fetch('/api/vendas/produtos');
+    produtos = await res.json();
+    produtoSelect.innerHTML = produtos.map((p) => `<option value="${p.id}">${p.nome}</option>`).join('');
+    atualizarPrecosBotoesTipo();
+    atualizarResumo();
+  }
 
-document.getElementById('btnRegistrar').addEventListener('click', () => {
-  document.getElementById('cardRegistro').classList.remove('oculto');
-  document.getElementById('campoFaccaoParceria').classList.toggle('oculto', tipoSelecionado !== 'parceria');
-  document.getElementById('campoFaccaoTexto').classList.toggle('oculto', tipoSelecionado !== 'pista');
-  document.getElementById('avisoSemFaccao').style.display = 'none';
-  document.getElementById('msgFinal').style.display = 'none';
-  document.getElementById('cardRegistro').scrollIntoView({ behavior: 'smooth' });
-});
+  async function carregarFaccoes() {
+    const res = await fetch('/api/vendas/faccoes-parceria');
+    faccoesParceria = await res.json();
+    faccaoSelect.innerHTML = '<option value="">Não identificar parceria</option>' +
+      faccoesParceria.map((f) => `<option value="${f.id}">${f.nome}</option>`).join('');
+  }
 
-document.getElementById('faccaoSelect')?.addEventListener('change', (e) => {
-  document.getElementById('avisoSemFaccao').style.display = e.target.value ? 'none' : 'block';
-});
+  function atualizarPrecosBotoesTipo() {
+    const p = produtoAtual();
+    el('precoPistaLabel').textContent = p && p.preco_pista ? formatarCompacto(p.preco_pista) + ' por unidade' : 'Não configurado';
+    el('precoParceriaLabel').textContent = p && p.preco_parceria ? formatarCompacto(p.preco_parceria) + ' por unidade' : 'Não configurado';
+  }
 
-document.getElementById('btnConfirmar').addEventListener('click', async () => {
-  const produto = produtoAtual();
-  const quantidade = parseInt(document.getElementById('quantidade').value, 10);
-  const faccaoNome = tipoSelecionado === 'parceria'
-    ? document.getElementById('faccaoSelect').value
-    : document.getElementById('faccaoTexto').value.trim();
-  const registradoPor = document.getElementById('registradoPor').value.trim();
-
-  const msgFinal = document.getElementById('msgFinal');
-  const btnConfirmar = document.getElementById('btnConfirmar');
-  btnConfirmar.disabled = true;
-
-  try {
-    const res = await fetch('/api/vendas/registrar', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ produtoId: produto.id, tipo: tipoSelecionado, quantidade, faccaoNome, registradoPor }),
+  function selecionarTipo(tipo) {
+    tipoSelecionado = tipo;
+    document.querySelectorAll('.tipo-btn').forEach((b) => {
+      const ativo = b.dataset.tipo === tipo;
+      b.classList.toggle('ativo', ativo);
+      b.setAttribute('aria-checked', String(ativo));
     });
-    const data = await res.json();
 
-    if (!res.ok) {
-      msgFinal.className = 'msg-final erro';
-      msgFinal.textContent = '❌ ' + (data.error || 'Erro ao registrar venda.');
+    if (tipo === 'parceria') {
+      campoFaccao.classList.remove('oculto');
+      avisoSemFaccao.classList.toggle('oculto', !!faccaoSelect.value);
     } else {
-      msgFinal.className = 'msg-final ok';
-      msgFinal.textContent = '✅ Venda registrada com sucesso!' + (data.aviso ? ' ⚠️ ' + data.aviso : '');
+      campoFaccao.classList.add('oculto');
+      faccaoSelect.value = ''; // limpa parceria selecionada ao trocar pra pista
+      avisoSemFaccao.classList.add('oculto');
     }
-    msgFinal.style.display = 'block';
-  } catch (err) {
-    msgFinal.className = 'msg-final erro';
-    msgFinal.textContent = '❌ Erro de conexão ao registrar venda.';
-    msgFinal.style.display = 'block';
-  } finally {
-    btnConfirmar.disabled = false;
+    atualizarResumo();
   }
-});
 
-carregarProdutos();
-carregarFaccoes();
+  el('btnTipoPista').addEventListener('click', () => selecionarTipo('pista'));
+  el('btnTipoParceria').addEventListener('click', () => selecionarTipo('parceria'));
+
+  faccaoSelect.addEventListener('change', () => {
+    avisoSemFaccao.classList.toggle('oculto', !!faccaoSelect.value);
+    atualizarResumo();
+  });
+
+  el('btnCadastrarParceria').addEventListener('click', () => {
+    alert('Parcerias são cadastradas pelo bot no Discord: use o botão "Registrar Parceria" no canal de parcerias do servidor. Depois de cadastrada, ela aparece aqui na lista automaticamente.');
+  });
+
+  // Quantidade
+  function definirQuantidade(n) {
+    quantidadeInput.value = Math.max(1, Math.floor(n));
+    document.querySelectorAll('.atalho-btn').forEach((b) => b.classList.toggle('ativo', Number(b.dataset.qtd) === Number(quantidadeInput.value)));
+    atualizarResumo();
+  }
+  el('qtdMenos').addEventListener('click', () => definirQuantidade((quantidadeValida() || 1) - 1));
+  el('qtdMais').addEventListener('click', () => definirQuantidade((quantidadeValida() || 0) + 1));
+  quantidadeInput.addEventListener('input', () => {
+    document.querySelectorAll('.atalho-btn').forEach((b) => b.classList.remove('ativo'));
+    atualizarResumo();
+  });
+  quantidadeInput.addEventListener('blur', () => {
+    if (!quantidadeValida()) quantidadeInput.value = 1;
+    atualizarResumo();
+  });
+  document.querySelectorAll('.atalho-btn').forEach((b) => {
+    b.addEventListener('click', () => definirQuantidade(Number(b.dataset.qtd)));
+  });
+
+  produtoSelect.addEventListener('change', () => { atualizarPrecosBotoesTipo(); atualizarResumo(); });
+  registradoPorInput.addEventListener('input', atualizarResumo);
+
+  function atualizarResumo() {
+    const p = produtoAtual();
+    const preco = precoAtual();
+    const quantidade = quantidadeValida();
+
+    el('resProduto').textContent = p ? p.nome : '—';
+    el('resModalidade').textContent = tipoSelecionado === 'pista' ? 'Pista' : 'Com parceria';
+    el('resVendedor').textContent = registradoPorInput.value.trim() || 'Não informado';
+    el('resPreco').textContent = preco ? formatarMoeda(preco) : '—';
+    el('resQuantidade').textContent = quantidade ?? '—';
+
+    const resFaccao = el('resFaccao');
+    if (tipoSelecionado === 'parceria') {
+      const opcaoSelecionada = faccaoSelect.options[faccaoSelect.selectedIndex];
+      if (faccaoSelect.value) {
+        resFaccao.textContent = opcaoSelecionada.textContent;
+        resFaccao.classList.remove('faccao-nao-identificada');
+        seloAviso.classList.add('oculto');
+      } else {
+        resFaccao.textContent = 'Não identificada';
+        resFaccao.classList.add('faccao-nao-identificada');
+        seloAviso.classList.remove('oculto');
+      }
+    } else {
+      resFaccao.textContent = '—';
+      resFaccao.classList.remove('faccao-nao-identificada');
+      seloAviso.classList.add('oculto');
+    }
+
+    const total = preco && quantidade ? preco * quantidade : 0;
+    el('resValorTotal').textContent = formatarMoeda(total);
+
+    btnRegistrar.disabled = !(preco && quantidade);
+  }
+
+  function definirCarregando(carregando) {
+    btnRegistrar.disabled = carregando;
+    btnRegistrarSpinner.classList.toggle('oculto', !carregando);
+    btnRegistrarTexto.textContent = carregando ? 'Registrando…' : 'Registrar venda';
+  }
+
+  async function enviarVenda() {
+    const p = produtoAtual();
+    const quantidade = quantidadeValida();
+    if (!p || !precoAtual() || !quantidade) return;
+
+    msgFinal.classList.add('oculto');
+    definirCarregando(true);
+
+    const payload = {
+      produtoId: p.id,
+      tipo: tipoSelecionado,
+      quantidade,
+      parceriaId: tipoSelecionado === 'parceria' ? (faccaoSelect.value || null) : null,
+      faccaoNome: tipoSelecionado === 'pista' ? '' : undefined,
+      registradoPor: registradoPorInput.value.trim(),
+    };
+
+    try {
+      const res = await fetch('/api/vendas/registrar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        msgFinal.className = 'msg-final erro';
+        msgFinal.textContent = '❌ ' + (data.error || 'Erro ao registrar venda. Tente novamente.');
+      } else {
+        msgFinal.className = 'msg-final ok';
+        msgFinal.textContent = data.aviso
+          ? '✅ Venda registrada com sucesso. Parceria não identificada.'
+          : '✅ Venda registrada com sucesso!';
+      }
+      msgFinal.classList.remove('oculto');
+    } catch (err) {
+      msgFinal.className = 'msg-final erro';
+      msgFinal.textContent = '❌ Erro de conexão. Verifique sua internet e tente novamente.';
+      msgFinal.classList.remove('oculto');
+    } finally {
+      definirCarregando(false);
+      atualizarResumo();
+    }
+  }
+
+  function abrirModal() { modal.classList.remove('oculto'); el('modalContinuar').focus(); }
+  function fecharModal() { modal.classList.add('oculto'); }
+
+  el('modalVoltar').addEventListener('click', () => { fecharModal(); faccaoSelect.focus(); });
+  el('modalContinuar').addEventListener('click', () => { fecharModal(); enviarVenda(); });
+  modal.addEventListener('click', (e) => { if (e.target === modal) fecharModal(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !modal.classList.contains('oculto')) fecharModal(); });
+
+  el('formVenda').addEventListener('submit', (e) => {
+    e.preventDefault();
+    if (btnRegistrar.disabled) return;
+
+    if (tipoSelecionado === 'parceria' && !faccaoSelect.value) {
+      abrirModal();
+      return;
+    }
+    enviarVenda();
+  });
+
+  carregarProdutos();
+  carregarFaccoes();
+  atualizarResumo();
+})();
 </script>
 </body>
 </html>

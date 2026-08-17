@@ -47,9 +47,9 @@ function iniciarServidorWeb(client) {
 
   app.post('/api/vendas/registrar', async (req, res) => {
     try {
-      const { produtoId, tipo, quantidade, faccaoNome, registradoPor } = req.body;
+      const { produtoId, tipo, quantidade, parceriaId, faccaoNome, registradoPor } = req.body;
 
-      if (!produtoId || !['pista', 'parceria'].includes(tipo) || !Number.isFinite(quantidade) || quantidade <= 0) {
+      if (!produtoId || !['pista', 'parceria'].includes(tipo) || !Number.isInteger(quantidade) || quantidade <= 0) {
         return res.status(400).json({ error: 'Dados inválidos.' });
       }
 
@@ -69,9 +69,23 @@ function iniciarServidorWeb(client) {
 
       const valorTotal = quantidade * preco;
 
+      // Se uma parceria específica foi selecionada (só faz sentido em venda
+      // com parceria), resolve o nome dela no servidor - nunca confia no
+      // texto que o cliente mandaria pra esse caso. Em venda "pista" o nome
+      // é texto livre digitado mesmo.
+      let faccaoNomeFinal = null;
+      if (tipo === 'parceria' && parceriaId) {
+        faccaoNomeFinal = await vendaService.getNomeFaccaoPorParceriaId(guildId, parceriaId);
+        if (!faccaoNomeFinal) {
+          return res.status(400).json({ error: 'Parceria selecionada não foi encontrada.' });
+        }
+      } else if (tipo === 'pista') {
+        faccaoNomeFinal = (faccaoNome || '').trim() || null;
+      }
+
       // Venda com parceria sem facção identificada é permitida - só avisamos,
       // não bloqueamos (pedido explícito)
-      const avisoSemFaccao = tipo === 'parceria' && !faccaoNome;
+      const avisoSemFaccao = tipo === 'parceria' && !faccaoNomeFinal;
 
       const venda = await vendaService.registrarVenda(guildId, {
         produtoId,
@@ -80,7 +94,8 @@ function iniciarServidorWeb(client) {
         quantidade,
         precoUnitario: preco,
         valorTotal,
-        faccaoNome: faccaoNome || null,
+        parceriaId: tipo === 'parceria' ? (parceriaId || null) : null,
+        faccaoNome: faccaoNomeFinal,
         registradoPor: registradoPor || null,
       });
 
@@ -101,7 +116,7 @@ function iniciarServidorWeb(client) {
               { name: '🔢 Quantidade', value: String(quantidade), inline: true },
               { name: '💵 Preço Unitário', value: `R$ ${preco.toFixed(2)}`, inline: true },
               { name: '💰 Valor Total', value: `R$ ${valorTotal.toFixed(2)}`, inline: true },
-              { name: '🏴 Facção', value: faccaoNome || (avisoSemFaccao ? '⚠️ Não identificada' : 'Não informada'), inline: true },
+              { name: '🏴 Facção', value: faccaoNomeFinal || (avisoSemFaccao ? '⚠️ Não identificada' : 'Não informada'), inline: true },
               { name: '👤 Registrado por', value: registradoPor || 'Não informado', inline: false }
             )
             .setTimestamp();

@@ -128,10 +128,13 @@ CREATE TABLE IF NOT EXISTS vendas_registradas (
   quantidade INT NOT NULL,
   preco_unitario NUMERIC(12,2) NOT NULL,
   valor_total NUMERIC(12,2) NOT NULL,
-  faccao_nome VARCHAR(150), -- selecionada (parceria) ou digitada (pista) - pode ficar vazia mesmo em venda de parceria
+  parceria_id INT REFERENCES parcerias(id) ON DELETE SET NULL, -- parceria selecionada (opcional, só em vendas com parceria)
+  faccao_nome VARCHAR(150), -- nome resolvido da parceria selecionada, ou digitado livre (pista) - pode ficar vazio mesmo em venda de parceria
   registrado_por VARCHAR(150), -- nome auto-declarado, sem autenticação
   data_registro TIMESTAMP DEFAULT NOW()
 );
+
+ALTER TABLE vendas_registradas ADD COLUMN IF NOT EXISTS parceria_id INT REFERENCES parcerias(id) ON DELETE SET NULL;
 
 -- Criar índices para melhor performance
 CREATE INDEX IF NOT EXISTS idx_servidores_guild_id ON servidores(guild_id);
