@@ -3174,7 +3174,12 @@ module.exports = {
       }
     }
 
-    if (interaction.isStringSelectMenu()) {
+    if (interaction.isStringSelectMenu() || interaction.isRoleSelectMenu()) {
+      // RoleSelectMenu é um tipo de interação diferente de StringSelectMenu
+      // (usado pelos seletores de cargo nativos do Discord) - precisa entrar
+      // nesse mesmo bloco senão os handlers de select_cargo_*/select_adv_*
+      // etc nunca disparam, porque são todos roteados por interaction.customId
+      // aqui dentro.
       // NOTA: Dispatcher para selectMenus desabilitado pois há muitas variações complexas
       // Apenas os select_canal_* que salvam config estão no dispatcher
       // Tudo o mais usa o código legado que funciona bem
