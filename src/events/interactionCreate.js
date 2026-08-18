@@ -3415,29 +3415,17 @@ module.exports = {
           });
         } else if (valor === 'adv_cargo_1' || valor === 'adv_cargo_2' || valor === 'adv_cargo_3') {
           // Cargo único aplicado ao membro quando recebe esse nível de ADV
-          // geral (config.advs) - separado do ADV Farm (config.farm)
-          const cargos = interaction.guild.roles.cache
-            .filter(role => !role.managed && role.id !== interaction.guild.id)
-            .sort((a, b) => b.position - a.position)
-            .map(role => ({
-              label: role.name,
-              value: role.id,
-              description: `Posição: ${role.position}`,
-            }));
-
-          if (cargos.length === 0) {
-            return await interaction.reply({
-              content: '❌ Nenhum cargo encontrado no servidor.',
-              ephemeral: true,
-            });
-          }
-
-          const selectMenu = new StringSelectMenuBuilder()
+          // geral (config.advs) - separado do ADV Farm (config.farm). Usa o
+          // seletor nativo de cargo do Discord (RoleSelectMenu) em vez de
+          // montar a lista manualmente - o StringSelectMenu tem limite
+          // rígido de 25 opções, então servidores com mais cargos que isso
+          // ficavam sem conseguir escolher os que ficassem de fora do corte.
+          const { RoleSelectMenuBuilder } = require('discord.js');
+          const selectMenu = new RoleSelectMenuBuilder()
             .setCustomId(`select_${valor}`)
             .setPlaceholder('Selecione o cargo...')
             .setMinValues(1)
-            .setMaxValues(1)
-            .addOptions(cargos.slice(0, 25));
+            .setMaxValues(1);
 
           const row = new ActionRowBuilder().addComponents(selectMenu);
           const nivel = valor.replace('adv_cargo_', '');
@@ -3449,28 +3437,12 @@ module.exports = {
           });
         } else {
           // Seletor de cargos (para registro e aprovação)
-          const cargos = interaction.guild.roles.cache
-            .filter(role => !role.managed && role.id !== interaction.guild.id)
-            .sort((a, b) => b.position - a.position)
-            .map(role => ({
-              label: role.name,
-              value: role.id,
-              description: `Posição: ${role.position}`,
-            }));
-
-          if (cargos.length === 0) {
-            return await interaction.reply({
-              content: '❌ Nenhum cargo encontrado no servidor.',
-              ephemeral: true,
-            });
-          }
-
-          const selectMenu = new StringSelectMenuBuilder()
+          const { RoleSelectMenuBuilder } = require('discord.js');
+          const selectMenu = new RoleSelectMenuBuilder()
             .setCustomId(`select_${valor}`)
             .setPlaceholder('Selecione os cargos...')
             .setMinValues(1)
-            .setMaxValues(Math.min(cargos.length, 25))
-            .addOptions(cargos.slice(0, 25));
+            .setMaxValues(25);
 
           const row = new ActionRowBuilder().addComponents(selectMenu);
 
@@ -3489,23 +3461,7 @@ module.exports = {
 
       if (interaction.customId === 'painel_cargos_farm') {
         const valor = interaction.values[0];
-        const { StringSelectMenuBuilder } = require('discord.js');
-
-        const cargos = interaction.guild.roles.cache
-          .filter(role => !role.managed && role.id !== interaction.guild.id)
-          .sort((a, b) => b.position - a.position)
-          .map(role => ({
-            label: role.name,
-            value: role.id,
-            description: `Posição: ${role.position}`,
-          }));
-
-        if (cargos.length === 0) {
-          return await interaction.reply({
-            content: '❌ Nenhum cargo encontrado no servidor.',
-            ephemeral: true,
-          });
-        }
+        const { RoleSelectMenuBuilder } = require('discord.js');
 
         const titulos = {
           cargo_materiais: 'Materiais',
@@ -3522,12 +3478,11 @@ module.exports = {
         // Determinar se é múltiplo ou único
         const ehMultiplo = ['cargo_materiais', 'cargo_metas', 'cargo_pagamento', 'cargo_responsaveis_farm'].includes(valor);
 
-        const selectMenu = new StringSelectMenuBuilder()
+        const selectMenu = new RoleSelectMenuBuilder()
           .setCustomId(`select_${valor}`)
           .setPlaceholder(ehMultiplo ? 'Selecione os cargos...' : 'Selecione o cargo...')
           .setMinValues(1)
-          .setMaxValues(ehMultiplo ? Math.min(cargos.length, 25) : 1)
-          .addOptions(cargos.slice(0, 25));
+          .setMaxValues(ehMultiplo ? 25 : 1);
 
         const row = new ActionRowBuilder().addComponents(selectMenu);
 
@@ -3540,23 +3495,7 @@ module.exports = {
 
       if (interaction.customId === 'painel_cargos_sistema') {
         const valor = interaction.values[0];
-        const { StringSelectMenuBuilder } = require('discord.js');
-
-        const cargos = interaction.guild.roles.cache
-          .filter(role => !role.managed && role.id !== interaction.guild.id)
-          .sort((a, b) => b.position - a.position)
-          .map(role => ({
-            label: role.name,
-            value: role.id,
-            description: `Posição: ${role.position}`,
-          }));
-
-        if (cargos.length === 0) {
-          return await interaction.reply({
-            content: '❌ Nenhum cargo encontrado no servidor.',
-            ephemeral: true,
-          });
-        }
+        const { RoleSelectMenuBuilder } = require('discord.js');
 
         const customIdsPorValor = {
           cargo_morador: 'select_cargo_morador',
@@ -3578,12 +3517,11 @@ module.exports = {
         // Gerente e Liderança aceitam vários cargos (ex: múltiplos cargos de gerência)
         const ehMultiplo = valor === 'cargo_gerente' || valor === 'cargo_lideranca';
 
-        const selectMenu = new StringSelectMenuBuilder()
+        const selectMenu = new RoleSelectMenuBuilder()
           .setCustomId(customIdsPorValor[valor])
           .setPlaceholder(ehMultiplo ? 'Selecione os cargos...' : 'Selecione o cargo...')
           .setMinValues(1)
-          .setMaxValues(ehMultiplo ? Math.min(cargos.length, 25) : 1)
-          .addOptions(cargos.slice(0, 25));
+          .setMaxValues(ehMultiplo ? 25 : 1);
 
         const row = new ActionRowBuilder().addComponents(selectMenu);
 
@@ -3598,30 +3536,13 @@ module.exports = {
         const valor = interaction.values[0];
 
         if (valor === 'cargos_gerenciar') {
-          const { StringSelectMenuBuilder } = require('discord.js');
+          const { RoleSelectMenuBuilder } = require('discord.js');
 
-          const cargos = interaction.guild.roles.cache
-            .filter(role => !role.managed && role.id !== interaction.guild.id)
-            .sort((a, b) => b.position - a.position)
-            .map(role => ({
-              label: role.name,
-              value: role.id,
-              description: `Posição: ${role.position}`,
-            }));
-
-          if (cargos.length === 0) {
-            return await interaction.reply({
-              content: '❌ Nenhum cargo encontrado no servidor.',
-              ephemeral: true,
-            });
-          }
-
-          const selectMenu = new StringSelectMenuBuilder()
+          const selectMenu = new RoleSelectMenuBuilder()
             .setCustomId('select_cargos_bot')
             .setPlaceholder('Selecione os cargos que o bot vai usar...')
             .setMinValues(1)
-            .setMaxValues(Math.min(cargos.length, 25))
-            .addOptions(cargos.slice(0, 25));
+            .setMaxValues(25);
 
           const row = new ActionRowBuilder().addComponents(selectMenu);
 
@@ -5791,28 +5712,12 @@ module.exports = {
         const { StringSelectMenuBuilder } = require('discord.js');
 
         if (valor === 'parcerias_cargo_registrar') {
-          const cargos = interaction.guild.roles.cache
-            .filter(role => !role.managed && role.id !== interaction.guild.id)
-            .sort((a, b) => b.position - a.position)
-            .map(role => ({
-              label: role.name,
-              value: role.id,
-              description: `Posição: ${role.position}`,
-            }));
-
-          if (cargos.length === 0) {
-            return await interaction.reply({
-              content: '❌ Nenhum cargo encontrado no servidor.',
-              ephemeral: true,
-            });
-          }
-
-          const selectMenu = new StringSelectMenuBuilder()
+          const { RoleSelectMenuBuilder } = require('discord.js');
+          const selectMenu = new RoleSelectMenuBuilder()
             .setCustomId('select_parcerias_cargo_registrar')
             .setPlaceholder('Selecione os cargos...')
             .setMinValues(1)
-            .setMaxValues(Math.min(cargos.length, 25))
-            .addOptions(cargos.slice(0, 25));
+            .setMaxValues(25);
 
           const row = new ActionRowBuilder().addComponents(selectMenu);
 
@@ -5855,26 +5760,12 @@ module.exports = {
         }
 
         if (valor === 'parcerias_gerente') {
-          const cargos = interaction.guild.roles.cache
-            .filter(role => !role.managed && role.id !== interaction.guild.id)
-            .sort((a, b) => b.position - a.position)
-            .map(role => ({
-              label: role.name,
-              value: role.id,
-              description: `Posição: ${role.position}`,
-            }));
-
-          if (cargos.length === 0) {
-            return await interaction.reply({
-              content: '❌ Nenhum cargo encontrado no servidor.',
-              ephemeral: true,
-            });
-          }
-
-          const selectMenu = new StringSelectMenuBuilder()
+          const { RoleSelectMenuBuilder } = require('discord.js');
+          const selectMenu = new RoleSelectMenuBuilder()
             .setCustomId('select_parcerias_gerente')
             .setPlaceholder('Selecione o cargo...')
-            .addOptions(cargos.slice(0, 25));
+            .setMinValues(1)
+            .setMaxValues(1);
 
           const row = new ActionRowBuilder().addComponents(selectMenu);
 
@@ -5931,29 +5822,12 @@ module.exports = {
         }
 
         if (valor === 'vendas_cargo_calculadora') {
-          const { StringSelectMenuBuilder } = require('discord.js');
-          const cargos = interaction.guild.roles.cache
-            .filter(role => !role.managed && role.id !== interaction.guild.id)
-            .sort((a, b) => b.position - a.position)
-            .map(role => ({
-              label: role.name,
-              value: role.id,
-              description: `Posição: ${role.position}`,
-            }));
-
-          if (cargos.length === 0) {
-            return await interaction.reply({
-              content: '❌ Nenhum cargo encontrado no servidor.',
-              ephemeral: true,
-            });
-          }
-
-          const selectMenu = new StringSelectMenuBuilder()
+          const { RoleSelectMenuBuilder } = require('discord.js');
+          const selectMenu = new RoleSelectMenuBuilder()
             .setCustomId('select_vendas_cargo_calculadora')
             .setPlaceholder('Selecione os cargos...')
             .setMinValues(1)
-            .setMaxValues(Math.min(cargos.length, 25))
-            .addOptions(cargos.slice(0, 25));
+            .setMaxValues(25);
 
           const row = new ActionRowBuilder().addComponents(selectMenu);
 
