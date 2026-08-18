@@ -62,7 +62,7 @@ CREATE TABLE IF NOT EXISTS advs (
   id SERIAL PRIMARY KEY,
   servidor_id INT REFERENCES servidores(id) ON DELETE CASCADE,
   membro_id INT REFERENCES membros(id) ON DELETE CASCADE,
-  numero_adv INT, -- 1 ou 2
+  numero_adv INT, -- 1, 2 ou 3 (nível do ADV geral - config.advs, diferente do ADV Farm)
   data_atribuicao TIMESTAMP DEFAULT NOW(),
   motivo VARCHAR(200)
 );

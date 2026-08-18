@@ -394,16 +394,17 @@ async function opcoesRecrutadoresElegiveis(config, guild) {
 }
 
 // Monta as opções de tipo de ADV disponíveis pra selecionar, só com os
-// cargos que realmente foram configurados (Cargos de Farm > ADV Farm 1/2)
+// cargos que realmente foram configurados (Sistema de ADVs > ADV 1/2/3).
+// Esse é o ADV manual/geral (config.advs), separado do ADV Farm
+// (config.farm.cargo_adv_1_id/2_id), que é automático e ligado a atraso de
+// entrega de farm - os dois sistemas não compartilham cargo nem contagem.
 function opcoesAdvConfiguradas(config, guild) {
   const opcoes = [];
-  if (config.farm?.cargo_adv_1_id) {
-    const role = guild.roles.cache.get(config.farm.cargo_adv_1_id);
-    opcoes.push({ label: `ADV 1${role ? ' - ' + role.name : ''}`, value: '1' });
-  }
-  if (config.farm?.cargo_adv_2_id) {
-    const role = guild.roles.cache.get(config.farm.cargo_adv_2_id);
-    opcoes.push({ label: `ADV 2${role ? ' - ' + role.name : ''}`, value: '2' });
+  for (const nivel of [1, 2, 3]) {
+    const cargoId = config.advs?.[`cargo_adv_${nivel}_id`];
+    if (!cargoId) continue;
+    const role = guild.roles.cache.get(cargoId);
+    opcoes.push({ label: `ADV ${nivel}${role ? ' - ' + role.name : ''}`, value: String(nivel) });
   }
   return opcoes;
 }
@@ -2873,6 +2874,21 @@ module.exports = {
               label: 'Cargos que Podem Aprovar ADV',
               description: 'Quem aprova os ADVs registrados',
               value: 'adv_cargos_aprovacao',
+            },
+            {
+              label: 'ADV 1',
+              description: 'Cargo aplicado no 1º ADV (diferente do ADV Farm)',
+              value: 'adv_cargo_1',
+            },
+            {
+              label: 'ADV 2',
+              description: 'Cargo aplicado no 2º ADV (diferente do ADV Farm)',
+              value: 'adv_cargo_2',
+            },
+            {
+              label: 'ADV 3',
+              description: 'Cargo aplicado no 3º ADV (diferente do ADV Farm)',
+              value: 'adv_cargo_3',
             }
           );
 
@@ -3397,6 +3413,40 @@ module.exports = {
             components: [row],
             ephemeral: true,
           });
+        } else if (valor === 'adv_cargo_1' || valor === 'adv_cargo_2' || valor === 'adv_cargo_3') {
+          // Cargo único aplicado ao membro quando recebe esse nível de ADV
+          // geral (config.advs) - separado do ADV Farm (config.farm)
+          const cargos = interaction.guild.roles.cache
+            .filter(role => !role.managed && role.id !== interaction.guild.id)
+            .sort((a, b) => b.position - a.position)
+            .map(role => ({
+              label: role.name,
+              value: role.id,
+              description: `Posição: ${role.position}`,
+            }));
+
+          if (cargos.length === 0) {
+            return await interaction.reply({
+              content: '❌ Nenhum cargo encontrado no servidor.',
+              ephemeral: true,
+            });
+          }
+
+          const selectMenu = new StringSelectMenuBuilder()
+            .setCustomId(`select_${valor}`)
+            .setPlaceholder('Selecione o cargo...')
+            .setMinValues(1)
+            .setMaxValues(1)
+            .addOptions(cargos.slice(0, 25));
+
+          const row = new ActionRowBuilder().addComponents(selectMenu);
+          const nivel = valor.replace('adv_cargo_', '');
+
+          await interaction.reply({
+            content: `**ADV ${nivel}**\n\nSelecione o cargo que a pessoa recebe ao levar esse ADV:`,
+            components: [row],
+            ephemeral: true,
+          });
         } else {
           // Seletor de cargos (para registro e aprovação)
           const cargos = interaction.guild.roles.cache
@@ -3657,6 +3707,27 @@ module.exports = {
             ephemeral: true,
           });
         }
+      }
+
+      // Cargo aplicado ao membro em cada nível de ADV geral (config.advs,
+      // separado do ADV Farm que fica em config.farm)
+      if (interaction.customId === 'select_adv_cargo_1' ||
+          interaction.customId === 'select_adv_cargo_2' ||
+          interaction.customId === 'select_adv_cargo_3') {
+        const nivel = interaction.customId.replace('select_adv_cargo_', '');
+        const cargoId = interaction.values[0];
+
+        const config = await serverService.getConfig(interaction.guild.id);
+        if (!config.advs) config.advs = {};
+        config.advs[`cargo_adv_${nivel}_id`] = cargoId;
+        await serverService.saveConfig(interaction.guild.id, config);
+
+        const cargo = interaction.guild.roles.cache.get(cargoId);
+
+        await interaction.reply({
+          content: `✅ ADV ${nivel} configurado!\n**Cargo:** ${cargo.name}`,
+          ephemeral: true,
+        });
       }
 
       // Handlers para seleção de categoria de ADV
@@ -7379,7 +7450,7 @@ module.exports = {
           });
         }
 
-        const cargoAdvId = pendente.tipoAdv === 1 ? config.farm?.cargo_adv_1_id : config.farm?.cargo_adv_2_id;
+        const cargoAdvId = config.advs?.[`cargo_adv_${pendente.tipoAdv}_id`];
         if (!cargoAdvId) {
           return await interaction.reply({
             content: `❌ Cargo de ADV ${pendente.tipoAdv} não foi configurado.`,
@@ -7501,7 +7572,7 @@ module.exports = {
           });
         }
 
-        const cargoAdvId = pendente.tipoAdv === 1 ? config.farm?.cargo_adv_1_id : config.farm?.cargo_adv_2_id;
+        const cargoAdvId = config.advs?.[`cargo_adv_${pendente.tipoAdv}_id`];
         if (!cargoAdvId) {
           return await interaction.reply({
             content: `❌ Cargo de ADV ${pendente.tipoAdv} não foi configurado.`,
