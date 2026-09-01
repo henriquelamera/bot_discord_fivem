@@ -1,6 +1,11 @@
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const serverService = require('../services/serverService');
-const { formatarMoeda, agruparPendentesPorMembroComIds } = require('./farmPagamentos');
+const {
+  formatarMoeda,
+  agruparPendentesPorMembroComIds,
+  descreverEntregasFechamento,
+  montarValorCampoEntregas,
+} = require('./farmPagamentos');
 
 // Gera e posta o fechamento de pagamentos (um card por pessoa com pendência
 // + botão de confirmar pagamento em lote) no canal configurado. Usado tanto
@@ -36,12 +41,17 @@ async function postarFechamentoSemanal(guild, config) {
       data: new Date().toISOString(),
     };
 
+    const { linhas, intervalo } = descreverEntregasFechamento(config, membro.entregaIds);
     const embedCard = new EmbedBuilder()
       .setTitle('💰 Pagamento Pendente — Fechamento')
       .setColor(0xf1c40f)
       .addFields(
         { name: '👤 Farmou', value: `<@${membro.discordId}>`, inline: false },
-        { name: '🧾 Entregas Incluídas', value: membro.entregaIds.map((id) => `#${id}`).join(', '), inline: false },
+        {
+          name: `🧾 Entregas Incluídas${intervalo ? ` (${intervalo})` : ''}`,
+          value: montarValorCampoEntregas(linhas),
+          inline: false,
+        },
         { name: '💵 Valor Total', value: formatarMoeda(membro.total), inline: false }
       )
       .setTimestamp();
@@ -94,9 +104,14 @@ async function removerEntregaDosFechamentosPendentes(guild, config, entrega) {
         await msg.edit({ embeds: [embedPago], components: [] });
         delete fechamentos[batchId];
       } else {
+        const { linhas, intervalo } = descreverEntregasFechamento(config, lote.entregaIds);
         const embedAtualizado = EmbedBuilder.from(embedAtual).setFields(
           { name: '👤 Farmou', value: `<@${lote.discordId}>`, inline: false },
-          { name: '🧾 Entregas Incluídas', value: lote.entregaIds.map((id) => `#${id}`).join(', '), inline: false },
+          {
+            name: `🧾 Entregas Incluídas${intervalo ? ` (${intervalo})` : ''}`,
+            value: montarValorCampoEntregas(linhas),
+            inline: false,
+          },
           { name: '💵 Valor Total', value: formatarMoeda(lote.valorTotal), inline: false }
         );
         await msg.edit({ embeds: [embedAtualizado] });
@@ -107,12 +122,30 @@ async function removerEntregaDosFechamentosPendentes(guild, config, entrega) {
   }
 }
 
+// Título do painel publicado por /publicar_fechamento_farm (o que tem os
+// botões "Gerar Fechamento Agora" / "Limpar Cards Antigos"). Esse painel
+// NÃO deve ser apagado pela limpeza - senão some o próprio botão.
+const TITULO_PAINEL_FECHAMENTO = '🧾 Fechamento de Pagamento de Farm';
+
+function ehPainelFechamento(msg) {
+  if (msg.embeds?.[0]?.title === TITULO_PAINEL_FECHAMENTO) return true;
+  for (const row of msg.components || []) {
+    for (const comp of row.components || []) {
+      if (comp.customId === 'ger_farm_fechamento_agora' || comp.customId === 'limpar_fechamento_cards') {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 // Apaga as mensagens de fechamento (cabeçalho + cards) já postadas no canal
 // configurado. Cards já quitados ficam presos no canal pra sempre marcados
 // "Tudo Pago" (perdem o rastreamento em config assim que zeram, então não tem
 // como limpar seletivamente) - então limpa tudo que o bot postou lá e zera o
 // controle de pendências, pra próxima geração começar do zero sem lixo visual
-// nem mensagens "fantasma" que causam erro ao tentar atualizar depois.
+// nem mensagens "fantasma" que causam erro ao tentar atualizar depois. O
+// painel com os botões (de /publicar_fechamento_farm) é preservado.
 async function limparCardsFechamento(guild, config) {
   const canalId = config.farm?.canal_fechamento_semanal_id || config.farm?.canal_controle_pagamento_id;
   const canal = canalId ? guild.channels.cache.get(canalId) : null;
@@ -128,7 +161,7 @@ async function limparCardsFechamento(guild, config) {
     const lote = await canal.messages.fetch({ limit: 100, ...(before ? { before } : {}) });
     if (lote.size === 0) break;
 
-    const doBot = lote.filter((msg) => msg.author.id === guild.client.user.id);
+    const doBot = lote.filter((msg) => msg.author.id === guild.client.user.id && !ehPainelFechamento(msg));
     before = lote.last().id;
 
     if (doBot.size > 0) {
