@@ -442,6 +442,97 @@
   #modalContinuar:hover { background: var(--accent-hover); }
   .modal-botoes button:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(59,130,246,0.35); }
 
+  /* ===== Relatório de vendas ===== */
+  .btn-relatorio {
+    color: var(--accent-2);
+    border: 1px solid rgba(59,130,246,0.45);
+    background: rgba(59,130,246,0.08);
+    border-radius: 8px;
+    padding: 6px 10px;
+    white-space: nowrap;
+    font: inherit;
+    font-size: 12.5px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .btn-relatorio:hover { border-color: var(--accent); background: rgba(59,130,246,0.16); color: var(--text); }
+  .btn-relatorio:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(59,130,246,0.25); }
+
+  .modal-box.modal-relatorio { max-width: 860px; max-height: calc(100vh - 40px); overflow-y: auto; }
+  .modal-relatorio h2 { color: var(--text); display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 16px; }
+  .btn-fechar-modal {
+    border: 1px solid var(--border);
+    background: var(--card-2);
+    color: var(--muted);
+    border-radius: 8px;
+    width: 34px; height: 34px;
+    cursor: pointer;
+    font-size: 20px;
+    line-height: 1;
+    flex-shrink: 0;
+  }
+  .btn-fechar-modal:hover { border-color: var(--border-strong); color: var(--text); }
+
+  .rel-periodo { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  input[type="date"] {
+    width: 100%;
+    min-height: var(--btn-min);
+    background: var(--card-2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 14px;
+    color: var(--text);
+    font-size: 15px;
+    font-family: inherit;
+    color-scheme: dark;
+  }
+  input[type="date"]:hover { border-color: var(--border-strong); }
+  input[type="date"]:focus-visible { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(59,130,246,0.25); }
+
+  .rel-atalhos { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+  .rel-atalhos .atalho-btn { flex: 1 1 auto; min-height: 34px; font-size: 12.5px; padding: 0 10px; }
+
+  .rel-acoes { display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
+  .rel-acoes .btn-registrar { flex: 1 1 200px; width: auto; min-height: 46px; }
+  .btn-exportar {
+    flex: 1 1 160px;
+    min-height: 46px;
+    border-radius: 12px;
+    border: 1px solid var(--border-strong);
+    background: var(--card-2);
+    color: var(--text);
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+  }
+  .btn-exportar:hover:not(:disabled) { border-color: var(--success); color: var(--success); }
+  .btn-exportar:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(34,197,94,0.3); }
+  .btn-exportar:disabled { opacity: 0.5; cursor: not-allowed; }
+  .rel-erro { margin-top: 12px; }
+
+  .rel-resultado { margin-top: 18px; }
+  .rel-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+  .rel-tile { background: var(--card-2); border: 1px solid var(--border); border-radius: 12px; padding: 14px; }
+  .rel-tile .t-label { font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+  .rel-tile .t-valor { font-size: clamp(17px, 4vw, 22px); font-weight: 800; color: var(--accent-2); overflow-wrap: anywhere; line-height: 1.15; }
+  .rel-tile .t-sub { font-size: 11.5px; color: var(--muted-2); margin-top: 4px; }
+
+  .rel-sec { margin-top: 18px; }
+  .rel-sec h3 { font-size: 12.5px; margin: 0 0 8px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.4px; }
+  .rel-tabela-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 10px; }
+  .rel-tabela { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 520px; }
+  .rel-tabela th, .rel-tabela td { padding: 9px 10px; text-align: left; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  .rel-tabela th { background: var(--card-2); color: var(--muted); font-weight: 600; font-size: 12px; position: sticky; top: 0; }
+  .rel-tabela tbody tr:last-child td { border-bottom: none; }
+  .rel-tabela td.num, .rel-tabela th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .rel-tabela td.moeda { color: var(--accent-2); font-weight: 600; }
+  .rel-tag { display: inline-block; font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 6px; }
+  .rel-tag.pista { background: rgba(34,197,94,0.12); color: var(--success); }
+  .rel-tag.parceria { background: rgba(59,130,246,0.14); color: var(--accent-2); }
+  .rel-vazio { text-align: center; color: var(--muted); padding: 22px; font-size: 13.5px; }
+  @media (max-width: 520px) { .rel-periodo { grid-template-columns: 1fr; } }
+
   /* ===================== TABLET / DESKTOP (>=768px) ===================== */
   @media (min-width: 768px) {
     .tipo-btn { flex: 1 1 0; }
@@ -499,6 +590,7 @@
       </div>
       <div class="header-usuario">
         <span>Registrando como<br><span class="nome-usuario" id="nomeUsuarioHeader">…</span></span>
+        <button type="button" class="btn-relatorio" id="btnAbrirRelatorio">📊 Relatório</button>
         <a href="/logout">Sair</a>
       </div>
     </header>
@@ -597,6 +689,28 @@
         <button type="button" id="modalVoltar">Voltar e cadastrar</button>
         <button type="button" id="modalContinuar">Continuar sem identificar</button>
       </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay oculto" id="modalRelatorio" role="dialog" aria-modal="true" aria-labelledby="relTitulo">
+    <div class="modal-box modal-relatorio">
+      <h2 id="relTitulo"><span>📊 Relatório de vendas</span><button type="button" class="btn-fechar-modal" id="relFechar" aria-label="Fechar">×</button></h2>
+      <div class="rel-periodo">
+        <div><label for="relInicio">Data início</label><input type="date" id="relInicio"></div>
+        <div><label for="relFim">Data fim</label><input type="date" id="relFim"></div>
+      </div>
+      <div class="rel-atalhos">
+        <button type="button" class="atalho-btn" data-rel="hoje">Hoje</button>
+        <button type="button" class="atalho-btn" data-rel="7">Últimos 7 dias</button>
+        <button type="button" class="atalho-btn" data-rel="mes">Este mês</button>
+        <button type="button" class="atalho-btn" data-rel="mes-1">Mês passado</button>
+      </div>
+      <div class="rel-acoes">
+        <button type="button" class="btn-registrar" id="relGerar"><span id="relSpinner" class="spinner oculto"></span><span id="relGerarTexto">Gerar relatório</span></button>
+        <button type="button" class="btn-exportar" id="relExportar" disabled>⬇️ Exportar CSV</button>
+      </div>
+      <div class="msg-final erro oculto rel-erro" id="relErro" role="alert"></div>
+      <div class="rel-resultado oculto" id="relResultado"></div>
     </div>
   </div>
 
@@ -842,6 +956,150 @@
       return;
     }
     enviarVenda();
+  });
+
+  // ===== Relatório de vendas =====
+  const modalRel = el('modalRelatorio');
+  const relInicio = el('relInicio');
+  const relFim = el('relFim');
+  const relGerar = el('relGerar');
+  const relExportar = el('relExportar');
+  const relErro = el('relErro');
+  const relResultado = el('relResultado');
+  let relPeriodoGerado = null; // {inicio, fim} do último relatório gerado com sucesso
+
+  // Hoje no horário de Brasília (UTC-3 fixo) como "YYYY-MM-DD"
+  function hojeBrasilia() {
+    return new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  }
+  function addDias(iso, n) {
+    const d = new Date(iso + 'T00:00:00Z');
+    d.setUTCDate(d.getUTCDate() + n);
+    return d.toISOString().slice(0, 10);
+  }
+  function definirPeriodo(atalho) {
+    const hoje = hojeBrasilia();
+    const partes = hoje.split('-').map(Number);
+    const ano = partes[0];
+    const mes = partes[1];
+    if (atalho === 'hoje') { relInicio.value = hoje; relFim.value = hoje; }
+    else if (atalho === '7') { relInicio.value = addDias(hoje, -6); relFim.value = hoje; }
+    else if (atalho === 'mes') { relInicio.value = hoje.slice(0, 7) + '-01'; relFim.value = hoje; }
+    else if (atalho === 'mes-1') {
+      const m = mes === 1 ? 12 : mes - 1;
+      const a = mes === 1 ? ano - 1 : ano;
+      const ultimoDia = new Date(Date.UTC(a, m, 0)).getUTCDate();
+      const mm = String(m).padStart(2, '0');
+      relInicio.value = a + '-' + mm + '-01';
+      relFim.value = a + '-' + mm + '-' + String(ultimoDia).padStart(2, '0');
+    }
+    document.querySelectorAll('.rel-atalhos .atalho-btn').forEach((b) => b.classList.toggle('ativo', b.dataset.rel === atalho));
+  }
+  document.querySelectorAll('.rel-atalhos .atalho-btn').forEach((b) => b.addEventListener('click', () => definirPeriodo(b.dataset.rel)));
+  [relInicio, relFim].forEach((i) => i.addEventListener('input', () => {
+    document.querySelectorAll('.rel-atalhos .atalho-btn').forEach((b) => b.classList.remove('ativo'));
+  }));
+
+  function abrirRelatorio() {
+    if (!relInicio.value || !relFim.value) definirPeriodo('mes');
+    modalRel.classList.remove('oculto');
+    relGerar.focus();
+  }
+  function fecharRelatorio() { modalRel.classList.add('oculto'); }
+  el('btnAbrirRelatorio').addEventListener('click', abrirRelatorio);
+  el('relFechar').addEventListener('click', fecharRelatorio);
+  modalRel.addEventListener('click', (e) => { if (e.target === modalRel) fecharRelatorio(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !modalRel.classList.contains('oculto')) fecharRelatorio(); });
+
+  // Escapa HTML do que vem do banco (produto, facção, vendedor são texto livre)
+  const ASPA_DUPLA = String.fromCharCode(34);
+  const ASPA_SIMPLES = String.fromCharCode(39);
+  const MAPA_ESC = { '&': '&amp;', '<': '&lt;', '>': '&gt;' };
+  MAPA_ESC[ASPA_DUPLA] = '&quot;';
+  MAPA_ESC[ASPA_SIMPLES] = '&#39;';
+  const RE_ESC = new RegExp('[&<>' + ASPA_DUPLA + ASPA_SIMPLES + ']', 'g');
+  const esc = (s) => String(s == null ? '' : s).replace(RE_ESC, (c) => MAPA_ESC[c]);
+  const dataBR = (iso) => iso.split('-').reverse().join('/');
+  const fmtInt = (n) => Number(n).toLocaleString('pt-BR');
+  const tipoTag = (t) => t === 'parceria'
+    ? '<span class="rel-tag parceria">Parceria</span>'
+    : '<span class="rel-tag pista">Pista</span>';
+
+  function tabelaAgrupada(titulo, linhas, colNome) {
+    if (!linhas.length) return '';
+    const corpo = linhas.map((l) =>
+      '<tr><td>' + esc(l.nome) + '</td><td class="num">' + fmtInt(l.vendas) + '</td><td class="num">' + fmtInt(l.unidades) + '</td><td class="num moeda">' + formatarMoeda(l.valor) + '</td></tr>'
+    ).join('');
+    return '<section class="rel-sec"><h3>' + titulo + '</h3><div class="rel-tabela-wrap"><table class="rel-tabela"><thead><tr><th>' + colNome + '</th><th class="num">Vendas</th><th class="num">Unid.</th><th class="num">Valor</th></tr></thead><tbody>' + corpo + '</tbody></table></div></section>';
+  }
+
+  function renderizarRelatorio(dados) {
+    const r = dados.resumo;
+    const periodoTxt = dados.inicio === dados.fim ? dataBR(dados.inicio) : dataBR(dados.inicio) + ' a ' + dataBR(dados.fim);
+    if (!dados.vendas.length) {
+      relResultado.innerHTML = '<div class="rel-vazio">Nenhuma venda registrada em ' + periodoTxt + '.</div>';
+      return;
+    }
+    const tile = (label, valor, sub) => '<div class="rel-tile"><div class="t-label">' + label + '</div><div class="t-valor">' + valor + '</div><div class="t-sub">' + sub + '</div></div>';
+    const tiles = '<div class="rel-tiles">' +
+      tile('Valor total', formatarMoeda(r.valorTotal), periodoTxt) +
+      tile('Vendas', fmtInt(r.totalVendas), fmtInt(r.totalUnidades) + ' unidade(s)') +
+      tile('Pista', formatarMoeda(r.porTipo.pista.valor), fmtInt(r.porTipo.pista.vendas) + ' venda(s)') +
+      tile('Com parceria', formatarMoeda(r.porTipo.parceria.valor), fmtInt(r.porTipo.parceria.vendas) + ' venda(s)') +
+      '</div>';
+    const linhasVendas = dados.vendas.map((v) =>
+      '<tr><td>' + dataBR(v.data) + ' <span style="color:var(--muted-2)">' + esc(v.hora) + '</span></td>' +
+      '<td>' + esc(v.produto) + '</td><td>' + tipoTag(v.tipo) + '</td>' +
+      '<td class="num">' + fmtInt(v.quantidade) + '</td><td class="num">' + formatarMoeda(v.precoUnitario) + '</td>' +
+      '<td class="num moeda">' + formatarMoeda(v.valorTotal) + '</td>' +
+      '<td>' + esc(v.faccao || '—') + '</td><td>' + esc(v.vendedor || '—') + '</td></tr>'
+    ).join('');
+    const tabelaVendas = '<section class="rel-sec"><h3>Vendas (' + fmtInt(dados.vendas.length) + ')</h3><div class="rel-tabela-wrap"><table class="rel-tabela"><thead><tr><th>Data</th><th>Produto</th><th>Tipo</th><th class="num">Qtd</th><th class="num">Unit.</th><th class="num">Total</th><th>Facção</th><th>Vendedor</th></tr></thead><tbody>' + linhasVendas + '</tbody></table></div></section>';
+    relResultado.innerHTML = tiles
+      + tabelaAgrupada('Por produto', r.porProduto, 'Produto')
+      + tabelaAgrupada('Por vendedor', r.porVendedor, 'Vendedor')
+      + tabelaVendas;
+  }
+
+  function mostrarErroRel(msg) {
+    relErro.textContent = '❌ ' + msg;
+    relErro.classList.remove('oculto');
+  }
+
+  async function gerarRelatorio() {
+    relErro.classList.add('oculto');
+    const inicio = relInicio.value;
+    const fim = relFim.value;
+    if (!inicio || !fim) return mostrarErroRel('Informe a data de início e a data de fim.');
+    if (inicio > fim) return mostrarErroRel('A data de início não pode ser depois da data de fim.');
+
+    relGerar.disabled = true;
+    el('relSpinner').classList.remove('oculto');
+    el('relGerarTexto').textContent = 'Gerando…';
+    relExportar.disabled = true;
+    relPeriodoGerado = null;
+
+    try {
+      const res = await fetchAutenticado('/api/vendas/relatorio?inicio=' + inicio + '&fim=' + fim);
+      const dados = await res.json();
+      if (!res.ok) throw new Error(dados.error || 'Erro ao gerar relatório.');
+      renderizarRelatorio(dados);
+      relResultado.classList.remove('oculto');
+      relPeriodoGerado = { inicio: inicio, fim: fim };
+      relExportar.disabled = dados.vendas.length === 0;
+    } catch (err) {
+      mostrarErroRel(err.message || 'Erro ao gerar relatório.');
+      relResultado.classList.add('oculto');
+    } finally {
+      relGerar.disabled = false;
+      el('relSpinner').classList.add('oculto');
+      el('relGerarTexto').textContent = 'Gerar relatório';
+    }
+  }
+  relGerar.addEventListener('click', gerarRelatorio);
+  relExportar.addEventListener('click', () => {
+    if (!relPeriodoGerado) return;
+    window.location.href = '/api/vendas/relatorio.csv?inicio=' + relPeriodoGerado.inicio + '&fim=' + relPeriodoGerado.fim;
   });
 
   carregarUsuario();

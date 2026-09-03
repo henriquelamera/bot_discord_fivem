@@ -97,4 +97,42 @@ async function listarVendas(guildId, limit = 100) {
   }
 }
 
-module.exports = { registrarVenda, listarFaccoesParceria, getNomeFaccaoPorParceriaId, listarVendas };
+// Lista as vendas registradas num intervalo de datas (inclusive, dias no
+// horário de Brasília). data_registro é TIMESTAMP sem fuso gravado com
+// NOW() no Railway (UTC) - o Brasil é UTC-3 fixo, então basta subtrair 3h
+// pra virar horário de parede local antes de comparar/exibir. Mais antiga
+// primeiro, pra relatório/CSV saírem em ordem cronológica.
+async function listarVendasPorPeriodo(guildId, dataInicio, dataFim) {
+  try {
+    const result = await pool.query(
+      `SELECT v.id, v.produto_nome, v.tipo, v.quantidade, v.preco_unitario, v.valor_total,
+              v.faccao_nome, v.registrado_por, v.registrado_por_discord_id,
+              to_char(v.data_registro - interval '3 hours', 'YYYY-MM-DD') AS data_local,
+              to_char(v.data_registro - interval '3 hours', 'HH24:MI') AS hora_local
+       FROM vendas_registradas v
+       JOIN servidores s ON v.servidor_id = s.id
+       WHERE s.guild_id = $1
+         AND (v.data_registro - interval '3 hours')::date BETWEEN $2::date AND $3::date
+       ORDER BY v.data_registro ASC, v.id ASC`,
+      [guildId, dataInicio, dataFim]
+    );
+    return result.rows.map((r) => ({
+      id: r.id,
+      data: r.data_local,
+      hora: r.hora_local,
+      produto: r.produto_nome,
+      tipo: r.tipo,
+      quantidade: Number(r.quantidade),
+      precoUnitario: Number(r.preco_unitario),
+      valorTotal: Number(r.valor_total),
+      faccao: r.faccao_nome || null,
+      vendedor: r.registrado_por || null,
+      vendedorId: r.registrado_por_discord_id || null,
+    }));
+  } catch (error) {
+    console.error('Erro ao listar vendas por período:', error);
+    throw error;
+  }
+}
+
+module.exports = { registrarVenda, listarFaccoesParceria, getNomeFaccaoPorParceriaId, listarVendas, listarVendasPorPeriodo };

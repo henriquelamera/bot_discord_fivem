@@ -272,6 +272,116 @@ function iniciarServidorWeb(client) {
     }
   });
 
+  // ===== Relatório de vendas por período =====
+
+  // Valida ?inicio=YYYY-MM-DD&fim=YYYY-MM-DD. Datas são dias no horário de
+  // Brasília, inclusivas. Limita a 1 ano pra não deixar puxar a base inteira.
+  function validarPeriodo(query) {
+    const re = /^\d{4}-\d{2}-\d{2}$/;
+    const inicio = String(query.inicio || '');
+    const fim = String(query.fim || '');
+    if (!re.test(inicio) || !re.test(fim)) return { erro: 'Informe data de início e fim no formato AAAA-MM-DD.' };
+    const dIni = new Date(inicio + 'T00:00:00Z');
+    const dFim = new Date(fim + 'T00:00:00Z');
+    if (isNaN(dIni) || isNaN(dFim)) return { erro: 'Data inválida.' };
+    if (dIni > dFim) return { erro: 'A data de início não pode ser depois da data de fim.' };
+    const dias = Math.round((dFim - dIni) / 86400000) + 1;
+    if (dias > 366) return { erro: 'O período máximo do relatório é de 1 ano.' };
+    return { inicio, fim, dias };
+  }
+
+  // Agrega as vendas em totais gerais e quebras por tipo, produto e vendedor
+  function montarResumo(vendas) {
+    const porTipo = { pista: { vendas: 0, unidades: 0, valor: 0 }, parceria: { vendas: 0, unidades: 0, valor: 0 } };
+    const porProduto = new Map();
+    const porVendedor = new Map();
+    let totalUnidades = 0;
+    let valorTotal = 0;
+
+    for (const v of vendas) {
+      totalUnidades += v.quantidade;
+      valorTotal += v.valorTotal;
+
+      const t = porTipo[v.tipo] || (porTipo[v.tipo] = { vendas: 0, unidades: 0, valor: 0 });
+      t.vendas++; t.unidades += v.quantidade; t.valor += v.valorTotal;
+
+      const prod = porProduto.get(v.produto) || { nome: v.produto, vendas: 0, unidades: 0, valor: 0 };
+      prod.vendas++; prod.unidades += v.quantidade; prod.valor += v.valorTotal;
+      porProduto.set(v.produto, prod);
+
+      const chaveVend = v.vendedorId || v.vendedor || '—';
+      const vend = porVendedor.get(chaveVend) || { nome: v.vendedor || 'Não informado', vendas: 0, unidades: 0, valor: 0 };
+      vend.vendas++; vend.unidades += v.quantidade; vend.valor += v.valorTotal;
+      porVendedor.set(chaveVend, vend);
+    }
+
+    const ordenar = (m) => [...m.values()].sort((a, b) => b.valor - a.valor);
+    return {
+      totalVendas: vendas.length,
+      totalUnidades,
+      valorTotal,
+      porTipo,
+      porProduto: ordenar(porProduto),
+      porVendedor: ordenar(porVendedor),
+    };
+  }
+
+  app.get('/api/vendas/relatorio', requireAuth, async (req, res) => {
+    const periodo = validarPeriodo(req.query);
+    if (periodo.erro) return res.status(400).json({ error: periodo.erro });
+    try {
+      const vendas = await vendaService.listarVendasPorPeriodo(guildId, periodo.inicio, periodo.fim);
+      res.json({ inicio: periodo.inicio, fim: periodo.fim, vendas, resumo: montarResumo(vendas) });
+    } catch (err) {
+      console.error('Erro ao gerar relatório de vendas:', err);
+      res.status(500).json({ error: 'Erro ao gerar relatório.' });
+    }
+  });
+
+  // CSV pronto pro Excel em pt-BR: BOM UTF-8, separador ";" e decimal com
+  // vírgula. Vai como download (Content-Disposition: attachment).
+  app.get('/api/vendas/relatorio.csv', requireAuth, async (req, res) => {
+    const periodo = validarPeriodo(req.query);
+    if (periodo.erro) return res.status(400).send(periodo.erro);
+    try {
+      const vendas = await vendaService.listarVendasPorPeriodo(guildId, periodo.inicio, periodo.fim);
+      const resumo = montarResumo(vendas);
+
+      const num = (n) => Number(n).toFixed(2).replace('.', ',');
+      const cel = (v) => {
+        const t = v == null ? '' : String(v);
+        return /[;"\n\r]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t;
+      };
+      const dataBR = (iso) => iso.split('-').reverse().join('/');
+      const tipoLabel = (t) => (t === 'parceria' ? 'Com Parceria' : 'Pista');
+
+      const linhas = [];
+      linhas.push(['Data', 'Hora', 'Produto', 'Tipo', 'Quantidade', 'Preço Unitário', 'Valor Total', 'Facção', 'Vendedor'].join(';'));
+      for (const v of vendas) {
+        linhas.push([
+          dataBR(v.data), v.hora, cel(v.produto), tipoLabel(v.tipo), v.quantidade,
+          num(v.precoUnitario), num(v.valorTotal), cel(v.faccao || ''), cel(v.vendedor || ''),
+        ].join(';'));
+      }
+      linhas.push('');
+      linhas.push(['TOTAL', '', '', '', resumo.totalUnidades, '', num(resumo.valorTotal), '', ''].join(';'));
+      linhas.push('');
+      linhas.push(['Período', dataBR(periodo.inicio) + ' a ' + dataBR(periodo.fim)].join(';'));
+      linhas.push(['Vendas', resumo.totalVendas].join(';'));
+      linhas.push(['Pista', resumo.porTipo.pista.vendas + ' venda(s)', num(resumo.porTipo.pista.valor)].join(';'));
+      linhas.push(['Com Parceria', resumo.porTipo.parceria.vendas + ' venda(s)', num(resumo.porTipo.parceria.valor)].join(';'));
+
+      const csv = '﻿' + linhas.join('\r\n');
+      const nomeArquivo = `vendas_${periodo.inicio}_a_${periodo.fim}.csv`;
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="${nomeArquivo}"`);
+      res.send(csv);
+    } catch (err) {
+      console.error('Erro ao exportar relatório de vendas:', err);
+      res.status(500).send('Erro ao exportar relatório.');
+    }
+  });
+
   app.listen(PORT, () => {
     console.log(`🌐 Calculadora de vendas rodando na porta ${PORT}`);
   });
