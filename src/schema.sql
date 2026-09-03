@@ -136,6 +136,8 @@ CREATE TABLE IF NOT EXISTS vendas_registradas (
 
 ALTER TABLE vendas_registradas ADD COLUMN IF NOT EXISTS parceria_id INT REFERENCES parcerias(id) ON DELETE SET NULL;
 ALTER TABLE vendas_registradas ADD COLUMN IF NOT EXISTS registrado_por_discord_id VARCHAR(20);
+-- Agrupa as linhas de uma mesma venda com varios produtos (uma linha por produto)
+ALTER TABLE vendas_registradas ADD COLUMN IF NOT EXISTS venda_grupo_id VARCHAR(40);
 
 -- Criar índices para melhor performance
 CREATE INDEX IF NOT EXISTS idx_servidores_guild_id ON servidores(guild_id);
@@ -151,3 +153,4 @@ CREATE INDEX IF NOT EXISTS idx_logs_servidor ON logs(servidor_id);
 CREATE INDEX IF NOT EXISTS idx_historico_servidor ON historico_cargos(servidor_id);
 CREATE INDEX IF NOT EXISTS idx_parcerias_servidor ON parcerias(servidor_id);
 CREATE INDEX IF NOT EXISTS idx_vendas_registradas_servidor ON vendas_registradas(servidor_id);
+CREATE INDEX IF NOT EXISTS idx_vendas_registradas_grupo ON vendas_registradas(venda_grupo_id);

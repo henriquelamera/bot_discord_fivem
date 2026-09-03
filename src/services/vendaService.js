@@ -97,6 +97,47 @@ async function listarVendas(guildId, limit = 100) {
   }
 }
 
+// Registra uma venda com um ou mais produtos de uma vez. Cada produto vira
+// uma linha em vendas_registradas, todas com o mesmo venda_grupo_id (é isso
+// que o relatório usa pra mostrar "Venda #N" agrupando as linhas). Roda em
+// transação: ou entra tudo ou nada.
+async function registrarVendasEmGrupo(guildId, comum, itens) {
+  const client = await pool.connect();
+  try {
+    const servidorResult = await client.query('SELECT id FROM servidores WHERE guild_id = $1', [guildId]);
+    if (servidorResult.rows.length === 0) throw new Error('Servidor não encontrado');
+    const servidorId = servidorResult.rows[0].id;
+
+    await client.query('BEGIN');
+    const linhas = [];
+    for (const it of itens) {
+      const r = await client.query(
+        `INSERT INTO vendas_registradas (
+           servidor_id, produto_id, produto_nome, tipo, quantidade,
+           preco_unitario, valor_total, parceria_id, faccao_nome, registrado_por,
+           registrado_por_discord_id, venda_grupo_id
+         )
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+         RETURNING *`,
+        [
+          servidorId, it.produtoId, it.produtoNome, comum.tipo, it.quantidade,
+          it.precoUnitario, it.valorTotal, comum.parceriaId || null, comum.faccaoNome || null,
+          comum.registradoPor || null, comum.registradoPorDiscordId || null, comum.vendaGrupoId,
+        ]
+      );
+      linhas.push(r.rows[0]);
+    }
+    await client.query('COMMIT');
+    return linhas;
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    console.error('Erro ao registrar venda em grupo:', error);
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 // Lista as vendas registradas num intervalo de datas (inclusive, dias no
 // horário de Brasília). data_registro é TIMESTAMP sem fuso gravado com
 // NOW() no Railway (UTC) - o Brasil é UTC-3 fixo, então basta subtrair 3h
@@ -106,7 +147,7 @@ async function listarVendasPorPeriodo(guildId, dataInicio, dataFim) {
   try {
     const result = await pool.query(
       `SELECT v.id, v.produto_nome, v.tipo, v.quantidade, v.preco_unitario, v.valor_total,
-              v.faccao_nome, v.registrado_por, v.registrado_por_discord_id,
+              v.faccao_nome, v.registrado_por, v.registrado_por_discord_id, v.venda_grupo_id,
               to_char(v.data_registro - interval '3 hours', 'YYYY-MM-DD') AS data_local,
               to_char(v.data_registro - interval '3 hours', 'HH24:MI') AS hora_local
        FROM vendas_registradas v
@@ -128,6 +169,7 @@ async function listarVendasPorPeriodo(guildId, dataInicio, dataFim) {
       faccao: r.faccao_nome || null,
       vendedor: r.registrado_por || null,
       vendedorId: r.registrado_por_discord_id || null,
+      grupo: r.venda_grupo_id || ('legado_' + r.id),
     }));
   } catch (error) {
     console.error('Erro ao listar vendas por período:', error);
@@ -135,4 +177,4 @@ async function listarVendasPorPeriodo(guildId, dataInicio, dataFim) {
   }
 }
 
-module.exports = { registrarVenda, listarFaccoesParceria, getNomeFaccaoPorParceriaId, listarVendas, listarVendasPorPeriodo };
+module.exports = { registrarVenda, registrarVendasEmGrupo, listarFaccoesParceria, getNomeFaccaoPorParceriaId, listarVendas, listarVendasPorPeriodo };

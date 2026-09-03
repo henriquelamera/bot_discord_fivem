@@ -182,34 +182,53 @@ function iniciarServidorWeb(client) {
 
   app.post('/api/vendas/registrar', requireAuth, async (req, res) => {
     try {
-      const { produtoId, tipo, quantidade, parceriaId, faccaoNome } = req.body;
+      const { tipo, parceriaId, faccaoNome } = req.body;
       const registradoPor = req.discordUser.nome;
       const registradoPorDiscordId = req.discordUser.id;
 
-      if (!produtoId || !['pista', 'parceria'].includes(tipo) || !Number.isInteger(quantidade) || quantidade <= 0) {
+      // Formato novo: itens: [{produtoId, quantidade}, ...]. Ainda aceita o
+      // antigo (produtoId + quantidade na raiz) como venda de um item só.
+      const itensBrutos = Array.isArray(req.body.itens)
+        ? req.body.itens
+        : (req.body.produtoId ? [{ produtoId: req.body.produtoId, quantidade: req.body.quantidade }] : []);
+
+      if (!['pista', 'parceria'].includes(tipo) || itensBrutos.length === 0 || itensBrutos.length > 20) {
         return res.status(400).json({ error: 'Dados inválidos.' });
       }
 
+      // Mesmo produto repetido em duas linhas vira uma só (soma as quantidades)
+      const qtdPorProduto = new Map();
+      for (const it of itensBrutos) {
+        const q = Number(it && it.quantidade);
+        if (!it || !it.produtoId || !Number.isInteger(q) || q <= 0) {
+          return res.status(400).json({ error: 'Dados inválidos.' });
+        }
+        const chave = String(it.produtoId);
+        qtdPorProduto.set(chave, (qtdPorProduto.get(chave) || 0) + q);
+      }
+
       const config = await serverService.getConfig(guildId);
-      const produto = (config.vendas?.produtos || []).find((p) => p.id === produtoId);
-      if (!produto) {
-        return res.status(404).json({ error: 'Produto não encontrado.' });
+      const produtosCfg = config.vendas?.produtos || [];
+      const precosCfg = config.vendas?.precos || {};
+      const tipoLabel = tipo === 'pista' ? 'Pista' : 'Parceria';
+
+      // Recalcula cada preço no servidor com o valor atual configurado -
+      // nunca confia no total calculado pelo cliente pra gravar no banco
+      const itens = [];
+      for (const [produtoId, quantidade] of qtdPorProduto) {
+        const produto = produtosCfg.find((p) => p.id === produtoId);
+        if (!produto) return res.status(404).json({ error: 'Produto não encontrado.' });
+        const precoInfo = precosCfg[produtoId];
+        const preco = tipo === 'pista' ? precoInfo?.preco_pista : precoInfo?.preco_parceria;
+        if (!preco) {
+          return res.status(400).json({ error: `Preço de ${tipoLabel} não configurado pra ${produto.nome}.` });
+        }
+        itens.push({ produtoId, produtoNome: produto.nome, quantidade, precoUnitario: preco, valorTotal: quantidade * preco });
       }
+      const valorTotal = itens.reduce((s, i) => s + i.valorTotal, 0);
 
-      // Recalcula o preço no servidor com o valor atual configurado - nunca
-      // confia no total calculado pelo cliente pra gravar no banco
-      const precoInfo = config.vendas?.precos?.[produtoId];
-      const preco = tipo === 'pista' ? precoInfo?.preco_pista : precoInfo?.preco_parceria;
-      if (!preco) {
-        return res.status(400).json({ error: `Preço de ${tipo === 'pista' ? 'Pista' : 'Parceria'} não configurado pra esse produto.` });
-      }
-
-      const valorTotal = quantidade * preco;
-
-      // Se uma parceria específica foi selecionada (só faz sentido em venda
-      // com parceria), resolve o nome dela no servidor - nunca confia no
-      // texto que o cliente mandaria pra esse caso. Em venda "pista" o nome
-      // é texto livre digitado mesmo.
+      // Facção: em venda com parceria resolve o nome pelo id no servidor
+      // (nunca confia no texto do cliente); em venda "pista" é texto livre.
       let faccaoNomeFinal = null;
       if (tipo === 'parceria' && parceriaId) {
         faccaoNomeFinal = await vendaService.getNomeFaccaoPorParceriaId(guildId, parceriaId);
@@ -220,24 +239,20 @@ function iniciarServidorWeb(client) {
         faccaoNomeFinal = (faccaoNome || '').trim() || null;
       }
 
-      // Venda com parceria sem facção identificada é permitida - só avisamos,
-      // não bloqueamos (pedido explícito)
+      // Venda com parceria sem facção identificada é permitida - só avisamos
       const avisoSemFaccao = tipo === 'parceria' && !faccaoNomeFinal;
 
-      const venda = await vendaService.registrarVenda(guildId, {
-        produtoId,
-        produtoNome: produto.nome,
+      const vendaGrupoId = `${Date.now().toString(36)}_${crypto.randomBytes(4).toString('hex')}`;
+      await vendaService.registrarVendasEmGrupo(guildId, {
         tipo,
-        quantidade,
-        precoUnitario: preco,
-        valorTotal,
         parceriaId: tipo === 'parceria' ? (parceriaId || null) : null,
         faccaoNome: faccaoNomeFinal,
         registradoPor,
         registradoPorDiscordId,
-      });
+        vendaGrupoId,
+      }, itens);
 
-      // Publicar no canal de vendas confirmadas, se configurado
+      // Um embed só no canal de vendas confirmadas, listando todos os itens
       try {
         const canalVendasId = config.vendas?.canal_vendas_id;
         const guild = client.guilds.cache.get(guildId);
@@ -245,18 +260,25 @@ function iniciarServidorWeb(client) {
 
         if (canal) {
           const { EmbedBuilder } = require('discord.js');
+          const fmt = (n) => `R$ ${Number(n).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+          const listaItens = itens
+            .map((i) => `**${i.produtoNome}** — ${i.quantidade} × ${fmt(i.precoUnitario)} = ${fmt(i.valorTotal)}`)
+            .join('\n')
+            .slice(0, 1024);
+          const totalUnidades = itens.reduce((s, i) => s + i.quantidade, 0);
+
           const embed = new EmbedBuilder()
-            .setTitle('🧮 Venda Confirmada')
+            .setTitle(itens.length > 1 ? `🧮 Venda Confirmada (${itens.length} produtos)` : '🧮 Venda Confirmada')
             .setColor(tipo === 'parceria' ? 0x3498db : 0x2ecc71)
             .addFields(
-              { name: '📦 Produto', value: produto.nome, inline: true },
+              { name: '📦 Itens', value: listaItens, inline: false },
               { name: '🏷️ Tipo', value: tipo === 'pista' ? 'Sem Parceria (Pista)' : 'Com Parceria', inline: true },
-              { name: '🔢 Quantidade', value: String(quantidade), inline: true },
-              { name: '💵 Preço Unitário', value: `R$ ${preco.toFixed(2)}`, inline: true },
-              { name: '💰 Valor Total', value: `R$ ${valorTotal.toFixed(2)}`, inline: true },
+              { name: '🔢 Unidades', value: String(totalUnidades), inline: true },
+              { name: '💰 Valor Total', value: fmt(valorTotal), inline: true },
               { name: '🏴 Facção', value: faccaoNomeFinal || (avisoSemFaccao ? '⚠️ Não identificada' : 'Não informada'), inline: true },
               { name: '👤 Registrado por', value: registradoPor || 'Não informado', inline: false }
             )
+            .setFooter({ text: `Venda ${vendaGrupoId}` })
             .setTimestamp();
 
           await canal.send({ embeds: [embed] });
@@ -265,7 +287,13 @@ function iniciarServidorWeb(client) {
         console.error('Erro ao publicar venda confirmada no canal:', err.message);
       }
 
-      res.json({ success: true, valorTotal, aviso: avisoSemFaccao ? 'Venda com parceria registrada sem facção identificada.' : null });
+      res.json({
+        success: true,
+        valorTotal,
+        itens,
+        grupoId: vendaGrupoId,
+        aviso: avisoSemFaccao ? 'Venda com parceria registrada sem facção identificada.' : null,
+      });
     } catch (err) {
       console.error('Erro ao registrar venda:', err);
       res.status(500).json({ error: 'Erro ao registrar venda.' });
@@ -288,6 +316,17 @@ function iniciarServidorWeb(client) {
     const dias = Math.round((dFim - dIni) / 86400000) + 1;
     if (dias > 366) return { erro: 'O período máximo do relatório é de 1 ano.' };
     return { inicio, fim, dias };
+  }
+
+  // Numera as vendas (grupos) na ordem em que aparecem: todas as linhas de
+  // uma venda com vários produtos recebem o mesmo numeroVenda
+  function numerarVendas(vendas) {
+    const numeroPorGrupo = new Map();
+    for (const v of vendas) {
+      if (!numeroPorGrupo.has(v.grupo)) numeroPorGrupo.set(v.grupo, numeroPorGrupo.size + 1);
+      v.numeroVenda = numeroPorGrupo.get(v.grupo);
+    }
+    return numeroPorGrupo.size;
   }
 
   // Agrega as vendas em totais gerais e quebras por tipo, produto e vendedor
@@ -318,6 +357,7 @@ function iniciarServidorWeb(client) {
     const ordenar = (m) => [...m.values()].sort((a, b) => b.valor - a.valor);
     return {
       totalVendas: vendas.length,
+      totalLancamentos: new Set(vendas.map((v) => v.grupo)).size,
       totalUnidades,
       valorTotal,
       porTipo,
@@ -331,6 +371,7 @@ function iniciarServidorWeb(client) {
     if (periodo.erro) return res.status(400).json({ error: periodo.erro });
     try {
       const vendas = await vendaService.listarVendasPorPeriodo(guildId, periodo.inicio, periodo.fim);
+      numerarVendas(vendas);
       res.json({ inicio: periodo.inicio, fim: periodo.fim, vendas, resumo: montarResumo(vendas) });
     } catch (err) {
       console.error('Erro ao gerar relatório de vendas:', err);
@@ -345,6 +386,7 @@ function iniciarServidorWeb(client) {
     if (periodo.erro) return res.status(400).send(periodo.erro);
     try {
       const vendas = await vendaService.listarVendasPorPeriodo(guildId, periodo.inicio, periodo.fim);
+      numerarVendas(vendas);
       const resumo = montarResumo(vendas);
 
       const num = (n) => Number(n).toFixed(2).replace('.', ',');
@@ -356,18 +398,18 @@ function iniciarServidorWeb(client) {
       const tipoLabel = (t) => (t === 'parceria' ? 'Com Parceria' : 'Pista');
 
       const linhas = [];
-      linhas.push(['Data', 'Hora', 'Produto', 'Tipo', 'Quantidade', 'Preço Unitário', 'Valor Total', 'Facção', 'Vendedor'].join(';'));
+      linhas.push(['Venda', 'Data', 'Hora', 'Produto', 'Tipo', 'Quantidade', 'Preço Unitário', 'Valor Total', 'Facção', 'Vendedor'].join(';'));
       for (const v of vendas) {
         linhas.push([
-          dataBR(v.data), v.hora, cel(v.produto), tipoLabel(v.tipo), v.quantidade,
+          '#' + v.numeroVenda, dataBR(v.data), v.hora, cel(v.produto), tipoLabel(v.tipo), v.quantidade,
           num(v.precoUnitario), num(v.valorTotal), cel(v.faccao || ''), cel(v.vendedor || ''),
         ].join(';'));
       }
       linhas.push('');
-      linhas.push(['TOTAL', '', '', '', resumo.totalUnidades, '', num(resumo.valorTotal), '', ''].join(';'));
+      linhas.push(['TOTAL', '', '', '', '', resumo.totalUnidades, '', num(resumo.valorTotal), '', ''].join(';'));
       linhas.push('');
       linhas.push(['Período', dataBR(periodo.inicio) + ' a ' + dataBR(periodo.fim)].join(';'));
-      linhas.push(['Vendas', resumo.totalVendas].join(';'));
+      linhas.push(['Vendas', resumo.totalLancamentos, resumo.totalVendas + ' linha(s)'].join(';'));
       linhas.push(['Pista', resumo.porTipo.pista.vendas + ' venda(s)', num(resumo.porTipo.pista.valor)].join(';'));
       linhas.push(['Com Parceria', resumo.porTipo.parceria.vendas + ' venda(s)', num(resumo.porTipo.parceria.valor)].join(';'));
 
