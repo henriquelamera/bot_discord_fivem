@@ -543,21 +543,6 @@
   .btn-fechar-modal:hover { border-color: var(--border-strong); color: var(--text); }
 
   .rel-periodo { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-  input[type="date"] {
-    width: 100%;
-    min-height: var(--btn-min);
-    background: var(--card-2);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 10px 14px;
-    color: var(--text);
-    font-size: 15px;
-    font-family: inherit;
-    color-scheme: dark;
-  }
-  input[type="date"]:hover { border-color: var(--border-strong); }
-  input[type="date"]:focus-visible { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(59,130,246,0.25); }
-
   .rel-atalhos { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
   .rel-atalhos .atalho-btn { flex: 1 1 auto; min-height: 34px; font-size: 12.5px; padding: 0 10px; }
 
@@ -749,8 +734,8 @@
     <div class="modal-box modal-relatorio">
       <h2 id="relTitulo"><span>📊 Relatório de vendas</span><button type="button" class="btn-fechar-modal" id="relFechar" aria-label="Fechar">×</button></h2>
       <div class="rel-periodo">
-        <div><label for="relInicio">Data início</label><input type="date" id="relInicio"></div>
-        <div><label for="relFim">Data fim</label><input type="date" id="relFim"></div>
+        <div><label for="relInicio">Data início</label><input type="text" id="relInicio" placeholder="dd/mm/aaaa" inputmode="numeric" maxlength="10" autocomplete="off"></div>
+        <div><label for="relFim">Data fim</label><input type="text" id="relFim" placeholder="dd/mm/aaaa" inputmode="numeric" maxlength="10" autocomplete="off"></div>
       </div>
       <div class="rel-atalhos">
         <button type="button" class="atalho-btn" data-rel="hoje">Hoje</button>
@@ -1101,26 +1086,49 @@
     d.setUTCDate(d.getUTCDate() + n);
     return d.toISOString().slice(0, 10);
   }
+  // Campos em formato brasileiro (dd/mm/aaaa). O <input type=date> nativo
+  // exibe no idioma do navegador (em ingles vira mm/dd/aaaa), por isso texto
+  // com mascara. A API continua recebendo aaaa-mm-dd.
+  const RE_DATA_BR = new RegExp('^([0-9]{2})/([0-9]{2})/([0-9]{4})' + String.fromCharCode(36));
+  function brParaISO(txt) {
+    const m = RE_DATA_BR.exec(String(txt || '').trim());
+    if (!m) return null;
+    const d = Number(m[1]); const mo = Number(m[2]); const a = Number(m[3]);
+    const dt = new Date(Date.UTC(a, mo - 1, d));
+    if (dt.getUTCFullYear() !== a || dt.getUTCMonth() !== mo - 1 || dt.getUTCDate() !== d) return null;
+    return a + '-' + m[2] + '-' + m[1];
+  }
+  function mascararData(input) {
+    const dig = input.value.replace(/[^0-9]/g, '').slice(0, 8);
+    let out = dig;
+    if (dig.length > 4) out = dig.slice(0, 2) + '/' + dig.slice(2, 4) + '/' + dig.slice(4);
+    else if (dig.length > 2) out = dig.slice(0, 2) + '/' + dig.slice(2);
+    if (input.value !== out) input.value = out;
+  }
   function definirPeriodo(atalho) {
     const hoje = hojeBrasilia();
     const partes = hoje.split('-').map(Number);
     const ano = partes[0];
     const mes = partes[1];
-    if (atalho === 'hoje') { relInicio.value = hoje; relFim.value = hoje; }
-    else if (atalho === '7') { relInicio.value = addDias(hoje, -6); relFim.value = hoje; }
-    else if (atalho === 'mes') { relInicio.value = hoje.slice(0, 7) + '-01'; relFim.value = hoje; }
+    let ini = hoje;
+    let fim = hoje;
+    if (atalho === '7') { ini = addDias(hoje, -6); }
+    else if (atalho === 'mes') { ini = hoje.slice(0, 7) + '-01'; }
     else if (atalho === 'mes-1') {
       const m = mes === 1 ? 12 : mes - 1;
       const a = mes === 1 ? ano - 1 : ano;
       const ultimoDia = new Date(Date.UTC(a, m, 0)).getUTCDate();
       const mm = String(m).padStart(2, '0');
-      relInicio.value = a + '-' + mm + '-01';
-      relFim.value = a + '-' + mm + '-' + String(ultimoDia).padStart(2, '0');
+      ini = a + '-' + mm + '-01';
+      fim = a + '-' + mm + '-' + String(ultimoDia).padStart(2, '0');
     }
+    relInicio.value = dataBR(ini);
+    relFim.value = dataBR(fim);
     document.querySelectorAll('.rel-atalhos .atalho-btn').forEach((b) => b.classList.toggle('ativo', b.dataset.rel === atalho));
   }
   document.querySelectorAll('.rel-atalhos .atalho-btn').forEach((b) => b.addEventListener('click', () => definirPeriodo(b.dataset.rel)));
   [relInicio, relFim].forEach((i) => i.addEventListener('input', () => {
+    mascararData(i);
     document.querySelectorAll('.rel-atalhos .atalho-btn').forEach((b) => b.classList.remove('ativo'));
   }));
 
@@ -1186,9 +1194,9 @@
 
   async function gerarRelatorio() {
     relErro.classList.add('oculto');
-    const inicio = relInicio.value;
-    const fim = relFim.value;
-    if (!inicio || !fim) return mostrarErroRel('Informe a data de início e a data de fim.');
+    const inicio = brParaISO(relInicio.value);
+    const fim = brParaISO(relFim.value);
+    if (!inicio || !fim) return mostrarErroRel('Informe datas válidas no formato dd/mm/aaaa.');
     if (inicio > fim) return mostrarErroRel('A data de início não pode ser depois da data de fim.');
 
     relGerar.disabled = true;
