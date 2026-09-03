@@ -206,6 +206,21 @@ function truncarLabel(texto, max = 45) {
   return texto.slice(0, max - 1) + '…';
 }
 
+// Discord limita nickname a 32 caracteres - passar disso faz o setNickname
+// lançar "Invalid Form Body nick[BASE_TYPE_MAX_LENGTH]". Monta "Nome | ID"
+// cabendo no limite: se estourar, corta o NOME e mantém o ID inteiro (é ele
+// que identifica a pessoa in-game). Só corta o ID no caso extremo de o
+// próprio sufixo " | ID" já passar de 32.
+function montarNickname(nomeInGame, id) {
+  const LIMITE = 32;
+  const nome = String(nomeInGame ?? '').trim();
+  const sufixo = ` | ${String(id ?? '').trim()}`;
+  if (nome.length + sufixo.length <= LIMITE) return `${nome}${sufixo}`;
+  const espacoNome = LIMITE - sufixo.length;
+  if (espacoNome >= 1) return `${nome.slice(0, espacoNome).trim()}${sufixo}`;
+  return `${nome}${sufixo}`.slice(0, LIMITE);
+}
+
 // Apaga todas as mensagens de um canal - bulkDelete só funciona pra
 // mensagens com menos de 14 dias, então pra mensagens mais antigas cai pra
 // deletar uma por uma (mais lento, mas o discord.js já respeita o rate
@@ -501,7 +516,7 @@ async function processarPagamentoFarm(config, guild, entrega, aprovadorId) {
 // cargo atual da hierarquia.
 async function atualizarDadosMembro(config, guild, userId, solicitacao) {
   const membro = await guild.members.fetch(userId);
-  const nomeFormatado = `${solicitacao.nomeInGame} | ${solicitacao.id}`;
+  const nomeFormatado = montarNickname(solicitacao.nomeInGame, solicitacao.id);
   await membro.setNickname(nomeFormatado).catch(() => {});
 
   if (!config.membros_info) config.membros_info = {};
@@ -531,7 +546,7 @@ async function concederPromocaoHierarquia(config, guild, userId, solicitacao, ca
   const cargoNovo = guild.roles.cache.get(cargoNovoId);
   if (!cargoNovo) throw new Error('Cargo não encontrado no servidor.');
 
-  const nomeFormatado = `${solicitacao.nomeInGame} | ${solicitacao.id}`;
+  const nomeFormatado = montarNickname(solicitacao.nomeInGame, solicitacao.id);
   await membro.setNickname(nomeFormatado).catch(() => {});
 
   // Remover qualquer cargo antigo da hierarquia (de qualquer tier) antes de
@@ -6184,10 +6199,13 @@ module.exports = {
           // Pegar dados do registro
           const registroDados = config.registros_pendentes?.[userId];
           if (registroDados) {
-            const nomeFormatado = `${registroDados.nomeInGame} | ${registroDados.id}`;
+            const nomeFormatado = montarNickname(registroDados.nomeInGame, registroDados.id);
 
-            // Mudar nickname da pessoa
-            await membro.setNickname(nomeFormatado);
+            // Mudar nickname da pessoa - não pode abortar a aprovação se
+            // falhar (cargo acima do bot, hierarquia, etc.)
+            await membro.setNickname(nomeFormatado).catch((e) => {
+              console.warn('Não foi possível definir o nickname na aprovação:', e.message);
+            });
 
             // 2. Salvar membro no banco PostgreSQL
             await memberService.saveMember(
