@@ -177,4 +177,31 @@ async function listarVendasPorPeriodo(guildId, dataInicio, dataFim) {
   }
 }
 
-module.exports = { registrarVenda, registrarVendasEmGrupo, listarFaccoesParceria, getNomeFaccaoPorParceriaId, listarVendas, listarVendasPorPeriodo };
+// Quantas vendas já foram registradas com cada produto - o painel usa isso
+// pra avisar o que está prestes a sair da calculadora antes de excluir.
+// O histórico em si nunca é apagado: vendas_registradas guarda o nome e o
+// preço praticados na hora, então relatório antigo continua certo mesmo
+// depois do produto sumir da lista.
+async function contarVendasPorProduto(guildId) {
+  try {
+    const result = await pool.query(
+      `SELECT v.produto_id, COUNT(*)::int AS vendas, COALESCE(SUM(v.quantidade), 0)::int AS unidades,
+              to_char(MAX(v.data_registro) - interval '3 hours', 'DD/MM/YYYY') AS ultima_venda
+       FROM vendas_registradas v
+       JOIN servidores s ON v.servidor_id = s.id
+       WHERE s.guild_id = $1 AND v.produto_id IS NOT NULL
+       GROUP BY v.produto_id`,
+      [guildId]
+    );
+    const porProduto = {};
+    for (const r of result.rows) {
+      porProduto[r.produto_id] = { vendas: r.vendas, unidades: r.unidades, ultimaVenda: r.ultima_venda };
+    }
+    return porProduto;
+  } catch (error) {
+    console.error('Erro ao contar vendas por produto:', error);
+    throw error;
+  }
+}
+
+module.exports = { registrarVenda, registrarVendasEmGrupo, listarFaccoesParceria, getNomeFaccaoPorParceriaId, listarVendas, listarVendasPorPeriodo, contarVendasPorProduto };

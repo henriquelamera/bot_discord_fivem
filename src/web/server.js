@@ -3,6 +3,7 @@ const path = require('path');
 const crypto = require('crypto');
 const serverService = require('../services/serverService');
 const vendaService = require('../services/vendaService');
+const { parsePrecoBR, normalizarNomeProduto } = require('../utils/precos');
 
 const SESSAO_DURACAO_MS = 12 * 60 * 60 * 1000; // 12h
 const COOKIE_NOME = 'rbk_sessao';
@@ -61,6 +62,30 @@ function iniciarServidorWeb(client) {
     }
     req.discordUser = sessao;
     next();
+  }
+
+  // Quem mexe em produto e preço precisa ser Administrador do servidor - a
+  // mesma régua do /painel_configuracao. A checagem é feita ao vivo no
+  // Discord a cada requisição, não pelo que ficou gravado na sessão: tirar a
+  // permissão de alguém vale na hora, sem esperar as 12h da sessão expirarem.
+  async function ehAdministrador(discordId) {
+    const guild = client.guilds.cache.get(guildId);
+    if (!guild) return false;
+    const membro = await guild.members.fetch(discordId).catch(() => null);
+    return !!membro && membro.permissions.has('Administrator');
+  }
+
+  async function requireAdmin(req, res, next) {
+    try {
+      if (await ehAdministrador(req.discordUser.id)) return next();
+      if (req.path.startsWith('/api/')) {
+        return res.status(403).json({ error: 'Só administradores podem mexer nos produtos da calculadora.' });
+      }
+      return res.status(403).send('Só administradores podem abrir o painel de produtos.');
+    } catch (err) {
+      console.error('Erro ao verificar permissão de administrador:', err);
+      res.status(500).json({ error: 'Erro ao verificar sua permissão. Tente de novo.' });
+    }
   }
 
   app.use(express.json());
@@ -142,12 +167,23 @@ function iniciarServidorWeb(client) {
 
   app.use(express.static(path.join(__dirname, 'public'), { index: false }));
 
+  // As páginas ficam em views/ e não em public/: o express.static acima
+  // entrega qualquer arquivo daquela pasta sem passar por login (era assim
+  // que /index.html abria a calculadora inteira pra quem não entrou). Em
+  // public/ fica só o que pode mesmo ser público, como a logo.
   app.get('/', requireAuth, (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+    res.sendFile(path.join(__dirname, 'views', 'index.html'));
   });
 
-  app.get('/api/vendas/me', requireAuth, (req, res) => {
-    res.json({ id: req.discordUser.id, nome: req.discordUser.nome });
+  app.get('/admin', requireAuth, requireAdmin, (req, res) => {
+    res.sendFile(path.join(__dirname, 'views', 'admin.html'));
+  });
+
+  app.get('/api/vendas/me', requireAuth, async (req, res) => {
+    // admin decide só se a calculadora mostra o atalho do painel - quem
+    // protege o painel de verdade é o requireAdmin em cada rota
+    const admin = await ehAdministrador(req.discordUser.id).catch(() => false);
+    res.json({ id: req.discordUser.id, nome: req.discordUser.nome, admin });
   });
 
   app.get('/api/vendas/produtos', requireAuth, async (req, res) => {
@@ -198,6 +234,9 @@ function iniciarServidorWeb(client) {
 
       // Mesmo produto repetido em duas linhas vira uma só (soma as quantidades)
       const qtdPorProduto = new Map();
+      // Preço que a tela do vendedor estava mostrando na hora de registrar -
+      // opcional, usado só pra conferir se ainda bate com o preço atual
+      const precoMostradoPorProduto = new Map();
       for (const it of itensBrutos) {
         const q = Number(it && it.quantidade);
         if (!it || !it.produtoId || !Number.isInteger(q) || q <= 0) {
@@ -205,6 +244,10 @@ function iniciarServidorWeb(client) {
         }
         const chave = String(it.produtoId);
         qtdPorProduto.set(chave, (qtdPorProduto.get(chave) || 0) + q);
+        if (it.precoUnitario != null && !precoMostradoPorProduto.has(chave)) {
+          const precoCliente = Number(it.precoUnitario);
+          if (Number.isFinite(precoCliente) && precoCliente > 0) precoMostradoPorProduto.set(chave, precoCliente);
+        }
       }
 
       const config = await serverService.getConfig(guildId);
@@ -217,7 +260,9 @@ function iniciarServidorWeb(client) {
       const itens = [];
       for (const [produtoId, quantidade] of qtdPorProduto) {
         const produto = produtosCfg.find((p) => p.id === produtoId);
-        if (!produto) return res.status(404).json({ error: 'Produto não encontrado.' });
+        if (!produto) {
+          return res.status(404).json({ error: 'Esse produto não está mais cadastrado (pode ter sido removido pelo painel). Recarregue a página e refaça a venda.' });
+        }
         const precoInfo = precosCfg[produtoId];
         const preco = tipo === 'pista' ? precoInfo?.preco_pista : precoInfo?.preco_parceria;
         if (!preco) {
@@ -226,6 +271,32 @@ function iniciarServidorWeb(client) {
         itens.push({ produtoId, produtoNome: produto.nome, quantidade, precoUnitario: preco, valorTotal: quantidade * preco });
       }
       const valorTotal = itens.reduce((s, i) => s + i.valorTotal, 0);
+
+      // A página carrega os preços uma vez só, quando abre. Se alguém mexeu
+      // na configuração com a aba aberta, o vendedor veria um total na tela e
+      // gravaríamos outro - foi isso que fez a calculadora "cobrar errado".
+      // Nesse caso a venda NÃO entra: devolvemos os preços certos pro cliente
+      // atualizar a tela e confirmar de novo, já com o valor real.
+      const precosDesatualizados = itens
+        .filter((i) => {
+          const mostrado = precoMostradoPorProduto.get(i.produtoId);
+          return mostrado != null && Number(mostrado) !== Number(i.precoUnitario);
+        })
+        .map((i) => ({
+          produtoId: i.produtoId,
+          produtoNome: i.produtoNome,
+          precoMostrado: precoMostradoPorProduto.get(i.produtoId),
+          precoAtual: i.precoUnitario,
+        }));
+
+      if (precosDesatualizados.length > 0) {
+        return res.status(409).json({
+          error: 'Os preços mudaram depois que a calculadora foi aberta. A venda não foi registrada — confira o novo valor e registre de novo.',
+          precosDesatualizados,
+          itens,
+          valorTotal,
+        });
+      }
 
       // Facção: em venda com parceria resolve o nome pelo id no servidor
       // (nunca confia no texto do cliente); em venda "pista" é texto livre.
@@ -297,6 +368,187 @@ function iniciarServidorWeb(client) {
     } catch (err) {
       console.error('Erro ao registrar venda:', err);
       res.status(500).json({ error: 'Erro ao registrar venda.' });
+    }
+  });
+
+  // ===== Painel de produtos (só Administrador) =====
+
+  // Lê nome e os dois preços vindos do painel, já validando. Preço em branco
+  // é legítimo: significa "não vendemos isso nessa modalidade" e faz a
+  // calculadora bloquear aquele tipo de venda, diferente de preço zero.
+  function lerDadosProduto(body) {
+    const nome = String(body?.nome ?? '').trim();
+    if (!nome) return { erro: 'Informe o nome do produto.' };
+    if (nome.length > 100) return { erro: 'O nome do produto pode ter no máximo 100 caracteres.' };
+
+    const campos = { precoPista: 'Preço de Pista', precoParceria: 'Preço de Parceria' };
+    const saida = { nome };
+    for (const [campo, rotulo] of Object.entries(campos)) {
+      const bruto = body?.[campo];
+      if (bruto === null || bruto === undefined || String(bruto).trim() === '') {
+        saida[campo] = null;
+        continue;
+      }
+      const valor = parsePrecoBR(bruto);
+      if (!Number.isFinite(valor) || valor <= 0) {
+        return { erro: `${rotulo}: não entendi "${String(bruto).trim()}". Use só números, ex: 150000, 150.000 ou 150.000,00.` };
+      }
+      // valor_total é NUMERIC(12,2) no banco - um preço unitário absurdo
+      // estouraria a coluna só na hora de registrar a venda
+      if (valor > 99999999) return { erro: `${rotulo}: valor alto demais (máximo R$ 99.999.999).` };
+      saida[campo] = Math.round(valor * 100) / 100;
+    }
+    return saida;
+  }
+
+  function registrarLogProduto(req, acao, descricao) {
+    serverService
+      .logAction(guildId, req.discordUser.id, acao, `${req.discordUser.nome}: ${descricao}`)
+      .catch((err) => console.error('Erro ao registrar log de produto:', err.message));
+  }
+
+  function nomeJaUsado(produtos, nome, ignorarId) {
+    const alvo = normalizarNomeProduto(nome);
+    return produtos.find((p) => p.id !== ignorarId && normalizarNomeProduto(p.nome) === alvo) || null;
+  }
+
+  app.get('/api/admin/produtos', requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const config = await serverService.getConfig(guildId);
+      const produtos = config.vendas?.produtos || [];
+      const precos = config.vendas?.precos || {};
+      const vendasPorProduto = await vendaService.contarVendasPorProduto(guildId).catch(() => ({}));
+
+      // Nomes que só diferem em acento, caixa ou pontuação ("AK-47" x "AK47")
+      // aparecem como produtos separados na calculadora, cada um com seu
+      // preço - é o que fazia o vendedor cobrar o valor antigo sem perceber
+      const quantosComOMesmoNome = new Map();
+      for (const p of produtos) {
+        const chave = normalizarNomeProduto(p.nome);
+        quantosComOMesmoNome.set(chave, (quantosComOMesmoNome.get(chave) || 0) + 1);
+      }
+
+      res.json(
+        produtos.map((p) => ({
+          id: p.id,
+          nome: p.nome,
+          precoPista: precos[p.id]?.preco_pista ?? null,
+          precoParceria: precos[p.id]?.preco_parceria ?? null,
+          atualizadoEm: precos[p.id]?.data_atualizacao || null,
+          duplicado: (quantosComOMesmoNome.get(normalizarNomeProduto(p.nome)) || 0) > 1,
+          vendas: vendasPorProduto[p.id]?.vendas || 0,
+          unidades: vendasPorProduto[p.id]?.unidades || 0,
+          ultimaVenda: vendasPorProduto[p.id]?.ultimaVenda || null,
+        }))
+      );
+    } catch (err) {
+      console.error('Erro ao listar produtos do painel:', err);
+      res.status(500).json({ error: 'Erro ao carregar os produtos.' });
+    }
+  });
+
+  app.post('/api/admin/produtos', requireAuth, requireAdmin, async (req, res) => {
+    const dados = lerDadosProduto(req.body);
+    if (dados.erro) return res.status(400).json({ error: dados.erro });
+
+    try {
+      const config = await serverService.getConfig(guildId);
+      if (!config.vendas) config.vendas = {};
+      if (!config.vendas.produtos) config.vendas.produtos = [];
+      if (!config.vendas.precos) config.vendas.precos = {};
+
+      const igual = nomeJaUsado(config.vendas.produtos, dados.nome, null);
+      if (igual) {
+        return res.status(409).json({
+          error: `Já existe o produto "${igual.nome}" na lista. Edite o preço dele em vez de cadastrar de novo — dois produtos com o mesmo nome fazem o vendedor escolher o errado.`,
+        });
+      }
+
+      const agora = new Date().toISOString();
+      const produto = {
+        id: `${Date.now()}_${crypto.randomBytes(4).toString('hex')}`,
+        nome: dados.nome,
+        data_criacao: agora,
+      };
+      config.vendas.produtos.push(produto);
+      config.vendas.precos[produto.id] = {
+        nome: dados.nome,
+        preco_pista: dados.precoPista,
+        preco_parceria: dados.precoParceria,
+        data_atualizacao: agora,
+      };
+
+      await serverService.saveConfig(guildId, config);
+      registrarLogProduto(req, 'vendas_produto_criado', `criou o produto "${dados.nome}"`);
+      res.json({ success: true, id: produto.id });
+    } catch (err) {
+      console.error('Erro ao criar produto:', err);
+      res.status(500).json({ error: 'Erro ao salvar o produto.' });
+    }
+  });
+
+  app.put('/api/admin/produtos/:id', requireAuth, requireAdmin, async (req, res) => {
+    const dados = lerDadosProduto(req.body);
+    if (dados.erro) return res.status(400).json({ error: dados.erro });
+
+    try {
+      const config = await serverService.getConfig(guildId);
+      const produtos = config.vendas?.produtos || [];
+      const produto = produtos.find((p) => p.id === req.params.id);
+      if (!produto) return res.status(404).json({ error: 'Produto não encontrado — recarregue a página.' });
+
+      const igual = nomeJaUsado(produtos, dados.nome, produto.id);
+      if (igual) {
+        return res.status(409).json({ error: `Já existe outro produto chamado "${igual.nome}".` });
+      }
+
+      if (!config.vendas.precos) config.vendas.precos = {};
+      const anterior = config.vendas.precos[produto.id] || {};
+      const nomeAnterior = produto.nome;
+      const agora = new Date().toISOString();
+
+      produto.nome = dados.nome;
+      config.vendas.precos[produto.id] = {
+        ...anterior,
+        nome: dados.nome,
+        preco_pista: dados.precoPista,
+        preco_parceria: dados.precoParceria,
+        data_atualizacao: agora,
+      };
+
+      await serverService.saveConfig(guildId, config);
+
+      const mudancas = [];
+      if (nomeAnterior !== dados.nome) mudancas.push(`nome "${nomeAnterior}" -> "${dados.nome}"`);
+      if ((anterior.preco_pista ?? null) !== dados.precoPista) mudancas.push(`pista ${anterior.preco_pista ?? '—'} -> ${dados.precoPista ?? '—'}`);
+      if ((anterior.preco_parceria ?? null) !== dados.precoParceria) mudancas.push(`parceria ${anterior.preco_parceria ?? '—'} -> ${dados.precoParceria ?? '—'}`);
+      registrarLogProduto(req, 'vendas_produto_editado', `editou "${dados.nome}" (${mudancas.join('; ') || 'sem mudanças'})`);
+
+      res.json({ success: true });
+    } catch (err) {
+      console.error('Erro ao editar produto:', err);
+      res.status(500).json({ error: 'Erro ao salvar as alterações.' });
+    }
+  });
+
+  app.delete('/api/admin/produtos/:id', requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const config = await serverService.getConfig(guildId);
+      const produtos = config.vendas?.produtos || [];
+      const indice = produtos.findIndex((p) => p.id === req.params.id);
+      if (indice === -1) return res.status(404).json({ error: 'Produto não encontrado — recarregue a página.' });
+
+      const [removido] = produtos.splice(indice, 1);
+      // As vendas já registradas continuam no histórico com o nome e o preço
+      // praticados na época - o relatório de períodos passados não muda
+      if (config.vendas?.precos) delete config.vendas.precos[removido.id];
+
+      await serverService.saveConfig(guildId, config);
+      registrarLogProduto(req, 'vendas_produto_excluido', `excluiu o produto "${removido.nome}"`);
+      res.json({ success: true, nome: removido.nome });
+    } catch (err) {
+      console.error('Erro ao excluir produto:', err);
+      res.status(500).json({ error: 'Erro ao excluir o produto.' });
     }
   });
 

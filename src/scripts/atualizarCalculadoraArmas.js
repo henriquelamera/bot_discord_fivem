@@ -10,6 +10,7 @@
 
 require('dotenv').config();
 const serverService = require('../services/serverService');
+const { normalizarNomeProduto } = require('../utils/precos');
 const pool = require('../db');
 
 const GUILD_ID = process.argv[2] || process.env.CALC_GUILD_ID || process.env.GUILD_ID;
@@ -37,7 +38,10 @@ const ARMAS = [
   if (!config.vendas.produtos) config.vendas.produtos = [];
   if (!config.vendas.precos) config.vendas.precos = {};
 
-  const norm = (s) => String(s).trim().toLowerCase();
+  // Compara ignorando acento, caixa e pontuação: senão "AK-47" não casa com
+  // "AK47" e o script cria um produto novo do lado do antigo, cada um com um
+  // preço - foi assim que a calculadora passou a cobrar valor errado
+  const norm = normalizarNomeProduto;
   const agora = new Date().toISOString();
 
   let criados = 0;

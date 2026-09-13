@@ -1,0 +1,631 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Produtos da Calculadora — RBK</title>
+<style>
+  :root {
+    --bg: #060a14;
+    --card: #0e1526;
+    --card-2: #0b1120;
+    --border: #1d2942;
+    --border-strong: #2a3a5c;
+    --text: #eef1f8;
+    --muted: #8b93a7;
+    --muted-2: #667085;
+    --accent: #3b82f6;
+    --accent-2: #60a5fa;
+    --accent-hover: #2563eb;
+    --success: #22c55e;
+    --danger: #ef4444;
+    --danger-hover: #dc2626;
+    --warn: #f5a524;
+    --warn-bg: rgba(245, 165, 36, 0.1);
+    --warn-border: rgba(245, 165, 36, 0.35);
+    --radius: 14px;
+    --btn-min: 44px;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { max-width: 100%; overflow-x: hidden; }
+
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: var(--bg);
+    background-image:
+      linear-gradient(rgba(59,130,246,0.05) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(59,130,246,0.05) 1px, transparent 1px);
+    background-size: 42px 42px;
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .page { max-width: 1100px; margin: 0 auto; padding: 28px 16px 40px; }
+
+  /* ===== Cabeçalho ===== */
+  .header { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; margin-bottom: 22px; }
+  .header .logo { width: 56px; height: 56px; border-radius: 12px; border: 1px solid var(--border-strong); flex-shrink: 0; }
+  .header h1 { font-size: 26px; margin: 0; font-weight: 800; font-style: italic; letter-spacing: 0.3px; }
+  .header p { margin: 2px 0 0; font-size: 13px; color: var(--muted); }
+  .header-usuario { margin-left: auto; display: flex; align-items: center; gap: 10px; font-size: 12.5px; color: var(--muted); text-align: right; }
+  .header-usuario .nome-usuario { color: var(--text); font-weight: 600; }
+  .header-usuario a {
+    color: var(--muted); text-decoration: none; border: 1px solid var(--border);
+    border-radius: 8px; padding: 6px 10px; white-space: nowrap;
+  }
+  .header-usuario a:hover { border-color: var(--border-strong); color: var(--text); }
+  .header-usuario a.destaque { color: var(--accent-2); border-color: rgba(59,130,246,0.45); background: rgba(59,130,246,0.08); }
+
+  /* ===== Blocos ===== */
+  .bloco {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px;
+    margin-bottom: 18px;
+  }
+  .bloco h2 { font-size: 15px; margin: 0 0 4px; font-weight: 700; }
+  .bloco .sub { margin: 0 0 16px; font-size: 12.5px; color: var(--muted); line-height: 1.5; }
+
+  label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 6px; font-weight: 500; }
+
+  input[type="text"] {
+    width: 100%;
+    min-height: var(--btn-min);
+    background: var(--card-2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 14px;
+    color: var(--text);
+    font-size: 15px;
+    font-family: inherit;
+    transition: border-color 0.15s, box-shadow 0.15s;
+  }
+  input[type="text"]:hover { border-color: var(--border-strong); }
+  input[type="text"]:focus-visible { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(59,130,246,0.25); }
+  input.preco { text-align: right; font-variant-numeric: tabular-nums; }
+
+  .dica-preco { font-size: 11.5px; color: var(--muted-2); margin-top: 5px; min-height: 14px; text-align: right; }
+  .dica-preco.vazio { color: var(--warn); }
+
+  /* ===== Botões ===== */
+  button { font-family: inherit; }
+  .btn {
+    min-height: var(--btn-min);
+    padding: 10px 18px;
+    border-radius: 10px;
+    border: none;
+    background: var(--accent);
+    color: white;
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    transition: background 0.15s, opacity 0.15s;
+  }
+  .btn:hover:not(:disabled) { background: var(--accent-hover); }
+  .btn:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(59,130,246,0.4); }
+  .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+  .btn-fantasma {
+    background: transparent;
+    border: 1px solid var(--border-strong);
+    color: var(--muted);
+    font-weight: 600;
+  }
+  .btn-fantasma:hover:not(:disabled) { background: rgba(255,255,255,0.04); color: var(--text); }
+  .btn-perigo { background: transparent; border: 1px solid rgba(239,68,68,0.45); color: var(--danger); font-weight: 600; }
+  .btn-perigo:hover:not(:disabled) { background: rgba(239,68,68,0.12); }
+  .btn-perigo.solido { background: var(--danger); border-color: var(--danger); color: white; font-weight: 700; }
+  .btn-perigo.solido:hover:not(:disabled) { background: var(--danger-hover); }
+
+  .spinner {
+    width: 15px; height: 15px;
+    border: 2px solid rgba(255,255,255,0.35);
+    border-top-color: white;
+    border-radius: 50%;
+    animation: girar 0.7s linear infinite;
+  }
+  @keyframes girar { to { transform: rotate(360deg); } }
+
+  /* ===== Novo produto ===== */
+  .form-novo { display: grid; grid-template-columns: minmax(0, 1fr) 160px 160px auto; gap: 12px; align-items: start; }
+  .form-novo .acao-novo { align-self: start; padding-top: 24px; }
+
+  /* ===== Lista de produtos ===== */
+  .cabecalho-lista {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 160px 160px 168px;
+    gap: 12px;
+    padding: 0 2px 10px;
+    font-size: 11.5px;
+    color: var(--muted-2);
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    font-weight: 700;
+    border-bottom: 1px solid var(--border);
+  }
+  .cabecalho-lista .col-preco { text-align: right; }
+
+  .produto {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 160px 160px 168px;
+    gap: 12px;
+    align-items: start;
+    padding: 14px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .produto:last-child { border-bottom: none; }
+  .produto .campo label { display: none; }
+  .produto-acoes { display: flex; gap: 8px; padding-top: 0; }
+  .produto-acoes .btn { flex: 1; padding: 10px 12px; font-size: 13px; }
+
+  .produto-meta { grid-column: 1 / -1; font-size: 11.5px; color: var(--muted-2); display: flex; flex-wrap: wrap; gap: 6px 14px; }
+  .produto-meta .marca-aviso { color: var(--warn); }
+  .produto.alterado { background: rgba(59,130,246,0.05); }
+  .produto.alterado input[type="text"] { border-color: rgba(59,130,246,0.5); }
+
+  .vazio { text-align: center; color: var(--muted); font-size: 13.5px; padding: 26px 0; }
+
+  /* ===== Avisos / mensagens ===== */
+  .avisos { display: flex; flex-direction: column; gap: 8px; margin-bottom: 18px; }
+  .aviso {
+    background: var(--warn-bg);
+    border: 1px solid var(--warn-border);
+    color: var(--warn);
+    border-radius: 10px;
+    padding: 11px 14px;
+    font-size: 12.5px;
+    line-height: 1.45;
+  }
+
+  .msg {
+    position: fixed;
+    left: 50%;
+    bottom: 20px;
+    transform: translateX(-50%);
+    max-width: min(560px, calc(100vw - 32px));
+    padding: 12px 18px;
+    border-radius: 10px;
+    font-size: 13px;
+    line-height: 1.4;
+    text-align: center;
+    z-index: 60;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.45);
+  }
+  .msg.ok { background: #0f2a1a; border: 1px solid rgba(34,197,94,0.4); color: var(--success); }
+  .msg.erro { background: #2a1013; border: 1px solid rgba(239,68,68,0.4); color: var(--danger); }
+  .oculto { display: none !important; }
+
+  /* ===== Modal de exclusão ===== */
+  .modal-overlay {
+    position: fixed; inset: 0;
+    background: rgba(3,6,14,0.72);
+    display: flex; align-items: center; justify-content: center;
+    padding: 20px; z-index: 80;
+  }
+  .modal-box {
+    background: var(--card);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius);
+    padding: 24px;
+    max-width: 460px;
+    width: 100%;
+  }
+  .modal-box h2 { margin: 0 0 10px; font-size: 17px; }
+  .modal-box p { margin: 0 0 10px; font-size: 13.5px; color: var(--muted); line-height: 1.5; }
+  .modal-box strong { color: var(--text); }
+  .modal-botoes { display: flex; gap: 10px; margin-top: 18px; }
+  .modal-botoes .btn { flex: 1; }
+
+  .rodape { text-align: center; font-size: 11.5px; color: var(--muted-2); margin-top: 22px; }
+
+  /* ===== Mobile ===== */
+  @media (max-width: 860px) {
+    .page { padding: 20px 16px 28px; }
+    .header .logo { width: 44px; height: 44px; }
+    .header h1 { font-size: 21px; }
+    .cabecalho-lista { display: none; }
+    .form-novo, .produto { grid-template-columns: 1fr 1fr; }
+    .form-novo .campo-nome, .produto .campo-nome { grid-column: 1 / -1; }
+    .form-novo .acao-novo { grid-column: 1 / -1; padding-top: 0; }
+    .form-novo .acao-novo .btn { width: 100%; }
+    .produto-acoes { grid-column: 1 / -1; }
+    .produto .campo label { display: block; }
+    .produto { padding: 16px 0; gap: 10px; }
+  }
+</style>
+</head>
+<body>
+  <div class="page">
+    <header class="header">
+      <img src="/rbk_logo.gif" alt="Logo RBK" class="logo">
+      <div>
+        <h1>Produtos da Calculadora</h1>
+        <p>Cadastro, preços e exclusão dos produtos usados nas vendas</p>
+      </div>
+      <div class="header-usuario">
+        <span>Administrador<br><span class="nome-usuario" id="nomeUsuario">…</span></span>
+        <a href="/" class="destaque">🧮 Calculadora</a>
+        <a href="/logout">Sair</a>
+      </div>
+    </header>
+
+    <div class="avisos" id="avisos"></div>
+
+    <section class="bloco">
+      <h2>Novo produto</h2>
+      <p class="sub">
+        Deixe um preço em branco se o produto não é vendido naquela modalidade — a calculadora bloqueia
+        esse tipo de venda e avisa o vendedor. Use só números: <strong>150000</strong>, <strong>150.000</strong>
+        ou <strong>150.000,00</strong>.
+      </p>
+      <form class="form-novo" id="formNovo">
+        <div class="campo campo-nome">
+          <label for="novoNome">Produto</label>
+          <input type="text" id="novoNome" placeholder="Ex: AK47" autocomplete="off" maxlength="100">
+        </div>
+        <div class="campo">
+          <label for="novoPista">Preço de Pista</label>
+          <input type="text" id="novoPista" class="preco" placeholder="—" inputmode="decimal" autocomplete="off">
+          <div class="dica-preco" id="dicaNovoPista"></div>
+        </div>
+        <div class="campo">
+          <label for="novoParceria">Preço de Parceria</label>
+          <input type="text" id="novoParceria" class="preco" placeholder="—" inputmode="decimal" autocomplete="off">
+          <div class="dica-preco" id="dicaNovoParceria"></div>
+        </div>
+        <div class="acao-novo">
+          <button type="submit" class="btn" id="btnNovo">
+            <span id="spinnerNovo" class="spinner oculto"></span><span>+ Cadastrar</span>
+          </button>
+        </div>
+      </form>
+    </section>
+
+    <section class="bloco">
+      <h2>Produtos cadastrados <span id="contador" style="color:var(--muted-2);font-weight:500"></span></h2>
+      <p class="sub">
+        Edite o nome ou os preços e clique em Salvar na linha. Vendas já registradas guardam o nome e o preço
+        praticados na época — mexer aqui não muda relatório de período passado.
+      </p>
+      <div class="cabecalho-lista">
+        <div>Produto</div>
+        <div class="col-preco">Preço de Pista</div>
+        <div class="col-preco">Preço de Parceria</div>
+        <div></div>
+      </div>
+      <div id="lista"><div class="vazio">Carregando…</div></div>
+    </section>
+
+    <footer class="rodape">Bot RBK · Painel de produtos</footer>
+  </div>
+
+  <div class="modal-overlay oculto" id="modalExcluir" role="dialog" aria-modal="true" aria-labelledby="excluirTitulo">
+    <div class="modal-box">
+      <h2 id="excluirTitulo">Excluir produto</h2>
+      <div id="excluirTexto"></div>
+      <div class="modal-botoes">
+        <button type="button" class="btn btn-fantasma" id="excluirCancelar">Cancelar</button>
+        <button type="button" class="btn btn-perigo solido" id="excluirConfirmar">Excluir</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="msg oculto" id="msg" role="status" aria-live="polite"></div>
+
+<script>
+(function () {
+  const el = (id) => document.getElementById(id);
+  const lista = el('lista');
+  const modalExcluir = el('modalExcluir');
+
+  let produtos = [];
+  let idParaExcluir = null;
+
+  const fmtBRL = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
+  const formatarMoeda = (v) => fmtBRL.format(v);
+
+  const ASPA_DUPLA = String.fromCharCode(34);
+  const ASPA_SIMPLES = String.fromCharCode(39);
+  const MAPA_ESC = { '&': '&amp;', '<': '&lt;', '>': '&gt;' };
+  MAPA_ESC[ASPA_DUPLA] = '&quot;';
+  MAPA_ESC[ASPA_SIMPLES] = '&#39;';
+  const RE_ESC = new RegExp('[&<>' + ASPA_DUPLA + ASPA_SIMPLES + ']', 'g');
+  const esc = (s) => String(s == null ? '' : s).replace(RE_ESC, (c) => MAPA_ESC[c]);
+
+  // Mesmo parser do servidor (utils/precos.js), só pra mostrar na hora quanto
+  // o valor digitado representa. Quem valida de verdade é o servidor.
+  function parsePrecoBR(texto) {
+    const t = String(texto == null ? '' : texto).trim();
+    if (!t) return NaN;
+    let normalizado = t;
+    if (t.indexOf(',') !== -1) {
+      normalizado = t.replace(/\./g, '').replace(',', '.');
+    } else if (t.indexOf('.') !== -1) {
+      const partes = t.split('.');
+      if (partes.length > 1 && partes.slice(1).every((p) => p.length === 3)) normalizado = t.replace(/\./g, '');
+    }
+    if (!/^\d+(\.\d+)?$/.test(normalizado)) return NaN;
+    return parseFloat(normalizado);
+  }
+
+  // Texto de apoio embaixo do campo: confirma o valor entendido, avisa quando
+  // não dá pra entender e quando o produto vai ficar sem aquele preço
+  function atualizarDica(input, alvo) {
+    const bruto = input.value.trim();
+    if (!bruto) {
+      alvo.textContent = 'sem preço — venda bloqueada';
+      alvo.className = 'dica-preco vazio';
+      return;
+    }
+    const valor = parsePrecoBR(bruto);
+    if (!isFinite(valor) || valor <= 0) {
+      alvo.textContent = 'valor inválido';
+      alvo.className = 'dica-preco vazio';
+      return;
+    }
+    alvo.textContent = formatarMoeda(valor);
+    alvo.className = 'dica-preco';
+  }
+
+  let timerMsg = null;
+  function mostrarMsg(texto, tipo) {
+    const msg = el('msg');
+    msg.textContent = texto;
+    msg.className = 'msg ' + (tipo || 'ok');
+    clearTimeout(timerMsg);
+    timerMsg = setTimeout(() => msg.classList.add('oculto'), tipo === 'erro' ? 7000 : 4000);
+  }
+
+  async function api(url, opts) {
+    const res = await fetch(url, opts);
+    if (res.status === 401) { window.location.href = '/login'; throw new Error('Sessão expirada'); }
+    let dados = null;
+    try { dados = await res.json(); } catch (e) { dados = null; }
+    if (!res.ok) throw new Error((dados && dados.error) || 'Não consegui falar com o servidor. Tente de novo.');
+    return dados;
+  }
+
+  function precoParaCampo(v) {
+    if (v == null) return '';
+    // number inteiro sai sem ".00" pra ficar fácil de editar
+    return Number.isInteger(Number(v)) ? String(Number(v)) : String(Number(v)).replace('.', ',');
+  }
+
+  function montarAvisos() {
+    const avisos = [];
+    const duplicados = produtos.filter((p) => p.duplicado);
+    if (duplicados.length > 0) {
+      const nomes = [...new Set(duplicados.map((p) => p.nome))].map(esc).join(', ');
+      avisos.push('⚠️ <strong>Produtos repetidos:</strong> ' + nomes + '. Nomes que só mudam em acento, caixa ou hífen viram produtos diferentes na calculadora, cada um com seu preço — o vendedor pode escolher o errado. Deixe só um e exclua o resto.');
+    }
+    const semPreco = produtos.filter((p) => p.precoPista == null && p.precoParceria == null);
+    if (semPreco.length > 0) {
+      avisos.push('⚠️ <strong>Sem nenhum preço:</strong> ' + semPreco.map((p) => esc(p.nome)).join(', ') + '. Esses produtos aparecem na calculadora mas não deixam registrar venda.');
+    }
+    const soUmPreco = produtos.filter((p) => (p.precoPista == null) !== (p.precoParceria == null));
+    if (soUmPreco.length > 0) {
+      avisos.push('ℹ️ <strong>Só um preço configurado:</strong> ' + soUmPreco.map((p) => esc(p.nome) + ' (falta ' + (p.precoPista == null ? 'pista' : 'parceria') + ')').join(', ') + '.');
+    }
+    el('avisos').innerHTML = avisos.map((a) => '<div class="aviso">' + a + '</div>').join('');
+  }
+
+  function montarLinha(p) {
+    const row = document.createElement('div');
+    row.className = 'produto';
+
+    const campoNome = document.createElement('div');
+    campoNome.className = 'campo campo-nome';
+    campoNome.innerHTML = '<label>Produto</label>';
+    const inpNome = document.createElement('input');
+    inpNome.type = 'text';
+    inpNome.value = p.nome;
+    inpNome.maxLength = 100;
+    inpNome.setAttribute('aria-label', 'Nome do produto');
+    campoNome.appendChild(inpNome);
+
+    function campoPreco(rotulo, valor) {
+      const div = document.createElement('div');
+      div.className = 'campo';
+      div.innerHTML = '<label>' + rotulo + '</label>';
+      const inp = document.createElement('input');
+      inp.type = 'text';
+      inp.className = 'preco';
+      inp.placeholder = '—';
+      inp.inputMode = 'decimal';
+      inp.value = precoParaCampo(valor);
+      inp.setAttribute('aria-label', rotulo + ' de ' + p.nome);
+      const dica = document.createElement('div');
+      dica.className = 'dica-preco';
+      div.append(inp, dica);
+      inp.addEventListener('input', () => { atualizarDica(inp, dica); marcarAlterado(); });
+      atualizarDica(inp, dica);
+      return { div: div, input: inp };
+    }
+
+    const pista = campoPreco('Preço de Pista', p.precoPista);
+    const parceria = campoPreco('Preço de Parceria', p.precoParceria);
+
+    const acoes = document.createElement('div');
+    acoes.className = 'produto-acoes';
+    const btnSalvar = document.createElement('button');
+    btnSalvar.type = 'button';
+    btnSalvar.className = 'btn';
+    btnSalvar.textContent = 'Salvar';
+    btnSalvar.disabled = true;
+    const btnExcluir = document.createElement('button');
+    btnExcluir.type = 'button';
+    btnExcluir.className = 'btn btn-perigo';
+    btnExcluir.textContent = 'Excluir';
+    acoes.append(btnSalvar, btnExcluir);
+
+    const meta = document.createElement('div');
+    meta.className = 'produto-meta';
+    const partes = [];
+    if (p.duplicado) partes.push('<span class="marca-aviso">⚠️ nome repetido</span>');
+    partes.push(p.vendas > 0
+      ? p.vendas + ' venda(s) · ' + p.unidades + ' unidade(s)' + (p.ultimaVenda ? ' · última em ' + esc(p.ultimaVenda) : '')
+      : 'nenhuma venda registrada');
+    if (p.atualizadoEm) {
+      const d = new Date(p.atualizadoEm);
+      if (!isNaN(d.getTime())) partes.push('preço atualizado em ' + d.toLocaleDateString('pt-BR'));
+    }
+    meta.innerHTML = partes.map((t) => '<span>' + t + '</span>').join('');
+
+    function alterado() {
+      return inpNome.value.trim() !== p.nome ||
+        pista.input.value.trim() !== precoParaCampo(p.precoPista) ||
+        parceria.input.value.trim() !== precoParaCampo(p.precoParceria);
+    }
+    function marcarAlterado() {
+      const mudou = alterado();
+      btnSalvar.disabled = !mudou;
+      row.classList.toggle('alterado', mudou);
+    }
+    inpNome.addEventListener('input', marcarAlterado);
+
+    async function salvar() {
+      const nome = inpNome.value.trim();
+      if (!nome) { mostrarMsg('Informe o nome do produto.', 'erro'); inpNome.focus(); return; }
+      btnSalvar.disabled = true;
+      btnSalvar.textContent = 'Salvando…';
+      try {
+        await api('/api/admin/produtos/' + encodeURIComponent(p.id), {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ nome: nome, precoPista: pista.input.value, precoParceria: parceria.input.value }),
+        });
+        mostrarMsg('✅ ' + nome + ' atualizado.', 'ok');
+        await carregar();
+      } catch (err) {
+        mostrarMsg('❌ ' + err.message, 'erro');
+        btnSalvar.disabled = false;
+        btnSalvar.textContent = 'Salvar';
+      }
+    }
+
+    btnSalvar.addEventListener('click', salvar);
+    btnExcluir.addEventListener('click', () => abrirExclusao(p));
+    [inpNome, pista.input, parceria.input].forEach((i) => {
+      i.addEventListener('keydown', (e) => { if (e.key === 'Enter' && alterado()) { e.preventDefault(); salvar(); } });
+    });
+
+    row.append(campoNome, pista.div, parceria.div, acoes, meta);
+    return row;
+  }
+
+  function renderizar() {
+    montarAvisos();
+    el('contador').textContent = produtos.length ? '(' + produtos.length + ')' : '';
+    lista.innerHTML = '';
+    if (produtos.length === 0) {
+      lista.innerHTML = '<div class="vazio">Nenhum produto cadastrado ainda. Cadastre o primeiro no formulário acima.</div>';
+      return;
+    }
+    produtos.forEach((p) => lista.appendChild(montarLinha(p)));
+  }
+
+  async function carregar() {
+    try {
+      produtos = await api('/api/admin/produtos');
+      renderizar();
+    } catch (err) {
+      if (err.message === 'Sessão expirada') return;
+      lista.innerHTML = '<div class="vazio">❌ ' + esc(err.message) + '</div>';
+    }
+  }
+
+  // ===== Novo produto =====
+  el('novoPista').addEventListener('input', () => atualizarDica(el('novoPista'), el('dicaNovoPista')));
+  el('novoParceria').addEventListener('input', () => atualizarDica(el('novoParceria'), el('dicaNovoParceria')));
+  atualizarDica(el('novoPista'), el('dicaNovoPista'));
+  atualizarDica(el('novoParceria'), el('dicaNovoParceria'));
+
+  el('formNovo').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const nome = el('novoNome').value.trim();
+    if (!nome) { mostrarMsg('Informe o nome do produto.', 'erro'); el('novoNome').focus(); return; }
+
+    el('btnNovo').disabled = true;
+    el('spinnerNovo').classList.remove('oculto');
+    try {
+      await api('/api/admin/produtos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nome: nome, precoPista: el('novoPista').value, precoParceria: el('novoParceria').value }),
+      });
+      mostrarMsg('✅ ' + nome + ' cadastrado.', 'ok');
+      el('novoNome').value = '';
+      el('novoPista').value = '';
+      el('novoParceria').value = '';
+      atualizarDica(el('novoPista'), el('dicaNovoPista'));
+      atualizarDica(el('novoParceria'), el('dicaNovoParceria'));
+      el('novoNome').focus();
+      await carregar();
+    } catch (err) {
+      mostrarMsg('❌ ' + err.message, 'erro');
+    } finally {
+      el('btnNovo').disabled = false;
+      el('spinnerNovo').classList.add('oculto');
+    }
+  });
+
+  // ===== Exclusão =====
+  function abrirExclusao(p) {
+    idParaExcluir = p.id;
+    const historico = p.vendas > 0
+      ? '<p>Esse produto tem <strong>' + p.vendas + ' venda(s)</strong> registrada(s)' +
+        (p.ultimaVenda ? ' (a última em ' + esc(p.ultimaVenda) + ')' : '') +
+        '. O histórico <strong>não</strong> é apagado: os relatórios continuam mostrando essas vendas com o nome e o preço da época.</p>'
+      : '<p>Esse produto nunca foi vendido.</p>';
+    el('excluirTexto').innerHTML =
+      '<p>Tirar <strong>' + esc(p.nome) + '</strong> da calculadora? Ele some da lista de produtos para os vendedores.</p>' +
+      historico;
+    modalExcluir.classList.remove('oculto');
+    el('excluirCancelar').focus();
+  }
+  function fecharExclusao() { modalExcluir.classList.add('oculto'); idParaExcluir = null; }
+
+  el('excluirCancelar').addEventListener('click', fecharExclusao);
+  modalExcluir.addEventListener('click', (e) => { if (e.target === modalExcluir) fecharExclusao(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !modalExcluir.classList.contains('oculto')) fecharExclusao(); });
+
+  el('excluirConfirmar').addEventListener('click', async () => {
+    if (!idParaExcluir) return;
+    const id = idParaExcluir;
+    el('excluirConfirmar').disabled = true;
+    el('excluirConfirmar').textContent = 'Excluindo…';
+    try {
+      const r = await api('/api/admin/produtos/' + encodeURIComponent(id), { method: 'DELETE' });
+      mostrarMsg('🗑️ ' + (r && r.nome ? r.nome : 'Produto') + ' excluído.', 'ok');
+      fecharExclusao();
+      await carregar();
+    } catch (err) {
+      mostrarMsg('❌ ' + err.message, 'erro');
+    } finally {
+      el('excluirConfirmar').disabled = false;
+      el('excluirConfirmar').textContent = 'Excluir';
+    }
+  });
+
+  // Avisa antes de sair com edição de preço pela metade
+  window.addEventListener('beforeunload', (e) => {
+    if (document.querySelector('.produto.alterado')) { e.preventDefault(); e.returnValue = ''; }
+  });
+
+  fetch('/api/vendas/me')
+    .then((r) => r.json())
+    .then((u) => { el('nomeUsuario').textContent = (u && u.nome) || '—'; })
+    .catch(() => { el('nomeUsuario').textContent = '—'; });
+
+  carregar();
+})();
+</script>
+</body>
+</html>

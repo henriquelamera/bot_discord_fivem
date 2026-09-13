@@ -99,6 +99,8 @@
     white-space: nowrap;
   }
   .header-usuario a:hover { border-color: var(--border-strong); color: var(--text); }
+  /* atalho pro painel de produtos - só aparece pra administrador */
+  .header-usuario a.link-admin { color: var(--accent-2); border-color: rgba(59,130,246,0.45); background: rgba(59,130,246,0.08); }
 
   /* ===== Card principal (grid responsivo) ===== */
   .card-main {
@@ -385,6 +387,18 @@
   }
   .msg-final.ok { background: rgba(34,197,94,0.1); border: 1px solid rgba(34,197,94,0.3); color: var(--success); }
   .msg-final.erro { background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.3); color: var(--danger); }
+  .msg-final.aviso { background: var(--warn-bg); border: 1px solid var(--warn-border); color: var(--warn); }
+  .msg-final strong { font-weight: 700; }
+
+  /* Diz o que falta pra venda poder ser registrada - antes o botão só ficava
+     cinza, sem explicar, e no celular ele fica fixo longe da linha do erro */
+  .dica-venda {
+    margin-bottom: 10px;
+    text-align: center;
+    font-size: 12.5px;
+    color: var(--warn);
+    line-height: 1.4;
+  }
 
   .rodape { text-align: center; font-size: 11.5px; color: var(--muted-2); margin-top: 22px; }
 
@@ -470,6 +484,12 @@
   .item-preco { grid-column: 1 / -1; font-size: 12px; color: var(--muted-2); margin-top: -4px; min-height: 14px; }
   .item-preco strong { color: var(--accent-2); font-weight: 600; }
   .item-preco .item-aviso { color: var(--warn); }
+  /* linha apontada como o motivo de a venda não poder ser registrada */
+  .item-row.item-invalido select,
+  .item-row.item-invalido input[type="number"] {
+    border-color: var(--warn);
+    box-shadow: 0 0 0 3px rgba(245,165,36,0.18);
+  }
   .btn-add-item {
     margin-top: 10px;
     min-height: 40px;
@@ -620,8 +640,9 @@
 
     .card-main { padding: 18px; padding-bottom: 8px; }
 
-    /* espaço reservado pro botão fixo não cobrir conteúdo */
-    .area-botao-espaco { height: calc(64px + env(safe-area-inset-bottom, 0px)); }
+    /* espaço reservado pro botão fixo não cobrir conteúdo (cabe a linha que
+       explica o que falta pra registrar a venda) */
+    .area-botao-espaco { height: calc(100px + env(safe-area-inset-bottom, 0px)); }
 
     .area-botao {
       position: fixed;
@@ -647,6 +668,7 @@
       <div class="header-usuario">
         <span>Registrando como<br><span class="nome-usuario" id="nomeUsuarioHeader">…</span></span>
         <button type="button" class="btn-relatorio" id="btnAbrirRelatorio">📊 Relatório</button>
+        <a href="/admin" class="link-admin oculto" id="linkAdmin">⚙️ Produtos</a>
         <a href="/logout">Sair</a>
       </div>
     </header>
@@ -710,6 +732,7 @@
       </aside>
 
       <div class="area-botao">
+        <div class="dica-venda oculto" id="dicaVenda" aria-live="polite"></div>
         <button type="submit" class="btn-registrar" id="btnRegistrar">
           <span id="btnRegistrarSpinner" class="spinner oculto"></span>
           <span id="btnRegistrarTexto">Registrar venda</span>
@@ -758,6 +781,7 @@
 <script>
 (function () {
   let produtos = [];
+  let produtosCarregados = false;
   let faccoesParceria = []; // [{id, nome}]
   let tipoSelecionado = 'pista';
   let usuarioAtual = null; // {id, nome}
@@ -782,7 +806,9 @@
   const btnRegistrarTexto = el('btnRegistrarTexto');
   const btnRegistrarSpinner = el('btnRegistrarSpinner');
   const msgFinal = el('msgFinal');
+  const dicaVenda = el('dicaVenda');
   const modal = el('modalConfirmacao');
+  let enviando = false;
 
   // ===== Itens da venda (vários produtos) =====
   let itens = [{ produtoId: null, quantidade: 1 }];
@@ -817,6 +843,46 @@
       out.push({ produto: p, quantidade: q, preco: preco, subtotal: preco * q });
     }
     return out.length ? out : null;
+  }
+
+  // Descreve, em português, o que falta pra venda poder ser registrada -
+  // {msg, indice} da primeira linha com problema, ou null se está tudo certo.
+  // O botão continua clicável: quem clica recebe o motivo, em vez de um botão
+  // cinza que "não funciona".
+  function pendenciaVenda() {
+    if (!produtosCarregados) return { msg: 'Carregando os produtos…', indice: 0 };
+    if (!produtos.length) {
+      return { msg: 'Nenhum produto cadastrado na calculadora. Fale com um administrador.', indice: 0 };
+    }
+    if (!itens.some((it) => produtoPorId(it.produtoId))) {
+      return { msg: 'Selecione um produto pra registrar a venda.', indice: 0 };
+    }
+    for (let i = 0; i < itens.length; i++) {
+      const it = itens[i];
+      const p = produtoPorId(it.produtoId);
+      const rotulo = 'Produto ' + (i + 1);
+      if (!p) return { msg: rotulo + ': escolha o produto ou remova a linha no ×.', indice: i };
+      if (!qtdOk(Number(it.quantidade))) {
+        return { msg: rotulo + ' (' + p.nome + '): informe uma quantidade de 1 pra cima.', indice: i };
+      }
+      if (!precoDe(p)) {
+        const tipoTxt = tipoSelecionado === 'pista' ? 'pista' : 'parceria';
+        return { msg: p.nome + ' não tem preço de ' + tipoTxt + ' configurado — peça pra um admin configurar no painel, ou troque o tipo de venda.', indice: i };
+      }
+    }
+    return null;
+  }
+
+  // Aponta visualmente a linha que está travando a venda
+  function destacarItem(indice) {
+    const linhas = listaItens.querySelectorAll('.item-row');
+    linhas.forEach((r) => r.classList.remove('item-invalido'));
+    const alvo = linhas[indice];
+    if (!alvo) return;
+    alvo.classList.add('item-invalido');
+    alvo.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    const foco = alvo.querySelector('select');
+    if (foco) foco.focus({ preventScroll: true });
   }
 
   function botaoQtd(txt, fn) {
@@ -906,12 +972,15 @@
     usuarioAtual = await res.json();
     vendedorNome.textContent = usuarioAtual.nome;
     nomeUsuarioHeader.textContent = usuarioAtual.nome;
+    if (usuarioAtual.admin) el('linkAdmin').classList.remove('oculto');
     atualizarResumo();
   }
 
   async function carregarProdutos() {
     const res = await fetchAutenticado('/api/vendas/produtos');
+    if (!res.ok) throw new Error('Falha ao carregar produtos');
     produtos = await res.json();
+    produtosCarregados = true;
     renderizarItens();
     atualizarResumo();
   }
@@ -998,10 +1067,19 @@
     resItens.innerHTML = linhas.length ? linhas.join('') : '<div class="resumo-itens-vazio">Nenhum produto selecionado</div>';
     el('resValorTotal').textContent = formatarMoeda(total);
 
-    btnRegistrar.disabled = !itensValidos();
+    // O botão só fica bloqueado enquanto a venda está sendo enviada. Faltando
+    // alguma coisa, mostramos o motivo em vez de desabilitar sem explicação.
+    const pendencia = pendenciaVenda();
+    dicaVenda.textContent = pendencia ? pendencia.msg : '';
+    dicaVenda.classList.toggle('oculto', !pendencia);
+    if (!pendencia) {
+      listaItens.querySelectorAll('.item-row.item-invalido').forEach((r) => r.classList.remove('item-invalido'));
+    }
+    btnRegistrar.disabled = enviando;
   }
 
   function definirCarregando(carregando) {
+    enviando = carregando;
     btnRegistrar.disabled = carregando;
     btnRegistrarSpinner.classList.toggle('oculto', !carregando);
     btnRegistrarTexto.textContent = carregando ? 'Registrando…' : 'Registrar venda';
@@ -1009,13 +1087,24 @@
 
   async function enviarVenda() {
     const lista = itensValidos();
-    if (!lista) return;
+    if (!lista) {
+      const pendencia = pendenciaVenda();
+      if (pendencia) {
+        msgFinal.className = 'msg-final erro';
+        msgFinal.textContent = '❌ ' + pendencia.msg;
+        msgFinal.classList.remove('oculto');
+        destacarItem(pendencia.indice);
+      }
+      return;
+    }
 
     msgFinal.classList.add('oculto');
     definirCarregando(true);
 
     const payload = {
-      itens: lista.map((i) => ({ produtoId: i.produto.id, quantidade: i.quantidade })),
+      // precoUnitario vai junto só pro servidor conferir se a tela ainda está
+      // com o preço atual - quem manda no valor gravado é sempre o servidor
+      itens: lista.map((i) => ({ produtoId: i.produto.id, quantidade: i.quantidade, precoUnitario: i.preco })),
       tipo: tipoSelecionado,
       parceriaId: tipoSelecionado === 'parceria' ? (faccaoSelect.value || null) : null,
       faccaoNome: tipoSelecionado === 'pista' ? faccaoPistaInput.value.trim() : undefined,
@@ -1029,7 +1118,18 @@
       });
       const data = await res.json();
 
-      if (!res.ok) {
+      if (res.status === 409 && Array.isArray(data.precosDesatualizados)) {
+        // Preço mudou com a página aberta: nada foi gravado. Recarrega a
+        // tabela de preços, mostra o que mudou e deixa o vendedor conferir
+        // o novo total antes de registrar de novo.
+        await carregarProdutos().catch(() => {});
+        const mudancas = data.precosDesatualizados
+          .map((p) => '• ' + esc(p.produtoNome) + ': ' + formatarMoeda(p.precoMostrado) + ' → <strong>' + formatarMoeda(p.precoAtual) + '</strong>')
+          .join('<br>');
+        msgFinal.className = 'msg-final aviso';
+        msgFinal.innerHTML = '⚠️ Os preços mudaram depois que você abriu a calculadora. <strong>A venda não foi registrada.</strong><br>' +
+          mudancas + '<br>Novo total: <strong>' + formatarMoeda(data.valorTotal) + '</strong>. Confira e toque em Registrar venda de novo.';
+      } else if (!res.ok) {
         msgFinal.className = 'msg-final erro';
         msgFinal.textContent = '❌ ' + (data.error || 'Erro ao registrar venda. Tente novamente.');
       } else {
@@ -1061,7 +1161,16 @@
 
   el('formVenda').addEventListener('submit', (e) => {
     e.preventDefault();
-    if (btnRegistrar.disabled) return;
+    if (enviando) return;
+
+    const pendencia = pendenciaVenda();
+    if (pendencia) {
+      msgFinal.className = 'msg-final erro';
+      msgFinal.textContent = '❌ ' + pendencia.msg;
+      msgFinal.classList.remove('oculto');
+      destacarItem(pendencia.indice);
+      return;
+    }
 
     if (tipoSelecionado === 'parceria' && !faccaoSelect.value) {
       abrirModal();
@@ -1231,9 +1340,20 @@
     window.location.href = '/api/vendas/relatorio.csv?inicio=' + relPeriodoGerado.inicio + '&fim=' + relPeriodoGerado.fim;
   });
 
-  carregarUsuario();
-  carregarProdutos();
-  carregarFaccoes();
+  // Falha no carregamento não pode deixar a página muda: sem os produtos o
+  // vendedor ficaria com a lista vazia sem entender o porquê
+  function erroDeCarregamento(oQue) {
+    return (err) => {
+      if (err && err.message === 'Sessão expirada') return;
+      msgFinal.className = 'msg-final erro';
+      msgFinal.textContent = '❌ Não consegui carregar ' + oQue + '. Recarregue a página; se continuar, avise um administrador.';
+      msgFinal.classList.remove('oculto');
+    };
+  }
+
+  carregarUsuario().catch(erroDeCarregamento('seu usuário'));
+  carregarProdutos().catch(erroDeCarregamento('os produtos'));
+  carregarFaccoes().catch(erroDeCarregamento('as parcerias'));
   atualizarResumo();
 })();
 </script>

@@ -9,6 +9,7 @@ const { marcarAguardandoImagem, desmarcarAguardandoImagem, salvarItensParciais, 
 const { salvarRecrutador, pegarRecrutador, limparRecrutador } = require('../utils/registroTracker');
 const { salvarProdutoParceria, pegarProdutoParceria, limparProdutoParceria } = require('../utils/parceriaTracker');
 const { formatarMoeda, calcularPagamentosPorMembro } = require('../utils/farmPagamentos');
+const { parsePrecoBR } = require('../utils/precos');
 const { postarFechamentoSemanal, removerEntregaDosFechamentosPendentes, limparCardsFechamento } = require('../utils/fechamentoSemanal');
 
 // Carregar todos os handlers registrados
@@ -80,36 +81,8 @@ function parseQuantidade(texto) {
   return parseInt(t.replace(/[.,\s]/g, ''), 10);
 }
 
-// Converte texto de preço digitado pelo usuário pra número, no padrão
-// brasileiro (ponto = separador de milhar, vírgula = decimal). "74.000"
-// vira 74000, não 74 - o parseFloat puro (JS/EUA) entende ponto como
-// decimal e cortaria pra 74.00, exatamente o bug que gerou essa função.
-function parsePrecoBR(texto) {
-  const t = String(texto ?? '').trim();
-  if (!t) return NaN;
-
-  const temVirgula = t.includes(',');
-  const temPonto = t.includes('.');
-
-  if (temVirgula) {
-    // Vírgula presente = é o separador decimal; qualquer ponto antes dela
-    // é separador de milhar ("74.000,50" -> "74000.50")
-    return parseFloat(t.replace(/\./g, '').replace(',', '.'));
-  }
-
-  if (temPonto) {
-    // Só ponto, sem vírgula: ambíguo. Se todo grupo depois de um ponto tem
-    // exatamente 3 dígitos, é separador de milhar ("74.000" -> 74000,
-    // "1.234.567" -> 1234567). Senão, é decimal normal ("74.50" -> 74.5).
-    const partes = t.split('.');
-    const pareceMilhar = partes.length > 1 && partes.slice(1).every((p) => p.length === 3);
-    if (pareceMilhar) {
-      return parseFloat(t.replace(/\./g, ''));
-    }
-  }
-
-  return parseFloat(t);
-}
+// parsePrecoBR vive em utils/precos.js - o painel web de produtos usa o
+// mesmo parser, então ele não pode ter duas versões
 
 // Monta o texto "Nome: quantidade" por item, um por linha
 function formatarTotaisPorItem(totais) {
@@ -365,7 +338,7 @@ function construirModalPrecoVenda(config, pagina, tipo) {
       .setCustomId(`preco_${produto.id}`)
       .setLabel(truncarLabel(`${produto.nome} (R$ por unidade)`))
       .setStyle(TextInputStyle.Short)
-      .setPlaceholder('Ex: 150.00')
+      .setPlaceholder('Ex: 150000 ou 150.000 (sem R$)')
       .setRequired(false);
 
     if (valorAtual) valorInput.setValue(valorAtual.toString());
@@ -1633,6 +1606,7 @@ module.exports = {
         const produtosPagina = produtos.slice(inicio, inicio + ITENS_POR_MODAL_META);
 
         const precosAtualizados = [];
+        const precosRejeitados = [];
         for (const produto of produtosPagina) {
           const valorStr = interaction.fields.getTextInputValue(`preco_${produto.id}`);
           if (valorStr && valorStr.trim()) {
@@ -1643,15 +1617,22 @@ module.exports = {
               config.vendas.precos[produto.id].preco_pista = valor;
               config.vendas.precos[produto.id].data_atualizacao = new Date().toISOString();
               precosAtualizados.push(`${produto.nome}: ${formatarMoeda(valor)}`);
+            } else {
+              // Antes o valor era descartado calado e o preço velho continuava
+              // valendo na calculadora - quem configurou nem ficava sabendo
+              precosRejeitados.push(`${produto.nome}: "${valorStr.trim()}"`);
             }
           }
         }
 
         await serverService.saveConfig(interaction.guild.id, config);
 
-        const resposta = precosAtualizados.length > 0
+        let resposta = precosAtualizados.length > 0
           ? `✅ Preço de Pista atualizado:\n${precosAtualizados.map(p => `- ${p}`).join('\n')}`
           : '⚠️ Nenhum preço foi definido nessa página (campos vazios).';
+        if (precosRejeitados.length > 0) {
+          resposta += `\n\n❌ **Não entendi esses valores — o preço anterior continua valendo:**\n${precosRejeitados.map(p => `- ${p}`).join('\n')}\nUse só números, ex: \`150000\`, \`150.000\` ou \`150.000,00\` (sem "R$" e sem "k").`;
+        }
 
         if (pagina < totalPaginas) {
           const { ButtonBuilder, ButtonStyle } = require('discord.js');
@@ -1686,6 +1667,7 @@ module.exports = {
         const produtosPagina = produtos.slice(inicio, inicio + ITENS_POR_MODAL_META);
 
         const precosAtualizados = [];
+        const precosRejeitados = [];
         for (const produto of produtosPagina) {
           const valorStr = interaction.fields.getTextInputValue(`preco_${produto.id}`);
           if (valorStr && valorStr.trim()) {
@@ -1696,15 +1678,20 @@ module.exports = {
               config.vendas.precos[produto.id].preco_parceria = valor;
               config.vendas.precos[produto.id].data_atualizacao = new Date().toISOString();
               precosAtualizados.push(`${produto.nome}: ${formatarMoeda(valor)}`);
+            } else {
+              precosRejeitados.push(`${produto.nome}: "${valorStr.trim()}"`);
             }
           }
         }
 
         await serverService.saveConfig(interaction.guild.id, config);
 
-        const resposta = precosAtualizados.length > 0
+        let resposta = precosAtualizados.length > 0
           ? `✅ Preço de Parceria atualizado:\n${precosAtualizados.map(p => `- ${p}`).join('\n')}`
           : '⚠️ Nenhum preço foi definido nessa página (campos vazios).';
+        if (precosRejeitados.length > 0) {
+          resposta += `\n\n❌ **Não entendi esses valores — o preço anterior continua valendo:**\n${precosRejeitados.map(p => `- ${p}`).join('\n')}\nUse só números, ex: \`150000\`, \`150.000\` ou \`150.000,00\` (sem "R$" e sem "k").`;
+        }
 
         if (pagina < totalPaginas) {
           const { ButtonBuilder, ButtonStyle } = require('discord.js');
@@ -2735,8 +2722,15 @@ module.exports = {
 
         const row = new ActionRowBuilder().addComponents(selectMenu);
 
+        // O painel web faz tudo isso numa tela só (e é o único lugar onde dá
+        // pra renomear e excluir produto) - as opções abaixo continuam aqui
+        // pra quem preferir resolver sem sair do Discord
+        const urlPainel = process.env.RAILWAY_PUBLIC_DOMAIN
+          ? `\n\n⚙️ Cadastrar, editar preço e excluir produto numa tela só: https://${process.env.RAILWAY_PUBLIC_DOMAIN}/admin`
+          : '';
+
         await interaction.reply({
-          content: '**🧮 Vendas**\n\nSelecione a opção:',
+          content: `**🧮 Vendas**\n\nSelecione a opção:${urlPainel}`,
           components: [row],
           ephemeral: true,
         });
