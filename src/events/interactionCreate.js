@@ -5,7 +5,7 @@ const deliveryService = require('../services/deliveryService');
 const advService = require('../services/advService');
 const parceriaService = require('../services/parceriaService');
 const { dispatchButton, dispatchSelectMenu, dispatchModal } = require('../utils/handlerRegistry');
-const { marcarAguardandoImagem, desmarcarAguardandoImagem, salvarItensParciais, pegarItensParciais, limparItensParciais } = require('../utils/entregaMetaTracker');
+const { marcarAguardandoImagem, desmarcarAguardandoImagem, estaAguardandoImagem, salvarItensParciais, pegarItensParciais, limparItensParciais } = require('../utils/entregaMetaTracker');
 const { salvarRecrutador, pegarRecrutador, limparRecrutador } = require('../utils/registroTracker');
 const { salvarProdutoParceria, pegarProdutoParceria, limparProdutoParceria } = require('../utils/parceriaTracker');
 const { formatarMoeda, calcularPagamentosPorMembro } = require('../utils/farmPagamentos');
@@ -1111,12 +1111,30 @@ module.exports = {
           ? `\n\n⚠️ **Atenção:** o limite semanal é de **${limiteSemanal}** unidades pagas por item. Sua entrega será registrada, mas o excedente **não será pago**:\n${avisosLimite.join('\n')}`
           : '';
 
-        await interaction.reply({
-          content: `📸 Agora envie **uma imagem** aqui no canal com o print de comprovação (você tem 5 minutos). Formatos aceitos: PNG, JPG, JPEG, GIF, WEBP.${avisoLimiteTexto}`,
-          ephemeral: true,
-        });
-
+        // Segunda trava (a do botão é a primeira): entre abrir o formulário
+        // e enviá-lo pode ter começado outro fluxo no mesmo canal. Marca ANTES
+        // de qualquer await - com a marcação depois do reply, dois envios
+        // quase simultâneos passavam os dois pela checagem.
+        if (estaAguardandoImagem(interaction.channel.id)) {
+          return await interaction.reply({
+            content: '⚠️ Já tem uma entrega sua esperando a foto neste canal. Envie o print dela (ou espere os 5 minutos acabarem) antes de registrar outra.',
+            ephemeral: true,
+          });
+        }
         marcarAguardandoImagem(interaction.channel.id);
+
+        try {
+          await interaction.reply({
+            content: `📸 Agora envie **uma imagem** aqui no canal com o print de comprovação (você tem 5 minutos). Formatos aceitos: PNG, JPG, JPEG, GIF, WEBP.${avisoLimiteTexto}`,
+            ephemeral: true,
+          });
+        } catch (err) {
+          // Sem isso o canal ficaria marcado pra sempre e ninguém mais
+          // conseguiria entregar nele
+          desmarcarAguardandoImagem(interaction.channel.id);
+          throw err;
+        }
+
         try {
           const coletadas = await interaction.channel.awaitMessages({
             filter: (msg) =>
@@ -1150,6 +1168,26 @@ module.exports = {
             await memberService.saveMember(guildId, interaction.user.id, nomeInGameFallback, idFallback, nomeFormatadoAtual || interaction.member.displayName);
             await memberService.approveMember(guildId, interaction.user.id);
           }
+
+          // Recalcula o teto semanal AGORA, na hora de gravar. Ele foi
+          // calculado lá no envio do formulário, e entre uma coisa e outra
+          // podem ter entrado outras entregas da mesma pessoa: duas calculadas
+          // em cima do mesmo saldo pagavam o dobro do que ainda restava.
+          const jaEntregueAoGravar = await deliveryService.getQuantidadeEntregueSemanaAtual(guildId, interaction.user.id);
+          const avisosLimiteFinal = [];
+          for (const dados of Object.values(itensEntregues)) {
+            const jaEntregue = jaEntregueAoGravar[dados.nome] || 0;
+            const restantePagavel = Math.max(limiteSemanal - jaEntregue, 0);
+            dados.quantidade_pagavel = Math.min(dados.quantidade, restantePagavel);
+            if (dados.quantidade > restantePagavel) {
+              avisosLimiteFinal.push(
+                `- **${dados.nome}:** entregou **${dados.quantidade}**, mas com ${jaEntregue} já entregues essa semana só **${dados.quantidade_pagavel}** serão pagas.`
+              );
+            }
+          }
+          const avisoLimiteFinalTexto = avisosLimiteFinal.length > 0
+            ? `\n\n⚠️ **Atenção:** o limite semanal é de **${limiteSemanal}** unidades pagas por item. Sua entrega foi registrada, mas o excedente **não será pago**:\n${avisosLimiteFinal.join('\n')}`
+            : '';
 
           // Coletar dados da entrega
           const entrega = {
@@ -1259,7 +1297,7 @@ module.exports = {
           }
 
           await interaction.followUp({
-            content: `✅ Entrega registrada! Aguardando aprovação dos responsáveis.${avisoLimiteTexto}`,
+            content: `✅ Entrega registrada! Aguardando aprovação dos responsáveis.${avisoLimiteFinalTexto}`,
             ephemeral: true,
           });
         } catch (err) {
@@ -6756,6 +6794,17 @@ module.exports = {
         if (itens.length === 0) {
           return await interaction.reply({
             content: '❌ Nenhum item de farm foi cadastrado ainda.',
+            ephemeral: true,
+          });
+        }
+
+        // Já tem uma entrega esperando a foto neste canal: abrir outro
+        // formulário deixaria dois coletores de imagem ativos no mesmo canal,
+        // e uma única foto fecharia os dois - foi assim que um print virou
+        // duas entregas e furou o teto semanal (#232/#233 de 10/09/2026).
+        if (estaAguardandoImagem(interaction.channel.id)) {
+          return await interaction.reply({
+            content: '⚠️ Já tem uma entrega sua esperando a foto neste canal. Envie o print dela (ou espere os 5 minutos acabarem) antes de começar outra.',
             ephemeral: true,
           });
         }
