@@ -134,13 +134,13 @@
   @keyframes girar { to { transform: rotate(360deg); } }
 
   /* ===== Novo produto ===== */
-  .form-novo { display: grid; grid-template-columns: minmax(0, 1fr) 160px 160px auto; gap: 12px; align-items: start; }
+  .form-novo { display: grid; grid-template-columns: minmax(0, 1fr) 140px 140px 120px auto; gap: 12px; align-items: start; }
   .form-novo .acao-novo { align-self: start; padding-top: 24px; }
 
   /* ===== Lista de produtos ===== */
   .cabecalho-lista {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 160px 160px 168px;
+    grid-template-columns: minmax(0, 1fr) 140px 140px 120px 168px;
     gap: 12px;
     padding: 0 2px 10px;
     font-size: 11.5px;
@@ -154,7 +154,7 @@
 
   .produto {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 160px 160px 168px;
+    grid-template-columns: minmax(0, 1fr) 140px 140px 120px 168px;
     gap: 12px;
     align-items: start;
     padding: 14px 0;
@@ -264,6 +264,10 @@
         Deixe um preço em branco se o produto não é vendido naquela modalidade — a calculadora bloqueia
         esse tipo de venda e avisa o vendedor. Use só números: <strong>150000</strong>, <strong>150.000</strong>
         ou <strong>150.000,00</strong>.
+        <br>
+        <strong>Un. por caixa</strong> só pra produto vendido em caixa fechada (munição, por exemplo: <strong>250</strong>).
+        Preenchido, o vendedor ganha um botão <strong>Caixa</strong> na calculadora e digita quantas caixas em vez de
+        contar unidade por unidade. O preço continua sendo <strong>por unidade</strong> — a caixa é só um atalho.
       </p>
       <form class="form-novo" id="formNovo">
         <div class="campo campo-nome">
@@ -279,6 +283,11 @@
           <label for="novoParceria">Preço de Parceria</label>
           <input type="text" id="novoParceria" class="preco" placeholder="—" inputmode="decimal" autocomplete="off">
           <div class="dica-preco" id="dicaNovoParceria"></div>
+        </div>
+        <div class="campo">
+          <label for="novoCaixa">Un. por caixa</label>
+          <input type="text" id="novoCaixa" class="preco" placeholder="—" inputmode="numeric" autocomplete="off">
+          <div class="dica-preco" id="dicaNovoCaixa"></div>
         </div>
         <div class="acao-novo">
           <button type="submit" class="btn" id="btnNovo">
@@ -298,6 +307,7 @@
         <div>Produto</div>
         <div class="col-preco">Preço de Pista</div>
         <div class="col-preco">Preço de Parceria</div>
+        <div class="col-preco">Un. por caixa</div>
         <div></div>
       </div>
       <div id="lista"><div class="vazio">Carregando…</div></div>
@@ -374,6 +384,25 @@
     alvo.className = 'dica-preco';
   }
 
+  // Mesma ideia da dica de preço, mas pro tamanho da caixa: confirma na hora
+  // o que o vendedor vai ver na calculadora
+  function atualizarDicaCaixa(input, alvo) {
+    const bruto = input.value.trim();
+    if (!bruto) {
+      alvo.textContent = 'só por unidade';
+      alvo.className = 'dica-preco';
+      return;
+    }
+    const valor = parsePrecoBR(bruto);
+    if (!Number.isInteger(valor) || valor < 2) {
+      alvo.textContent = 'use inteiro ≥ 2';
+      alvo.className = 'dica-preco vazio';
+      return;
+    }
+    alvo.textContent = 'caixa de ' + valor.toLocaleString('pt-BR');
+    alvo.className = 'dica-preco';
+  }
+
   let timerMsg = null;
   function mostrarMsg(texto, tipo) {
     const msg = el('msg');
@@ -430,7 +459,7 @@
     inpNome.setAttribute('aria-label', 'Nome do produto');
     campoNome.appendChild(inpNome);
 
-    function campoPreco(rotulo, valor) {
+    function campoNumerico(rotulo, valor, tipoDica) {
       const div = document.createElement('div');
       div.className = 'campo';
       div.innerHTML = '<label>' + rotulo + '</label>';
@@ -438,19 +467,21 @@
       inp.type = 'text';
       inp.className = 'preco';
       inp.placeholder = '—';
-      inp.inputMode = 'decimal';
+      inp.inputMode = tipoDica === 'caixa' ? 'numeric' : 'decimal';
       inp.value = precoParaCampo(valor);
       inp.setAttribute('aria-label', rotulo + ' de ' + p.nome);
       const dica = document.createElement('div');
       dica.className = 'dica-preco';
+      const pintar = () => (tipoDica === 'caixa' ? atualizarDicaCaixa(inp, dica) : atualizarDica(inp, dica));
       div.append(inp, dica);
-      inp.addEventListener('input', () => { atualizarDica(inp, dica); marcarAlterado(); });
-      atualizarDica(inp, dica);
+      inp.addEventListener('input', () => { pintar(); marcarAlterado(); });
+      pintar();
       return { div: div, input: inp };
     }
 
-    const pista = campoPreco('Preço de Pista', p.precoPista);
-    const parceria = campoPreco('Preço de Parceria', p.precoParceria);
+    const pista = campoNumerico('Preço de Pista', p.precoPista, 'preco');
+    const parceria = campoNumerico('Preço de Parceria', p.precoParceria, 'preco');
+    const caixa = campoNumerico('Un. por caixa', p.unidadesPorCaixa, 'caixa');
 
     const acoes = document.createElement('div');
     acoes.className = 'produto-acoes';
@@ -481,7 +512,8 @@
     function alterado() {
       return inpNome.value.trim() !== p.nome ||
         pista.input.value.trim() !== precoParaCampo(p.precoPista) ||
-        parceria.input.value.trim() !== precoParaCampo(p.precoParceria);
+        parceria.input.value.trim() !== precoParaCampo(p.precoParceria) ||
+        caixa.input.value.trim() !== precoParaCampo(p.unidadesPorCaixa);
     }
     function marcarAlterado() {
       const mudou = alterado();
@@ -499,7 +531,12 @@
         await api('/api/admin/produtos/' + encodeURIComponent(p.id), {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ nome: nome, precoPista: pista.input.value, precoParceria: parceria.input.value }),
+          body: JSON.stringify({
+            nome: nome,
+            precoPista: pista.input.value,
+            precoParceria: parceria.input.value,
+            unidadesPorCaixa: caixa.input.value,
+          }),
         });
         mostrarMsg('✅ ' + nome + ' atualizado.', 'ok');
         await carregar();
@@ -512,11 +549,11 @@
 
     btnSalvar.addEventListener('click', salvar);
     btnExcluir.addEventListener('click', () => abrirExclusao(p));
-    [inpNome, pista.input, parceria.input].forEach((i) => {
+    [inpNome, pista.input, parceria.input, caixa.input].forEach((i) => {
       i.addEventListener('keydown', (e) => { if (e.key === 'Enter' && alterado()) { e.preventDefault(); salvar(); } });
     });
 
-    row.append(campoNome, pista.div, parceria.div, acoes, meta);
+    row.append(campoNome, pista.div, parceria.div, caixa.div, acoes, meta);
     return row;
   }
 
@@ -544,8 +581,10 @@
   // ===== Novo produto =====
   el('novoPista').addEventListener('input', () => atualizarDica(el('novoPista'), el('dicaNovoPista')));
   el('novoParceria').addEventListener('input', () => atualizarDica(el('novoParceria'), el('dicaNovoParceria')));
+  el('novoCaixa').addEventListener('input', () => atualizarDicaCaixa(el('novoCaixa'), el('dicaNovoCaixa')));
   atualizarDica(el('novoPista'), el('dicaNovoPista'));
   atualizarDica(el('novoParceria'), el('dicaNovoParceria'));
+  atualizarDicaCaixa(el('novoCaixa'), el('dicaNovoCaixa'));
 
   el('formNovo').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -558,12 +597,19 @@
       await api('/api/admin/produtos', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ nome: nome, precoPista: el('novoPista').value, precoParceria: el('novoParceria').value }),
+        body: JSON.stringify({
+          nome: nome,
+          precoPista: el('novoPista').value,
+          precoParceria: el('novoParceria').value,
+          unidadesPorCaixa: el('novoCaixa').value,
+        }),
       });
       mostrarMsg('✅ ' + nome + ' cadastrado.', 'ok');
       el('novoNome').value = '';
       el('novoPista').value = '';
       el('novoParceria').value = '';
+      // mantém o tamanho da caixa preenchido: cadastrar vários calibres
+      // seguidos é o caso comum, e todos costumam usar a mesma caixa
       atualizarDica(el('novoPista'), el('dicaNovoPista'));
       atualizarDica(el('novoParceria'), el('dicaNovoParceria'));
       el('novoNome').focus();

@@ -197,6 +197,8 @@ function iniciarServidorWeb(client) {
         nome: p.nome,
         preco_pista: precos[p.id]?.preco_pista ?? null,
         preco_parceria: precos[p.id]?.preco_parceria ?? null,
+        // null = produto sem caixa, vendido só por unidade
+        unidades_por_caixa: p.unidades_por_caixa || null,
       }));
 
       res.json(lista);
@@ -237,6 +239,7 @@ function iniciarServidorWeb(client) {
       // Preço que a tela do vendedor estava mostrando na hora de registrar -
       // opcional, usado só pra conferir se ainda bate com o preço atual
       const precoMostradoPorProduto = new Map();
+      const vendidoEmCaixas = new Set();
       for (const it of itensBrutos) {
         const q = Number(it && it.quantidade);
         if (!it || !it.produtoId || !Number.isInteger(q) || q <= 0) {
@@ -244,6 +247,9 @@ function iniciarServidorWeb(client) {
         }
         const chave = String(it.produtoId);
         qtdPorProduto.set(chave, (qtdPorProduto.get(chave) || 0) + q);
+        // quantidade sempre chega em unidades; emCaixas só diz que o vendedor
+        // digitou em caixas, pra mostrarmos assim no comprovante
+        if (it.emCaixas) vendidoEmCaixas.add(chave);
         if (it.precoUnitario != null && !precoMostradoPorProduto.has(chave)) {
           const precoCliente = Number(it.precoUnitario);
           if (Number.isFinite(precoCliente) && precoCliente > 0) precoMostradoPorProduto.set(chave, precoCliente);
@@ -268,7 +274,15 @@ function iniciarServidorWeb(client) {
         if (!preco) {
           return res.status(400).json({ error: `Preço de ${tipoLabel} não configurado pra ${produto.nome}.` });
         }
-        itens.push({ produtoId, produtoNome: produto.nome, quantidade, precoUnitario: preco, valorTotal: quantidade * preco });
+        const item = { produtoId, produtoNome: produto.nome, quantidade, precoUnitario: preco, valorTotal: quantidade * preco };
+        // Só mostra "em caixas" se a conta fechar exatamente - o que vale
+        // pro banco e pro relatório continua sendo a quantidade em unidades
+        const porCaixa = produto.unidades_por_caixa;
+        if (vendidoEmCaixas.has(produtoId) && porCaixa > 1 && quantidade % porCaixa === 0) {
+          item.caixas = quantidade / porCaixa;
+          item.unidadesPorCaixa = porCaixa;
+        }
+        itens.push(item);
       }
       const valorTotal = itens.reduce((s, i) => s + i.valorTotal, 0);
 
@@ -333,7 +347,12 @@ function iniciarServidorWeb(client) {
           const { EmbedBuilder } = require('discord.js');
           const fmt = (n) => `R$ ${Number(n).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
           const listaItens = itens
-            .map((i) => `**${i.produtoNome}** — ${i.quantidade} × ${fmt(i.precoUnitario)} = ${fmt(i.valorTotal)}`)
+            .map((i) => {
+              const qtd = i.caixas
+                ? `${i.caixas} caixa(s) de ${i.unidadesPorCaixa} = ${i.quantidade} un.`
+                : `${i.quantidade} un.`;
+              return `**${i.produtoNome}** — ${qtd} × ${fmt(i.precoUnitario)} = ${fmt(i.valorTotal)}`;
+            })
             .join('\n')
             .slice(0, 1024);
           const totalUnidades = itens.reduce((s, i) => s + i.quantidade, 0);
@@ -398,6 +417,23 @@ function iniciarServidorWeb(client) {
       if (valor > 99999999) return { erro: `${rotulo}: valor alto demais (máximo R$ 99.999.999).` };
       saida[campo] = Math.round(valor * 100) / 100;
     }
+
+    // Quantas unidades vêm numa caixa (ex: munição vendida em caixa de 250).
+    // Em branco = produto sem caixa, vendido só por unidade. O preço continua
+    // sendo sempre por unidade: a caixa é só um atalho de quantidade, então
+    // não tem como o preço da caixa ficar dessincronizado com o da unidade.
+    const brutoCaixa = body?.unidadesPorCaixa;
+    if (brutoCaixa === null || brutoCaixa === undefined || String(brutoCaixa).trim() === '') {
+      saida.unidadesPorCaixa = null;
+    } else {
+      const caixa = parsePrecoBR(brutoCaixa);
+      if (!Number.isInteger(caixa) || caixa < 2) {
+        return { erro: `Unidades por caixa: "${String(brutoCaixa).trim()}" não serve. Use um número inteiro de 2 pra cima (ex: 250), ou deixe em branco se o produto não é vendido em caixa.` };
+      }
+      if (caixa > 100000) return { erro: 'Unidades por caixa: no máximo 100.000.' };
+      saida.unidadesPorCaixa = caixa;
+    }
+
     return saida;
   }
 
@@ -434,6 +470,7 @@ function iniciarServidorWeb(client) {
           nome: p.nome,
           precoPista: precos[p.id]?.preco_pista ?? null,
           precoParceria: precos[p.id]?.preco_parceria ?? null,
+          unidadesPorCaixa: p.unidades_por_caixa || null,
           atualizadoEm: precos[p.id]?.data_atualizacao || null,
           duplicado: (quantosComOMesmoNome.get(normalizarNomeProduto(p.nome)) || 0) > 1,
           vendas: vendasPorProduto[p.id]?.vendas || 0,
@@ -470,6 +507,7 @@ function iniciarServidorWeb(client) {
         nome: dados.nome,
         data_criacao: agora,
       };
+      if (dados.unidadesPorCaixa) produto.unidades_por_caixa = dados.unidadesPorCaixa;
       config.vendas.produtos.push(produto);
       config.vendas.precos[produto.id] = {
         nome: dados.nome,
@@ -505,9 +543,12 @@ function iniciarServidorWeb(client) {
       if (!config.vendas.precos) config.vendas.precos = {};
       const anterior = config.vendas.precos[produto.id] || {};
       const nomeAnterior = produto.nome;
+      const caixaAnterior = produto.unidades_por_caixa || null;
       const agora = new Date().toISOString();
 
       produto.nome = dados.nome;
+      if (dados.unidadesPorCaixa) produto.unidades_por_caixa = dados.unidadesPorCaixa;
+      else delete produto.unidades_por_caixa;
       config.vendas.precos[produto.id] = {
         ...anterior,
         nome: dados.nome,
@@ -522,6 +563,7 @@ function iniciarServidorWeb(client) {
       if (nomeAnterior !== dados.nome) mudancas.push(`nome "${nomeAnterior}" -> "${dados.nome}"`);
       if ((anterior.preco_pista ?? null) !== dados.precoPista) mudancas.push(`pista ${anterior.preco_pista ?? '—'} -> ${dados.precoPista ?? '—'}`);
       if ((anterior.preco_parceria ?? null) !== dados.precoParceria) mudancas.push(`parceria ${anterior.preco_parceria ?? '—'} -> ${dados.precoParceria ?? '—'}`);
+      if (caixaAnterior !== (dados.unidadesPorCaixa || null)) mudancas.push(`un. por caixa ${caixaAnterior ?? '—'} -> ${dados.unidadesPorCaixa ?? '—'}`);
       registrarLogProduto(req, 'vendas_produto_editado', `editou "${dados.nome}" (${mudancas.join('; ') || 'sem mudanças'})`);
 
       res.json({ success: true });

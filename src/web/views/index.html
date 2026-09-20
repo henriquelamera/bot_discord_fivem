@@ -481,6 +481,25 @@
   }
   .item-remover:hover:not(:disabled) { border-color: var(--danger); color: var(--danger); }
   .item-remover:disabled { opacity: 0.3; cursor: not-allowed; }
+  /* Unidade x Caixa - só aparece em produto com caixa configurada */
+  .item-medida { grid-column: 1 / -1; display: flex; gap: 6px; margin-top: 2px; }
+  .medida-btn {
+    min-height: 34px;
+    padding: 6px 12px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--card-2);
+    color: var(--muted);
+    font: inherit;
+    font-size: 12.5px;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .medida-btn:hover { border-color: var(--border-strong); color: var(--text); }
+  .medida-btn:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(59,130,246,0.25); }
+  .medida-btn.ativo { border-color: var(--accent); color: var(--accent-2); background: rgba(59,130,246,0.12); }
+
   .item-preco { grid-column: 1 / -1; font-size: 12px; color: var(--muted-2); margin-top: -4px; min-height: 14px; }
   .item-preco strong { color: var(--accent-2); font-weight: 600; }
   .item-preco .item-aviso { color: var(--warn); }
@@ -831,16 +850,33 @@
   }
   function qtdOk(q) { return Number.isInteger(q) && q > 0; }
 
+  // Quantas unidades tem uma caixa desse produto (null = não é vendido em
+  // caixa). Munição em caixa de 250 é o caso que motivou isso: o vendedor
+  // digita "3 caixas" em vez de contar 750 unidades.
+  function porCaixaDe(produto) {
+    const n = produto && Number(produto.unidades_por_caixa);
+    return Number.isInteger(n) && n > 1 ? n : null;
+  }
+  // it.quantidade é sempre o número DIGITADO (caixas ou unidades, conforme o
+  // botão). Preço e venda trabalham em unidades, que é o que sai daqui.
+  function unidadesDe(it) {
+    const q = Number(it.quantidade);
+    if (!qtdOk(q)) return 0;
+    const porCaixa = porCaixaDe(produtoPorId(it.produtoId));
+    return it.emCaixas && porCaixa ? q * porCaixa : q;
+  }
+
   // Lista [{produto, quantidade, preco, subtotal}] se TODOS os itens estão
   // completos e válidos; null se algum ainda falta produto/quantidade/preço.
+  // `quantidade` sai sempre em unidades.
   function itensValidos() {
     const out = [];
     for (const it of itens) {
       const p = produtoPorId(it.produtoId);
-      const q = Number(it.quantidade);
+      const unidades = unidadesDe(it);
       const preco = precoDe(p);
-      if (!p || !qtdOk(q) || !preco) return null;
-      out.push({ produto: p, quantidade: q, preco: preco, subtotal: preco * q });
+      if (!p || !unidades || !preco) return null;
+      out.push({ produto: p, quantidade: unidades, preco: preco, subtotal: preco * unidades, emCaixas: !!it.emCaixas });
     }
     return out.length ? out : null;
   }
@@ -863,7 +899,8 @@
       const rotulo = 'Produto ' + (i + 1);
       if (!p) return { msg: rotulo + ': escolha o produto ou remova a linha no ×.', indice: i };
       if (!qtdOk(Number(it.quantidade))) {
-        return { msg: rotulo + ' (' + p.nome + '): informe uma quantidade de 1 pra cima.', indice: i };
+        const unidade = it.emCaixas && porCaixaDe(p) ? 'caixa' : 'unidade';
+        return { msg: rotulo + ' (' + p.nome + '): informe uma quantidade de 1 ' + unidade + ' pra cima.', indice: i };
       }
       if (!precoDe(p)) {
         const tipoTxt = tipoSelecionado === 'pista' ? 'pista' : 'parceria';
@@ -901,9 +938,15 @@
       div.innerHTML = '<span class="item-aviso">Preço de ' + (tipoSelecionado === 'pista' ? 'pista' : 'parceria') + ' não configurado pra esse produto</span>';
       return;
     }
-    const q = Number(it.quantidade);
-    const sub = qtdOk(q) ? preco * q : 0;
-    div.innerHTML = formatarMoeda(preco) + ' × ' + (qtdOk(q) ? q : 0) + ' = <strong>' + formatarMoeda(sub) + '</strong>';
+    const unidades = unidadesDe(it);
+    const sub = preco * unidades;
+    const porCaixa = porCaixaDe(p);
+    // Em caixa, mostra a conta por extenso pra ninguém registrar 3 unidades
+    // achando que vendeu 3 caixas
+    const detalhe = it.emCaixas && porCaixa
+      ? (Number(it.quantidade) || 0) + ' caixa(s) × ' + porCaixa + ' = ' + unidades.toLocaleString('pt-BR') + ' un.'
+      : unidades.toLocaleString('pt-BR') + ' un.';
+    div.innerHTML = detalhe + ' × ' + formatarMoeda(preco) + ' = <strong>' + formatarMoeda(sub) + '</strong>';
   }
   function atualizarPrecosItens() {
     document.querySelectorAll('#listaItens .item-row').forEach((row, i) => { if (itens[i]) atualizarLinhaPreco(row, itens[i]); });
@@ -919,13 +962,51 @@
       sel.setAttribute('aria-label', 'Produto ' + (idx + 1));
       sel.innerHTML = '<option value="">Selecione o produto</option>' +
         produtos.map((p) => '<option value="' + esc(p.id) + '"' + (p.id === it.produtoId ? ' selected' : '') + '>' + esc(p.nome) + '</option>').join('');
-      sel.addEventListener('change', () => { it.produtoId = sel.value || null; atualizarLinhaPreco(row, it); atualizarResumo(); });
+      sel.addEventListener('change', () => {
+        it.produtoId = sel.value || null;
+        // Produto novo pode não ser vendido em caixa - não dá pra deixar o
+        // botão "Caixa" ligado de um produto anterior
+        if (!porCaixaDe(produtoPorId(it.produtoId))) it.emCaixas = false;
+        renderizarItens();
+        atualizarResumo();
+        const novoSel = listaItens.querySelectorAll('.item-row')[idx]?.querySelector('select');
+        if (novoSel) novoSel.focus();
+      });
+
+      // Unidade x Caixa: só aparece nos produtos com caixa configurada.
+      // É o mesmo produto nos dois casos - muda só como a quantidade é
+      // digitada, e o preço segue sendo por unidade.
+      const porCaixa = porCaixaDe(produtoPorId(it.produtoId));
+      let medidaWrap = null;
+      if (porCaixa) {
+        medidaWrap = document.createElement('div');
+        medidaWrap.className = 'item-medida';
+        medidaWrap.setAttribute('role', 'radiogroup');
+        medidaWrap.setAttribute('aria-label', 'Vender por unidade ou por caixa');
+        const criarBotao = (rotulo, emCaixas) => {
+          const b = document.createElement('button');
+          b.type = 'button';
+          b.className = 'medida-btn' + (!!it.emCaixas === emCaixas ? ' ativo' : '');
+          b.textContent = rotulo;
+          b.setAttribute('role', 'radio');
+          b.setAttribute('aria-checked', String(!!it.emCaixas === emCaixas));
+          b.addEventListener('click', () => {
+            if (!!it.emCaixas === emCaixas) return;
+            it.emCaixas = emCaixas;
+            renderizarItens();
+            atualizarResumo();
+          });
+          return b;
+        };
+        medidaWrap.append(criarBotao('Unidade', false), criarBotao('Caixa ' + porCaixa, true));
+      }
 
       const qtdWrap = document.createElement('div');
       qtdWrap.className = 'item-qtd';
       const inp = document.createElement('input');
       inp.type = 'number'; inp.min = '1'; inp.step = '1'; inp.inputMode = 'numeric';
-      inp.value = it.quantidade; inp.setAttribute('aria-label', 'Quantidade');
+      inp.value = it.quantidade;
+      inp.setAttribute('aria-label', it.emCaixas ? 'Quantidade de caixas' : 'Quantidade de unidades');
       const setQtd = (q) => { it.quantidade = q; inp.value = q; atualizarLinhaPreco(row, it); atualizarResumo(); };
       inp.addEventListener('input', () => { it.quantidade = parseInt(inp.value, 10); atualizarLinhaPreco(row, it); atualizarResumo(); });
       inp.addEventListener('blur', () => { if (!qtdOk(Number(it.quantidade))) setQtd(1); });
@@ -945,6 +1026,7 @@
       preco.className = 'item-preco';
 
       row.append(sel, qtdWrap, rem, preco);
+      if (medidaWrap) row.insertBefore(medidaWrap, preco);
       listaItens.appendChild(row);
       atualizarLinhaPreco(row, it);
     });
@@ -1057,11 +1139,14 @@
       const p = produtoPorId(it.produtoId);
       if (!p) continue;
       const preco = precoDe(p);
-      const q = Number(it.quantidade);
-      const ok = preco && qtdOk(q);
-      const sub = ok ? preco * q : 0;
+      const unidades = unidadesDe(it);
+      const sub = preco ? preco * unidades : 0;
       total += sub;
-      const det = !preco ? 'preço não configurado' : (!qtdOk(q) ? 'quantidade inválida' : q + ' × ' + formatarMoeda(preco));
+      const porCaixa = porCaixaDe(p);
+      const qtdTxt = it.emCaixas && porCaixa
+        ? (Number(it.quantidade) || 0) + ' cx (' + unidades.toLocaleString('pt-BR') + ' un.)'
+        : unidades.toLocaleString('pt-BR') + ' un.';
+      const det = !preco ? 'preço não configurado' : (!unidades ? 'quantidade inválida' : qtdTxt + ' × ' + formatarMoeda(preco));
       linhas.push('<div class="resumo-item"><span class="ri-nome">' + esc(p.nome) + '<span class="ri-det">' + det + '</span></span><span class="ri-sub">' + formatarMoeda(sub) + '</span></div>');
     }
     resItens.innerHTML = linhas.length ? linhas.join('') : '<div class="resumo-itens-vazio">Nenhum produto selecionado</div>';
@@ -1104,7 +1189,9 @@
     const payload = {
       // precoUnitario vai junto só pro servidor conferir se a tela ainda está
       // com o preço atual - quem manda no valor gravado é sempre o servidor
-      itens: lista.map((i) => ({ produtoId: i.produto.id, quantidade: i.quantidade, precoUnitario: i.preco })),
+      // quantidade sempre em unidades; emCaixas é só pra o comprovante no
+      // Discord sair em caixas, do jeito que a venda foi feita
+      itens: lista.map((i) => ({ produtoId: i.produto.id, quantidade: i.quantidade, precoUnitario: i.preco, emCaixas: i.emCaixas })),
       tipo: tipoSelecionado,
       parceriaId: tipoSelecionado === 'parceria' ? (faccaoSelect.value || null) : null,
       faccaoNome: tipoSelecionado === 'pista' ? faccaoPistaInput.value.trim() : undefined,
