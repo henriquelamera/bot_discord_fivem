@@ -90,6 +90,21 @@ function iniciarServidorWeb(client) {
 
   app.use(express.json());
 
+  // Rota pública de status: diz qual commit está rodando e desde quando.
+  // Serve pra saber se um deploy do Railway já subiu sem precisar abrir o
+  // painel deles - o Railway injeta RAILWAY_GIT_COMMIT_SHA sozinho, não
+  // precisa configurar nada. Não devolve nada sensível: só o commit curto.
+  const subiuEm = new Date();
+  app.get('/status', (req, res) => {
+    const sha = process.env.RAILWAY_GIT_COMMIT_SHA || null;
+    res.json({
+      ok: true,
+      commit: sha ? sha.slice(0, 7) : 'desconhecido',
+      no_ar_desde: subiuEm.toISOString(),
+      uptime_segundos: Math.round((Date.now() - subiuEm.getTime()) / 1000),
+    });
+  });
+
   app.get('/login', (req, res) => {
     const url = new URL('https://discord.com/oauth2/authorize');
     url.searchParams.set('client_id', process.env.CLIENT_ID);
