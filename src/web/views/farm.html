@@ -750,16 +750,19 @@
   }
 
   function montarBau(b) {
+    // indeterminado nunca ganha botao de apagar: nao da pra concluir nada
     const orfao = b.saiu || b.semDono;
     const div = document.createElement('div');
     div.className = 'bau' + (orfao ? ' orfao' : '');
 
     const info = document.createElement('div');
-    const status = b.semDono
+    const status = b.indeterminado
+      ? '<span class="selo">não consegui verificar</span> ' + esc(b.motivo || 'o Discord não respondeu')
+      : (b.semDono
       ? '<span class="selo inativo">sem dono</span> nenhuma permissão individual no canal'
       : (b.saiu
         ? '<span class="selo inativo">saiu do servidor</span> id ' + esc(b.donoId)
-        : 'de ' + esc(b.donoNome || b.donoId));
+        : 'de ' + esc(b.donoNome || b.donoId)));
     info.innerHTML = '<div class="nome">#' + esc(b.nome) + '</div><div class="dono">' + status + esc(rotuloData(b.criadoEm)) + '</div>';
     div.appendChild(info);
 

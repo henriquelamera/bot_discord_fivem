@@ -875,7 +875,32 @@ function iniciarServidorWeb(client) {
     return (escreve || deMembro[0])?.id || null;
   }
 
-  async function listarBaus() {
+  // Responde se a pessoa ainda está no servidor, SEM puxar o servidor
+  // inteiro: `guild.members.fetch()` sem argumento usa o opcode 8 do gateway,
+  // que o Discord limita com força (e outras partes do bot também usam).
+  // Cache primeiro; quem faltar vai por REST individual, que é bem mais
+  // folgado. "Unknown Member" é a única resposta que significa que saiu -
+  // qualquer outro erro vira "não consegui verificar", nunca "saiu", senão
+  // uma falha de rede ofereceria apagar o baú de quem está ativo.
+  async function situacaoDoDono(guild, userId) {
+    const doCache = guild.members.cache.get(userId);
+    if (doCache) return { estado: 'ativo', membro: doCache };
+    try {
+      const membro = await guild.members.fetch(userId);
+      return { estado: 'ativo', membro };
+    } catch (err) {
+      if (err && (err.code === 10007 || err.code === 10013)) return { estado: 'saiu' };
+      return { estado: 'desconhecido', motivo: err && err.message };
+    }
+  }
+
+  // Listar baús pede um fetch por dono que não está em cache. Guardar por um
+  // minuto evita repetir tudo quando a página é recarregada ou logo depois de
+  // apagar um canal.
+  let cacheBaus = null;
+  async function listarBaus(forcar) {
+    if (!forcar && cacheBaus && Date.now() - cacheBaus.em < 60000) return cacheBaus.dados;
+
     const config = await serverService.getConfig(guildId);
     const categoriaId = config.farm?.categoria_bau_id;
     if (!categoriaId) throw new Error('Categoria de Baú não configurada (Discord: Farm > Categoria de Farm).');
@@ -886,29 +911,33 @@ function iniciarServidorWeb(client) {
     const categoria = guild.channels.cache.get(categoriaId);
     if (!categoria) throw new Error('A Categoria de Baú configurada não existe mais no Discord.');
 
-    // Sem esse fetch o cache tem só quem "passou" pelo bot recentemente, e
-    // membro ativo apareceria como se tivesse saído
-    await guild.members.fetch();
-
     const canais = [...categoria.children.cache.values()].filter((ch) => ch.type === 0);
-    return canais.map((ch) => {
+    const dados = [];
+    for (const ch of canais) {
       const donoId = donoDoBau(ch);
-      const membro = donoId ? guild.members.cache.get(donoId) : null;
-      return {
+      const situacao = donoId ? await situacaoDoDono(guild, donoId) : { estado: 'sem-dono' };
+      const membro = situacao.membro;
+      dados.push({
         canalId: ch.id,
         nome: ch.name,
         donoId,
         donoNome: membro ? (membro.nickname || membro.user.globalName || membro.user.username) : null,
-        saiu: !!donoId && !membro,
-        semDono: !donoId,
+        saiu: situacao.estado === 'saiu',
+        semDono: situacao.estado === 'sem-dono',
+        indeterminado: situacao.estado === 'desconhecido',
+        motivo: situacao.motivo || null,
         criadoEm: ch.createdAt ? ch.createdAt.toISOString() : null,
-      };
-    }).sort((a, b) => (Number(b.saiu || b.semDono) - Number(a.saiu || a.semDono)) || a.nome.localeCompare(b.nome));
+      });
+    }
+
+    dados.sort((a, b) => (Number(b.saiu || b.semDono) - Number(a.saiu || a.semDono)) || a.nome.localeCompare(b.nome));
+    cacheBaus = { em: Date.now(), dados };
+    return dados;
   }
 
   app.get('/api/admin/baus', requireAuth, requireAdmin, async (req, res) => {
     try {
-      res.json({ baus: await listarBaus() });
+      res.json({ baus: await listarBaus(req.query.atualizar === '1') });
     } catch (err) {
       console.error('Erro ao listar baús:', err.message);
       res.status(400).json({ error: err.message });
@@ -917,26 +946,40 @@ function iniciarServidorWeb(client) {
 
   app.delete('/api/admin/baus/:canalId', requireAuth, requireAdmin, async (req, res) => {
     try {
-      const baus = await listarBaus();
-      const alvo = baus.find((b) => b.canalId === req.params.canalId);
-      if (!alvo) return res.status(404).json({ error: 'Esse canal não está na categoria de baú — recarregue a página.' });
+      const config = await serverService.getConfig(guildId);
+      const categoriaId = config.farm?.categoria_bau_id;
+      const guild = client.guilds.cache.get(guildId);
+      const canal = guild?.channels.cache.get(req.params.canalId);
 
-      // Só apaga baú órfão. O canal guarda o histórico de entregas da pessoa,
-      // então apagar o de alguém que ainda está no servidor seria perda de
-      // dado sem volta - esse continua só pelo Discord, na mão.
-      if (!alvo.saiu && !alvo.semDono) {
+      if (!canal || !categoriaId || canal.parentId !== categoriaId) {
+        return res.status(404).json({ error: 'Esse canal não está na categoria de baú — recarregue a página.' });
+      }
+
+      // Confere a situação do dono AGORA, não pela lista que a tela carregou
+      // (ela tem cache de 1 minuto, e nesse meio tempo a pessoa pode ter
+      // voltado). Só apaga baú órfão: o canal guarda o histórico visual das
+      // entregas, então apagar o de quem está no servidor seria perda sem
+      // volta - esse continua só pelo Discord, na mão.
+      const donoId = donoDoBau(canal);
+      const situacao = donoId ? await situacaoDoDono(guild, donoId) : { estado: 'sem-dono' };
+
+      if (situacao.estado === 'ativo') {
+        const nome = situacao.membro ? (situacao.membro.nickname || situacao.membro.user.username) : 'Essa pessoa';
         return res.status(409).json({
-          error: `${alvo.donoNome || 'Essa pessoa'} ainda está no servidor. O painel só apaga baú de quem saiu — se precisar apagar esse, faça pelo Discord.`,
+          error: `${nome} ainda está no servidor. O painel só apaga baú de quem saiu — se precisar apagar esse, faça pelo Discord.`,
+        });
+      }
+      if (situacao.estado === 'desconhecido') {
+        return res.status(503).json({
+          error: `Não consegui confirmar com o Discord se essa pessoa ainda está no servidor (${situacao.motivo || 'erro na consulta'}). Não vou apagar sem ter certeza — tente de novo em um minuto.`,
         });
       }
 
-      const guild = client.guilds.cache.get(guildId);
-      const canal = guild?.channels.cache.get(req.params.canalId);
-      if (!canal) return res.status(404).json({ error: 'Canal não encontrado no Discord.' });
-
+      const nomeCanal = canal.name;
       await canal.delete('Baú de membro que saiu do servidor (painel web)');
-      registrarLogFarm(req, 'farm_bau_removido', `apagou o baú #${alvo.nome} (dono ${alvo.donoId || 'desconhecido'} não está mais no servidor)`);
-      res.json({ success: true, nome: alvo.nome });
+      cacheBaus = null;
+      registrarLogFarm(req, 'farm_bau_removido', `apagou o baú #${nomeCanal} (dono ${donoId || 'desconhecido'} não está mais no servidor)`);
+      res.json({ success: true, nome: nomeCanal });
     } catch (err) {
       console.error('Erro ao apagar baú:', err.message);
       res.status(500).json({ error: 'Erro ao apagar o canal: ' + err.message });
