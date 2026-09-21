@@ -242,8 +242,8 @@
 </style>
 <style>
   /* ===== Especifico do painel de farm ===== */
-  .form-novo { grid-template-columns: minmax(0, 1fr) 140px 140px auto; }
-  .cabecalho-lista, .produto { grid-template-columns: minmax(0, 1fr) 140px 140px 230px; }
+  .form-novo { grid-template-columns: minmax(0, 1fr) 125px 125px 125px auto; }
+  .cabecalho-lista, .produto { grid-template-columns: minmax(0, 1fr) 125px 125px 125px 220px; }
   .produto.inativo { opacity: 0.62; }
   .produto.inativo input[type="text"] { border-style: dashed; }
   .selo {
@@ -281,10 +281,11 @@
     <section class="bloco">
       <h2>Novo material</h2>
       <p class="sub">
-        <strong>Meta</strong> é quanto cada pessoa precisa entregar por semana desse material; em branco, o
-        material pode ser entregue mas não gera ADV. <strong>R$/unidade</strong> em branco significa que o
-        material é entregue mas não é pago. Use só números: <strong>15</strong>, <strong>2500</strong>,
-        <strong>1.500,50</strong>.
+        <strong>Mínimo (meta)</strong> é quanto cada pessoa precisa entregar por semana pra não levar ADV; em
+        branco, o material pode ser entregue mas não é cobrado. <strong>Máximo pago</strong> é o teto de unidades
+        pagas por pessoa por semana — entregar acima disso continua sendo aceito, só não é pago; em branco, vale o
+        teto geral do servidor. <strong>R$/unidade</strong> em branco significa que o material é entregue mas não
+        é pago. Use só números: <strong>15</strong>, <strong>4000</strong>, <strong>1.500,50</strong>.
       </p>
       <form class="form-novo" id="formNovo">
         <div class="campo campo-nome">
@@ -295,6 +296,11 @@
           <label for="novaMeta">Meta semanal</label>
           <input type="text" id="novaMeta" class="preco" placeholder="—" inputmode="numeric" autocomplete="off">
           <div class="dica-preco" id="dicaNovaMeta"></div>
+        </div>
+        <div class="campo">
+          <label for="novoMaximo">Máximo pago</label>
+          <input type="text" id="novoMaximo" class="preco" placeholder="—" inputmode="numeric" autocomplete="off">
+          <div class="dica-preco" id="dicaNovoMaximo"></div>
         </div>
         <div class="campo">
           <label for="novoValor">R$ / unidade</label>
@@ -318,7 +324,8 @@
       </p>
       <div class="cabecalho-lista">
         <div>Material</div>
-        <div class="col-preco">Meta semanal</div>
+        <div class="col-preco">Mínimo (meta)</div>
+        <div class="col-preco">Máximo pago</div>
         <div class="col-preco">R$ / unidade</div>
         <div></div>
       </div>
@@ -394,6 +401,15 @@
     const v = parsePrecoBR(bruto);
     if (!Number.isInteger(v) || v < 1) { alvo.textContent = 'use inteiro ≥ 1'; alvo.className = 'dica-preco vazio'; return; }
     alvo.textContent = fmtInt(v) + '/semana';
+    alvo.className = 'dica-preco';
+  }
+
+  function dicaMaximo(input, alvo) {
+    const bruto = input.value.trim();
+    if (!bruto) { alvo.textContent = 'usa o teto geral (' + fmtInt(limiteSemanal) + ')'; alvo.className = 'dica-preco'; return; }
+    const v = parsePrecoBR(bruto);
+    if (!Number.isInteger(v) || v < 1) { alvo.textContent = 'use inteiro ≥ 1'; alvo.className = 'dica-preco vazio'; return; }
+    alvo.textContent = 'paga até ' + fmtInt(v) + '/semana';
     alvo.className = 'dica-preco';
   }
 
@@ -512,7 +528,8 @@
       return { div: div, input: inp };
     }
 
-    const meta = campo('Meta semanal', it.meta, dicaMeta);
+    const meta = campo('Mínimo (meta)', it.meta, dicaMeta);
+    const maximo = campo('Máximo pago', it.limiteSemanal, dicaMaximo);
     const valor = campo('R$ / unidade', it.valorUnidade, dicaValor);
 
     const acoes = document.createElement('div');
@@ -552,14 +569,16 @@
     if (!it.ativo) partes.push('<span class="selo inativo">aposentado</span>');
     if (it.entregasPendentes > 0) partes.push('<span class="selo pendente">' + it.entregasPendentes + ' entrega(s) esperando aprovação</span>');
     partes.push(it.entregas > 0 ? fmtInt(it.entregas) + ' entrega(s) no histórico' : 'nunca entregue');
-    if (it.meta != null && it.meta > limiteSemanal) {
-      partes.push('<span class="marca-aviso">⚠️ meta acima do teto semanal de ' + fmtInt(limiteSemanal) + ' — impossível cumprir</span>');
+    const tetoDele = it.limiteSemanal || limiteSemanal;
+    if (it.meta != null && it.meta > tetoDele) {
+      partes.push('<span class="marca-aviso">⚠️ mínimo (' + fmtInt(it.meta) + ') acima do máximo pago (' + fmtInt(tetoDele) + ') — cumprir a meta obriga a entregar de graça</span>');
     }
     metaInfo.innerHTML = partes.map((t) => '<span>' + t + '</span>').join('');
 
     function alterado() {
       return inpNome.value.trim() !== it.nome ||
         meta.input.value.trim() !== paraCampo(it.meta) ||
+        maximo.input.value.trim() !== paraCampo(it.limiteSemanal) ||
         valor.input.value.trim() !== paraCampo(it.valorUnidade);
     }
     function marcar() {
@@ -575,7 +594,7 @@
       await api('/api/admin/farm/itens/' + encodeURIComponent(it.id), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ nome: nome, meta: meta.input.value, valorUnidade: valor.input.value, ativo: ativo }),
+        body: JSON.stringify({ nome: nome, meta: meta.input.value, limiteSemanal: maximo.input.value, valorUnidade: valor.input.value, ativo: ativo }),
       });
       await carregar();
     }
@@ -625,11 +644,11 @@
       }
     });
 
-    [inpNome, meta.input, valor.input].forEach((i) => {
+    [inpNome, meta.input, maximo.input, valor.input].forEach((i) => {
       i.addEventListener('keydown', (e) => { if (e.key === 'Enter' && alterado()) { e.preventDefault(); btnSalvar.click(); } });
     });
 
-    row.append(campoNome, meta.div, valor.div, acoes, metaInfo);
+    row.append(campoNome, meta.div, maximo.div, valor.div, acoes, metaInfo);
     return row;
   }
 
@@ -639,8 +658,8 @@
     const inativos = itens.filter((i) => !i.ativo);
 
     el('contador').textContent = ativos.length ? '(' + ativos.length + ')' : '';
-    el('notaTeto').textContent = 'Teto semanal por material: ' + fmtInt(limiteSemanal) +
-      ' unidades pagas por pessoa (configurado no Discord, em Farm > Limite Semanal por Item).';
+    el('notaTeto').textContent = 'Material sem máximo próprio usa o teto geral de ' + fmtInt(limiteSemanal) +
+      ' unidades pagas por pessoa/semana (configurado no Discord, em Farm > Limite Semanal por Item).';
 
     const lista = el('listaAtivos');
     lista.innerHTML = '';
@@ -669,8 +688,10 @@
   }
 
   el('novaMeta').addEventListener('input', () => dicaMeta(el('novaMeta'), el('dicaNovaMeta')));
+  el('novoMaximo').addEventListener('input', () => dicaMaximo(el('novoMaximo'), el('dicaNovoMaximo')));
   el('novoValor').addEventListener('input', () => dicaValor(el('novoValor'), el('dicaNovoValor')));
   dicaMeta(el('novaMeta'), el('dicaNovaMeta'));
+  dicaMaximo(el('novoMaximo'), el('dicaNovoMaximo'));
   dicaValor(el('novoValor'), el('dicaNovoValor'));
 
   el('formNovo').addEventListener('submit', async (e) => {
@@ -684,7 +705,7 @@
       await api('/api/admin/farm/itens', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ nome: nome, meta: el('novaMeta').value, valorUnidade: el('novoValor').value }),
+        body: JSON.stringify({ nome: nome, meta: el('novaMeta').value, limiteSemanal: el('novoMaximo').value, valorUnidade: el('novoValor').value }),
       });
       mostrarMsg('✅ ' + nome + ' cadastrado.', 'ok');
       el('novoNome').value = '';

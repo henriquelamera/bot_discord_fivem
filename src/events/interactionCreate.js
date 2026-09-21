@@ -9,7 +9,7 @@ const { marcarAguardandoImagem, desmarcarAguardandoImagem, estaAguardandoImagem,
 const { salvarRecrutador, pegarRecrutador, limparRecrutador } = require('../utils/registroTracker');
 const { salvarProdutoParceria, pegarProdutoParceria, limparProdutoParceria } = require('../utils/parceriaTracker');
 const { formatarMoeda, calcularPagamentosPorMembro } = require('../utils/farmPagamentos');
-const { itensAtivosFarm } = require('../utils/farmItens');
+const { itensAtivosFarm, limiteDoItem } = require('../utils/farmItens');
 const { parsePrecoBR } = require('../utils/precos');
 const { postarFechamentoSemanal, removerEntregaDosFechamentosPendentes, limparCardsFechamento } = require('../utils/fechamentoSemanal');
 
@@ -1089,27 +1089,31 @@ module.exports = {
           });
         }
 
-        // Teto semanal por item (protege o caixa da facção contra entregas
+        // Teto semanal por material (protege o caixa da facção contra entregas
         // muito grandes de um único material na mesma semana). Não bloqueia
         // a entrega: a pessoa pode entregar quanto quiser, mas só é paga até
-        // o limite - o excedente fica registrado sem pagamento e ela é avisada.
-        const limiteSemanal = config.farm?.limite_semanal_item || 2000;
+        // o teto - o excedente fica registrado sem pagamento e ela é avisada.
+        // Cada material tem o seu (limiteDoItem), caindo no teto geral do
+        // servidor quando não tem um próprio.
         const jaEntregueSemana = await deliveryService.getQuantidadeEntregueSemanaAtual(guildId, interaction.user.id);
 
         const avisosLimite = [];
-        for (const dados of Object.values(itensEntregues)) {
+        for (const [itemId, dados] of Object.entries(itensEntregues)) {
+          // Cada material pode ter seu proprio teto (a "meta maxima"); sem
+          // teto proprio vale o geral do servidor
+          const limiteDesse = limiteDoItem(config, itemId);
           const jaEntregue = jaEntregueSemana[dados.nome] || 0;
-          const restantePagavel = Math.max(limiteSemanal - jaEntregue, 0);
+          const restantePagavel = Math.max(limiteDesse - jaEntregue, 0);
           dados.quantidade_pagavel = Math.min(dados.quantidade, restantePagavel);
           if (dados.quantidade > restantePagavel) {
             avisosLimite.push(
-              `- **${dados.nome}:** entregou **${dados.quantidade}**, mas com ${jaEntregue} já entregues essa semana só **${dados.quantidade_pagavel}** serão pagas.`
+              `- **${dados.nome}:** entregou **${dados.quantidade}**, e o teto desse material é **${limiteDesse}** por semana. Com ${jaEntregue} já entregues, só **${dados.quantidade_pagavel}** serão pagas.`
             );
           }
         }
 
         const avisoLimiteTexto = avisosLimite.length > 0
-          ? `\n\n⚠️ **Atenção:** o limite semanal é de **${limiteSemanal}** unidades pagas por item. Sua entrega será registrada, mas o excedente **não será pago**:\n${avisosLimite.join('\n')}`
+          ? `\n\n⚠️ **Atenção:** cada material tem seu próprio teto de unidades pagas por semana. Sua entrega será registrada, mas o excedente **não será pago**:\n${avisosLimite.join('\n')}`
           : '';
 
         // Segunda trava (a do botão é a primeira): entre abrir o formulário
@@ -1176,18 +1180,19 @@ module.exports = {
           // em cima do mesmo saldo pagavam o dobro do que ainda restava.
           const jaEntregueAoGravar = await deliveryService.getQuantidadeEntregueSemanaAtual(guildId, interaction.user.id);
           const avisosLimiteFinal = [];
-          for (const dados of Object.values(itensEntregues)) {
+          for (const [itemId, dados] of Object.entries(itensEntregues)) {
+            const limiteDesse = limiteDoItem(config, itemId);
             const jaEntregue = jaEntregueAoGravar[dados.nome] || 0;
-            const restantePagavel = Math.max(limiteSemanal - jaEntregue, 0);
+            const restantePagavel = Math.max(limiteDesse - jaEntregue, 0);
             dados.quantidade_pagavel = Math.min(dados.quantidade, restantePagavel);
             if (dados.quantidade > restantePagavel) {
               avisosLimiteFinal.push(
-                `- **${dados.nome}:** entregou **${dados.quantidade}**, mas com ${jaEntregue} já entregues essa semana só **${dados.quantidade_pagavel}** serão pagas.`
+                `- **${dados.nome}:** entregou **${dados.quantidade}**, e o teto desse material é **${limiteDesse}** por semana. Com ${jaEntregue} já entregues, só **${dados.quantidade_pagavel}** serão pagas.`
               );
             }
           }
           const avisoLimiteFinalTexto = avisosLimiteFinal.length > 0
-            ? `\n\n⚠️ **Atenção:** o limite semanal é de **${limiteSemanal}** unidades pagas por item. Sua entrega foi registrada, mas o excedente **não será pago**:\n${avisosLimiteFinal.join('\n')}`
+            ? `\n\n⚠️ **Atenção:** cada material tem seu próprio teto de unidades pagas por semana. Sua entrega foi registrada, mas o excedente **não será pago**:\n${avisosLimiteFinal.join('\n')}`
             : '';
 
           // Coletar dados da entrega

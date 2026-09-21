@@ -29,4 +29,15 @@ function metasAtivas(config) {
   return saida;
 }
 
-module.exports = { itemAtivo, itensAtivosFarm, metasAtivas };
+// Teto de unidades PAGAS por pessoa, por semana, daquele material - a
+// "meta maxima". Cada material pode ter o seu (ex: Polvora minimo 4000,
+// maximo 8000); sem valor proprio, vale o teto geral do servidor. Entregar
+// acima disso continua sendo aceito, so nao e pago.
+function limiteDoItem(config, itemId) {
+  const item = (config.farm?.itens || []).find((i) => i.id === itemId);
+  const proprio = Number(item && item.limite_semanal);
+  if (Number.isInteger(proprio) && proprio > 0) return proprio;
+  return config.farm?.limite_semanal_item || 2000;
+}
+
+module.exports = { itemAtivo, itensAtivosFarm, metasAtivas, limiteDoItem };

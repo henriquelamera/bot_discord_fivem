@@ -634,6 +634,18 @@ function iniciarServidorWeb(client) {
       saida.meta = meta;
     }
 
+    const brutoLimite = body?.limiteSemanal;
+    if (brutoLimite === null || brutoLimite === undefined || String(brutoLimite).trim() === '') {
+      saida.limiteSemanal = null;
+    } else {
+      const limite = parsePrecoBR(brutoLimite);
+      if (!Number.isInteger(limite) || limite < 1) {
+        return { erro: `Máximo pago: "${String(brutoLimite).trim()}" não serve. Use um número inteiro de 1 pra cima, ou deixe em branco pra usar o teto geral do servidor.` };
+      }
+      if (limite > 10000000) return { erro: 'Máximo pago: valor alto demais.' };
+      saida.limiteSemanal = limite;
+    }
+
     const brutoValor = body?.valorUnidade;
     if (brutoValor === null || brutoValor === undefined || String(brutoValor).trim() === '') {
       saida.valorUnidade = null;
@@ -714,6 +726,7 @@ function iniciarServidorWeb(client) {
             nome: i.nome,
             ativo: i.ativo !== false,
             meta: metas[i.id]?.meta_semanal ?? null,
+            limiteSemanal: i.limite_semanal || null,
             valorUnidade: pagamentos[i.id]?.valor_unidade ?? null,
             entregas: uso.total,
             entregasPendentes: uso.pendentes,
@@ -751,6 +764,7 @@ function iniciarServidorWeb(client) {
         data_criacao: new Date().toISOString(),
         ativo: true,
       };
+      if (dados.limiteSemanal) item.limite_semanal = dados.limiteSemanal;
       config.farm.itens.push(item);
       aplicarMetaEPagamento(config, item, dados);
 
@@ -781,6 +795,7 @@ function iniciarServidorWeb(client) {
         ativo: item.ativo !== false,
         meta: config.farm.metas?.[item.id]?.meta_semanal ?? null,
         valor: config.farm.pagamentos?.[item.id]?.valor_unidade ?? null,
+        limite: item.limite_semanal || null,
       };
 
       if (antes.nome !== dados.nome) {
@@ -792,6 +807,8 @@ function iniciarServidorWeb(client) {
       }
       item.nome = dados.nome;
       item.ativo = dados.ativo;
+      if (dados.limiteSemanal) item.limite_semanal = dados.limiteSemanal;
+      else delete item.limite_semanal;
       aplicarMetaEPagamento(config, item, dados);
 
       await serverService.saveConfig(guildId, config);
@@ -801,6 +818,7 @@ function iniciarServidorWeb(client) {
       if (antes.ativo !== dados.ativo) mudancas.push(dados.ativo ? 'reativado' : 'DESATIVADO');
       if (antes.meta !== dados.meta) mudancas.push(`meta ${antes.meta ?? '—'} -> ${dados.meta ?? '—'}`);
       if (antes.valor !== dados.valorUnidade) mudancas.push(`R$/un ${antes.valor ?? '—'} -> ${dados.valorUnidade ?? '—'}`);
+      if (antes.limite !== (dados.limiteSemanal || null)) mudancas.push(`máximo ${antes.limite ?? '—'} -> ${dados.limiteSemanal ?? '—'}`);
       registrarLogFarm(req, 'farm_item_editado', `editou "${dados.nome}" (${mudancas.join('; ') || 'sem mudanças'})`);
 
       res.json({ success: true });
