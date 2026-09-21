@@ -358,6 +358,14 @@
         servidor — mas se ele estiver offline na hora (um deploy, por exemplo), o evento se perde e o canal fica
         órfão. Aqui dá pra achar e limpar esses.
       </p>
+      <p class="sub">
+        O aviso com as metas é postado <strong>uma vez</strong>, quando o baú é criado, e fica congelado. Depois de
+        mudar material ou meta, use o botão abaixo pra reescrever esse aviso em todos os baús com a configuração
+        atual.
+      </p>
+      <button type="button" class="btn btn-fantasma" id="btnAvisos" style="margin-bottom:14px">
+        <span id="spinnerAvisos" class="spinner oculto"></span><span>🔄 Atualizar avisos dos baús</span>
+      </button>
       <div id="listaBaus"><div class="vazio">Carregando…</div></div>
     </section>
 
@@ -804,6 +812,27 @@
       lista.innerHTML = '<div class="vazio">❌ ' + esc(err.message) + '</div>';
     }
   }
+  el('btnAvisos').addEventListener('click', () => {
+    abrirConfirma('Atualizar avisos',
+      'Reescrever a mensagem de aviso de <strong>todos os baús</strong> com as metas e materiais de agora?<br><br>' +
+      'A mensagem original de cada canal é editada no lugar — ninguém recebe notificação nova, e baú de quem saiu é pulado.',
+      'Atualizar', false, async () => {
+        el('btnAvisos').disabled = true;
+        el('spinnerAvisos').classList.remove('oculto');
+        try {
+          const r = await api('/api/admin/baus/atualizar-avisos', { method: 'POST' });
+          const partes = [r.atualizados + ' baú(s) atualizado(s)'];
+          if (r.pulados) partes.push(r.pulados + ' pulado(s)');
+          if (r.semMensagem) partes.push(r.semMensagem + ' sem a mensagem original');
+          mostrarMsg('✅ ' + partes.join(' · '), 'ok');
+          if (r.erros && r.erros.length) mostrarMsg('⚠️ ' + r.erros[0], 'erro');
+        } finally {
+          el('btnAvisos').disabled = false;
+          el('spinnerAvisos').classList.add('oculto');
+        }
+      });
+  });
+
   carregarBaus();
 
   fetch('/api/vendas/me').then((r) => r.json())

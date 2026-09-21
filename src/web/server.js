@@ -5,6 +5,7 @@ const serverService = require('../services/serverService');
 const vendaService = require('../services/vendaService');
 const deliveryService = require('../services/deliveryService');
 const { parsePrecoBR, normalizarNomeProduto } = require('../utils/precos');
+const { montarEmbedBauAberto } = require('../utils/farmBau');
 
 const SESSAO_DURACAO_MS = 12 * 60 * 60 * 1000; // 12h
 const COOKIE_NOME = 'rbk_sessao';
@@ -983,6 +984,51 @@ function iniciarServidorWeb(client) {
     } catch (err) {
       console.error('Erro ao apagar baú:', err.message);
       res.status(500).json({ error: 'Erro ao apagar o canal: ' + err.message });
+    }
+  });
+
+  // O aviso do baú (metas, prazo, como entregar) é postado uma vez, quando o
+  // canal é criado, e fica congelado ali. Trocar material ou meta deixa todo
+  // baú antigo mostrando informação velha - foi o que aconteceu com os baús
+  // de agosto, que seguiam anunciando Molas/Componentes/Ferro. Aqui a gente
+  // reescreve a mensagem original de cada baú com a config de agora.
+  app.post('/api/admin/baus/atualizar-avisos', requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const config = await serverService.getConfig(guildId);
+      const guild = client.guilds.cache.get(guildId);
+      if (!guild) throw new Error('Servidor do Discord não encontrado pelo bot.');
+
+      const baus = await listarBaus(true);
+      const resultado = { atualizados: 0, semMensagem: 0, pulados: 0, erros: [] };
+
+      for (const bau of baus) {
+        if (bau.saiu || bau.semDono || bau.indeterminado) { resultado.pulados++; continue; }
+        try {
+          const canal = guild.channels.cache.get(bau.canalId);
+          if (!canal) { resultado.pulados++; continue; }
+
+          // A mensagem de boas-vindas é a primeira do canal; buscar do começo
+          // acha ela mesmo em baú com muito histórico de entrega
+          const primeiras = await canal.messages.fetch({ limit: 5, after: '0' });
+          const aviso = [...primeiras.values()].find(
+            (m) => m.author?.id === client.user?.id &&
+              (m.components || []).some((linha) => (linha.components || []).some((c) => c.customId === 'entregar_meta'))
+          );
+          if (!aviso) { resultado.semMensagem++; continue; }
+
+          const membro = guild.members.cache.get(bau.donoId) || await guild.members.fetch(bau.donoId);
+          await aviso.edit({ embeds: [montarEmbedBauAberto(config, membro, false, false)] });
+          resultado.atualizados++;
+        } catch (err) {
+          resultado.erros.push(`#${bau.nome}: ${err.message}`);
+        }
+      }
+
+      registrarLogFarm(req, 'farm_avisos_atualizados', `reenviou os avisos de baú (${resultado.atualizados} atualizado(s))`);
+      res.json(resultado);
+    } catch (err) {
+      console.error('Erro ao atualizar avisos de baú:', err.message);
+      res.status(400).json({ error: err.message });
     }
   });
 
