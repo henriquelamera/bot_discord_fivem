@@ -1,0 +1,713 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Materiais de Farm — RBK</title>
+<style>
+  :root {
+    --bg: #060a14;
+    --card: #0e1526;
+    --card-2: #0b1120;
+    --border: #1d2942;
+    --border-strong: #2a3a5c;
+    --text: #eef1f8;
+    --muted: #8b93a7;
+    --muted-2: #667085;
+    --accent: #3b82f6;
+    --accent-2: #60a5fa;
+    --accent-hover: #2563eb;
+    --success: #22c55e;
+    --danger: #ef4444;
+    --danger-hover: #dc2626;
+    --warn: #f5a524;
+    --warn-bg: rgba(245, 165, 36, 0.1);
+    --warn-border: rgba(245, 165, 36, 0.35);
+    --radius: 14px;
+    --btn-min: 44px;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { max-width: 100%; overflow-x: hidden; }
+
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: var(--bg);
+    background-image:
+      linear-gradient(rgba(59,130,246,0.05) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(59,130,246,0.05) 1px, transparent 1px);
+    background-size: 42px 42px;
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .page { max-width: 1100px; margin: 0 auto; padding: 28px 16px 40px; }
+
+  /* ===== Cabeçalho ===== */
+  .header { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; margin-bottom: 22px; }
+  .header .logo { width: 56px; height: 56px; border-radius: 12px; border: 1px solid var(--border-strong); flex-shrink: 0; }
+  .header h1 { font-size: 26px; margin: 0; font-weight: 800; font-style: italic; letter-spacing: 0.3px; }
+  .header p { margin: 2px 0 0; font-size: 13px; color: var(--muted); }
+  .header-usuario { margin-left: auto; display: flex; align-items: center; gap: 10px; font-size: 12.5px; color: var(--muted); text-align: right; }
+  .header-usuario .nome-usuario { color: var(--text); font-weight: 600; }
+  .header-usuario a {
+    color: var(--muted); text-decoration: none; border: 1px solid var(--border);
+    border-radius: 8px; padding: 6px 10px; white-space: nowrap;
+  }
+  .header-usuario a:hover { border-color: var(--border-strong); color: var(--text); }
+  .header-usuario a.destaque { color: var(--accent-2); border-color: rgba(59,130,246,0.45); background: rgba(59,130,246,0.08); }
+
+  /* ===== Blocos ===== */
+  .bloco {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px;
+    margin-bottom: 18px;
+  }
+  .bloco h2 { font-size: 15px; margin: 0 0 4px; font-weight: 700; }
+  .bloco .sub { margin: 0 0 16px; font-size: 12.5px; color: var(--muted); line-height: 1.5; }
+
+  label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 6px; font-weight: 500; }
+
+  input[type="text"] {
+    width: 100%;
+    min-height: var(--btn-min);
+    background: var(--card-2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 14px;
+    color: var(--text);
+    font-size: 15px;
+    font-family: inherit;
+    transition: border-color 0.15s, box-shadow 0.15s;
+  }
+  input[type="text"]:hover { border-color: var(--border-strong); }
+  input[type="text"]:focus-visible { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(59,130,246,0.25); }
+  input.preco { text-align: right; font-variant-numeric: tabular-nums; }
+
+  .dica-preco { font-size: 11.5px; color: var(--muted-2); margin-top: 5px; min-height: 14px; text-align: right; }
+  .dica-preco.vazio { color: var(--warn); }
+
+  /* ===== Botões ===== */
+  button { font-family: inherit; }
+  .btn {
+    min-height: var(--btn-min);
+    padding: 10px 18px;
+    border-radius: 10px;
+    border: none;
+    background: var(--accent);
+    color: white;
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    transition: background 0.15s, opacity 0.15s;
+  }
+  .btn:hover:not(:disabled) { background: var(--accent-hover); }
+  .btn:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(59,130,246,0.4); }
+  .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+  .btn-fantasma {
+    background: transparent;
+    border: 1px solid var(--border-strong);
+    color: var(--muted);
+    font-weight: 600;
+  }
+  .btn-fantasma:hover:not(:disabled) { background: rgba(255,255,255,0.04); color: var(--text); }
+  .btn-perigo { background: transparent; border: 1px solid rgba(239,68,68,0.45); color: var(--danger); font-weight: 600; }
+  .btn-perigo:hover:not(:disabled) { background: rgba(239,68,68,0.12); }
+  .btn-perigo.solido { background: var(--danger); border-color: var(--danger); color: white; font-weight: 700; }
+  .btn-perigo.solido:hover:not(:disabled) { background: var(--danger-hover); }
+
+  .spinner {
+    width: 15px; height: 15px;
+    border: 2px solid rgba(255,255,255,0.35);
+    border-top-color: white;
+    border-radius: 50%;
+    animation: girar 0.7s linear infinite;
+  }
+  @keyframes girar { to { transform: rotate(360deg); } }
+
+  /* ===== Novo produto ===== */
+  .form-novo { display: grid; grid-template-columns: minmax(0, 1fr) 140px 140px 120px auto; gap: 12px; align-items: start; }
+  .form-novo .acao-novo { align-self: start; padding-top: 24px; }
+
+  /* ===== Lista de produtos ===== */
+  .cabecalho-lista {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 140px 140px 120px 168px;
+    gap: 12px;
+    padding: 0 2px 10px;
+    font-size: 11.5px;
+    color: var(--muted-2);
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    font-weight: 700;
+    border-bottom: 1px solid var(--border);
+  }
+  .cabecalho-lista .col-preco { text-align: right; }
+
+  .produto {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 140px 140px 120px 168px;
+    gap: 12px;
+    align-items: start;
+    padding: 14px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .produto:last-child { border-bottom: none; }
+  .produto .campo label { display: none; }
+  .produto-acoes { display: flex; gap: 8px; padding-top: 0; }
+  .produto-acoes .btn { flex: 1; padding: 10px 12px; font-size: 13px; }
+
+  .produto-meta { grid-column: 1 / -1; font-size: 11.5px; color: var(--muted-2); display: flex; flex-wrap: wrap; gap: 6px 14px; }
+  .produto-meta .marca-aviso { color: var(--warn); }
+  .produto.alterado { background: rgba(59,130,246,0.05); }
+  .produto.alterado input[type="text"] { border-color: rgba(59,130,246,0.5); }
+
+  .vazio { text-align: center; color: var(--muted); font-size: 13.5px; padding: 26px 0; }
+
+  /* ===== Avisos / mensagens ===== */
+  .avisos { display: flex; flex-direction: column; gap: 8px; margin-bottom: 18px; }
+  .aviso {
+    background: var(--warn-bg);
+    border: 1px solid var(--warn-border);
+    color: var(--warn);
+    border-radius: 10px;
+    padding: 11px 14px;
+    font-size: 12.5px;
+    line-height: 1.45;
+  }
+
+  .msg {
+    position: fixed;
+    left: 50%;
+    bottom: 20px;
+    transform: translateX(-50%);
+    max-width: min(560px, calc(100vw - 32px));
+    padding: 12px 18px;
+    border-radius: 10px;
+    font-size: 13px;
+    line-height: 1.4;
+    text-align: center;
+    z-index: 60;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.45);
+  }
+  .msg.ok { background: #0f2a1a; border: 1px solid rgba(34,197,94,0.4); color: var(--success); }
+  .msg.erro { background: #2a1013; border: 1px solid rgba(239,68,68,0.4); color: var(--danger); }
+  .oculto { display: none !important; }
+
+  /* ===== Modal de exclusão ===== */
+  .modal-overlay {
+    position: fixed; inset: 0;
+    background: rgba(3,6,14,0.72);
+    display: flex; align-items: center; justify-content: center;
+    padding: 20px; z-index: 80;
+  }
+  .modal-box {
+    background: var(--card);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius);
+    padding: 24px;
+    max-width: 460px;
+    width: 100%;
+  }
+  .modal-box h2 { margin: 0 0 10px; font-size: 17px; }
+  .modal-box p { margin: 0 0 10px; font-size: 13.5px; color: var(--muted); line-height: 1.5; }
+  .modal-box strong { color: var(--text); }
+  .modal-botoes { display: flex; gap: 10px; margin-top: 18px; }
+  .modal-botoes .btn { flex: 1; }
+
+  .rodape { text-align: center; font-size: 11.5px; color: var(--muted-2); margin-top: 22px; }
+
+  /* ===== Mobile ===== */
+  @media (max-width: 860px) {
+    .page { padding: 20px 16px 28px; }
+    .header .logo { width: 44px; height: 44px; }
+    .header h1 { font-size: 21px; }
+    .cabecalho-lista { display: none; }
+    .form-novo, .produto { grid-template-columns: 1fr 1fr; }
+    .form-novo .campo-nome, .produto .campo-nome { grid-column: 1 / -1; }
+    .form-novo .acao-novo { grid-column: 1 / -1; padding-top: 0; }
+    .form-novo .acao-novo .btn { width: 100%; }
+    .produto-acoes { grid-column: 1 / -1; }
+    .produto .campo label { display: block; }
+    .produto { padding: 16px 0; gap: 10px; }
+  }
+</style>
+<style>
+  /* ===== Especifico do painel de farm ===== */
+  .form-novo { grid-template-columns: minmax(0, 1fr) 140px 140px auto; }
+  .cabecalho-lista, .produto { grid-template-columns: minmax(0, 1fr) 140px 140px 230px; }
+  .produto.inativo { opacity: 0.62; }
+  .produto.inativo input[type="text"] { border-style: dashed; }
+  .selo {
+    display: inline-block; font-size: 10.5px; font-weight: 700; letter-spacing: 0.3px;
+    padding: 2px 7px; border-radius: 999px; text-transform: uppercase;
+    border: 1px solid var(--border-strong); color: var(--muted);
+  }
+  .selo.inativo { border-color: var(--warn-border); color: var(--warn); background: var(--warn-bg); }
+  .selo.pendente { border-color: rgba(59,130,246,0.45); color: var(--accent-2); background: rgba(59,130,246,0.1); }
+  .nota-teto { font-size: 12px; color: var(--muted-2); margin-top: 14px; }
+  .produto-acoes .btn { padding: 10px 8px; font-size: 12.5px; }
+  @media (max-width: 860px) {
+    .form-novo, .produto { grid-template-columns: 1fr 1fr; }
+  }
+</style>
+</head>
+<body>
+  <div class="page">
+    <header class="header">
+      <img src="/rbk_logo.gif" alt="Logo RBK" class="logo">
+      <div>
+        <h1>Materiais de Farm</h1>
+        <p>Meta semanal, valor por unidade e quais materiais estão em cobrança</p>
+      </div>
+      <div class="header-usuario">
+        <span>Administrador<br><span class="nome-usuario" id="nomeUsuario">…</span></span>
+        <a href="/admin">📦 Produtos</a>
+        <a href="/">🧮 Calculadora</a>
+        <a href="/logout">Sair</a>
+      </div>
+    </header>
+
+    <div class="avisos" id="avisos"></div>
+
+    <section class="bloco">
+      <h2>Novo material</h2>
+      <p class="sub">
+        <strong>Meta</strong> é quanto cada pessoa precisa entregar por semana desse material; em branco, o
+        material pode ser entregue mas não gera ADV. <strong>R$/unidade</strong> em branco significa que o
+        material é entregue mas não é pago. Use só números: <strong>15</strong>, <strong>2500</strong>,
+        <strong>1.500,50</strong>.
+      </p>
+      <form class="form-novo" id="formNovo">
+        <div class="campo campo-nome">
+          <label for="novoNome">Material</label>
+          <input type="text" id="novoNome" placeholder="Ex: Pólvora" autocomplete="off" maxlength="100">
+        </div>
+        <div class="campo">
+          <label for="novaMeta">Meta semanal</label>
+          <input type="text" id="novaMeta" class="preco" placeholder="—" inputmode="numeric" autocomplete="off">
+          <div class="dica-preco" id="dicaNovaMeta"></div>
+        </div>
+        <div class="campo">
+          <label for="novoValor">R$ / unidade</label>
+          <input type="text" id="novoValor" class="preco" placeholder="—" inputmode="decimal" autocomplete="off">
+          <div class="dica-preco" id="dicaNovoValor"></div>
+        </div>
+        <div class="acao-novo">
+          <button type="submit" class="btn" id="btnNovo">
+            <span id="spinnerNovo" class="spinner oculto"></span><span>+ Cadastrar</span>
+          </button>
+        </div>
+      </form>
+    </section>
+
+    <section class="bloco">
+      <h2>Em cobrança <span id="contador" style="color:var(--muted-2);font-weight:500"></span></h2>
+      <p class="sub">
+        Estes aparecem no formulário de <strong>Entregar Meta</strong> e são cobrados na virada de segunda-feira.
+        Desativar tira o material da entrega e da cobrança de ADV — as entregas que já existem continuam
+        sendo pagas normalmente.
+      </p>
+      <div class="cabecalho-lista">
+        <div>Material</div>
+        <div class="col-preco">Meta semanal</div>
+        <div class="col-preco">R$ / unidade</div>
+        <div></div>
+      </div>
+      <div id="listaAtivos"><div class="vazio">Carregando…</div></div>
+      <div class="nota-teto" id="notaTeto"></div>
+    </section>
+
+    <section class="bloco" id="blocoInativos">
+      <h2>Aposentados</h2>
+      <p class="sub">
+        Fora do formulário de entrega e fora da cobrança de meta. Continuam pagáveis: entrega antiga ainda
+        esperando aprovação fecha com o valor configurado aqui.
+      </p>
+      <div id="listaInativos"><div class="vazio">Nenhum material aposentado.</div></div>
+    </section>
+
+    <footer class="rodape">Bot RBK · Painel de materiais de farm</footer>
+  </div>
+
+  <div class="modal-overlay oculto" id="modalConfirma" role="dialog" aria-modal="true" aria-labelledby="confirmaTitulo">
+    <div class="modal-box">
+      <h2 id="confirmaTitulo">Confirmar</h2>
+      <div id="confirmaTexto"></div>
+      <div class="modal-botoes">
+        <button type="button" class="btn btn-fantasma" id="confirmaCancelar">Cancelar</button>
+        <button type="button" class="btn" id="confirmaOk">Confirmar</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="msg oculto" id="msg" role="status" aria-live="polite"></div>
+
+<script>
+(function () {
+  const el = (id) => document.getElementById(id);
+  const modal = el('modalConfirma');
+
+  let itens = [];
+  let limiteSemanal = 2000;
+  let aoConfirmar = null;
+
+  const fmtBRL = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
+  const formatarMoeda = (v) => fmtBRL.format(v);
+  const fmtInt = (n) => Number(n).toLocaleString('pt-BR');
+
+  const ASPA_DUPLA = String.fromCharCode(34);
+  const ASPA_SIMPLES = String.fromCharCode(39);
+  const MAPA_ESC = { '&': '&amp;', '<': '&lt;', '>': '&gt;' };
+  MAPA_ESC[ASPA_DUPLA] = '&quot;';
+  MAPA_ESC[ASPA_SIMPLES] = '&#39;';
+  const RE_ESC = new RegExp('[&<>' + ASPA_DUPLA + ASPA_SIMPLES + ']', 'g');
+  const esc = (s) => String(s == null ? '' : s).replace(RE_ESC, (c) => MAPA_ESC[c]);
+
+  // Mesmo parser do servidor (utils/precos.js), só pra confirmar na tela o
+  // que o valor digitado significa. Quem valida de verdade é o servidor.
+  function parsePrecoBR(texto) {
+    const t = String(texto == null ? '' : texto).trim();
+    if (!t) return NaN;
+    let normalizado = t;
+    if (t.indexOf(',') !== -1) {
+      normalizado = t.replace(/\./g, '').replace(',', '.');
+    } else if (t.indexOf('.') !== -1) {
+      const partes = t.split('.');
+      if (partes.length > 1 && partes.slice(1).every((p) => p.length === 3)) normalizado = t.replace(/\./g, '');
+    }
+    if (!/^\d+(\.\d+)?$/.test(normalizado)) return NaN;
+    return parseFloat(normalizado);
+  }
+
+  function dicaMeta(input, alvo) {
+    const bruto = input.value.trim();
+    if (!bruto) { alvo.textContent = 'sem cobrança de meta'; alvo.className = 'dica-preco'; return; }
+    const v = parsePrecoBR(bruto);
+    if (!Number.isInteger(v) || v < 1) { alvo.textContent = 'use inteiro ≥ 1'; alvo.className = 'dica-preco vazio'; return; }
+    alvo.textContent = fmtInt(v) + '/semana';
+    alvo.className = 'dica-preco';
+  }
+
+  function dicaValor(input, alvo) {
+    const bruto = input.value.trim();
+    if (!bruto) { alvo.textContent = 'não é pago'; alvo.className = 'dica-preco vazio'; return; }
+    const v = parsePrecoBR(bruto);
+    if (!isFinite(v) || v <= 0) { alvo.textContent = 'valor inválido'; alvo.className = 'dica-preco vazio'; return; }
+    alvo.textContent = formatarMoeda(v) + '/un';
+    alvo.className = 'dica-preco';
+  }
+
+  let timerMsg = null;
+  function mostrarMsg(texto, tipo) {
+    const m = el('msg');
+    m.textContent = texto;
+    m.className = 'msg ' + (tipo || 'ok');
+    clearTimeout(timerMsg);
+    timerMsg = setTimeout(() => m.classList.add('oculto'), tipo === 'erro' ? 8000 : 4000);
+  }
+
+  async function api(url, opts) {
+    const res = await fetch(url, opts);
+    if (res.status === 401) { window.location.href = '/login'; throw new Error('Sessão expirada'); }
+    let dados = null;
+    try { dados = await res.json(); } catch (e) { dados = null; }
+    if (!res.ok) throw new Error((dados && dados.error) || 'Não consegui falar com o servidor. Tente de novo.');
+    return dados;
+  }
+
+  function paraCampo(v) {
+    if (v == null) return '';
+    return Number.isInteger(Number(v)) ? String(Number(v)) : String(Number(v)).replace('.', ',');
+  }
+
+  function abrirConfirma(titulo, html, rotuloOk, perigoso, fn) {
+    el('confirmaTitulo').textContent = titulo;
+    el('confirmaTexto').innerHTML = html;
+    el('confirmaOk').textContent = rotuloOk;
+    el('confirmaOk').className = 'btn' + (perigoso ? ' btn-perigo solido' : '');
+    aoConfirmar = fn;
+    modal.classList.remove('oculto');
+    el('confirmaCancelar').focus();
+  }
+  function fecharConfirma() { modal.classList.add('oculto'); aoConfirmar = null; }
+  el('confirmaCancelar').addEventListener('click', fecharConfirma);
+  modal.addEventListener('click', (e) => { if (e.target === modal) fecharConfirma(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !modal.classList.contains('oculto')) fecharConfirma(); });
+  el('confirmaOk').addEventListener('click', async () => {
+    const fn = aoConfirmar;
+    if (!fn) return;
+    el('confirmaOk').disabled = true;
+    try { await fn(); fecharConfirma(); }
+    catch (err) { mostrarMsg('❌ ' + err.message, 'erro'); }
+    finally { el('confirmaOk').disabled = false; }
+  });
+
+  function montarAvisos() {
+    const avisos = [];
+    const ativos = itens.filter((i) => i.ativo);
+
+    const semPagamento = ativos.filter((i) => i.valorUnidade == null);
+    if (semPagamento.length > 0) {
+      avisos.push('🔴 <strong>Sem valor por unidade:</strong> ' + semPagamento.map((i) => esc(i.nome)).join(', ') +
+        '. O valor da entrega só é calculado na aprovação — aprovar uma entrega desses materiais agora <strong>não paga nada</strong> e ninguém é avisado.');
+    }
+    const semMeta = ativos.filter((i) => i.meta == null);
+    if (semMeta.length > 0) {
+      avisos.push('ℹ️ <strong>Sem meta:</strong> ' + semMeta.map((i) => esc(i.nome)).join(', ') +
+        '. Podem ser entregues, mas não contam na cobrança de segunda-feira.');
+    }
+    const duplicados = itens.filter((i) => i.duplicado);
+    if (duplicados.length > 0) {
+      avisos.push('⚠️ <strong>Nome repetido:</strong> ' + [...new Set(duplicados.map((i) => i.nome))].map(esc).join(', ') +
+        '. O histórico de entregas casa pelo nome, então materiais homônimos dividem meta e teto entre si.');
+    }
+    const inativosComPendencia = itens.filter((i) => !i.ativo && i.entregasPendentes > 0);
+    if (inativosComPendencia.length > 0) {
+      avisos.push('📌 <strong>Aposentado com entrega pendente:</strong> ' +
+        inativosComPendencia.map((i) => esc(i.nome) + ' (' + i.entregasPendentes + ')').join(', ') +
+        '. Continuam pagáveis — só não deixe o valor por unidade em branco antes de aprovar.');
+    }
+    el('avisos').innerHTML = avisos.map((a) => '<div class="aviso">' + a + '</div>').join('');
+  }
+
+  function montarLinha(it) {
+    const row = document.createElement('div');
+    row.className = 'produto' + (it.ativo ? '' : ' inativo');
+
+    const campoNome = document.createElement('div');
+    campoNome.className = 'campo campo-nome';
+    campoNome.innerHTML = '<label>Material</label>';
+    const inpNome = document.createElement('input');
+    inpNome.type = 'text';
+    inpNome.value = it.nome;
+    inpNome.maxLength = 100;
+    inpNome.setAttribute('aria-label', 'Nome do material');
+    campoNome.appendChild(inpNome);
+
+    function campo(rotulo, valor, pintor) {
+      const div = document.createElement('div');
+      div.className = 'campo';
+      div.innerHTML = '<label>' + rotulo + '</label>';
+      const inp = document.createElement('input');
+      inp.type = 'text';
+      inp.className = 'preco';
+      inp.placeholder = '—';
+      inp.inputMode = 'decimal';
+      inp.value = paraCampo(valor);
+      inp.setAttribute('aria-label', rotulo + ' de ' + it.nome);
+      const dica = document.createElement('div');
+      dica.className = 'dica-preco';
+      div.append(inp, dica);
+      inp.addEventListener('input', () => { pintor(inp, dica); marcar(); });
+      pintor(inp, dica);
+      return { div: div, input: inp };
+    }
+
+    const meta = campo('Meta semanal', it.meta, dicaMeta);
+    const valor = campo('R$ / unidade', it.valorUnidade, dicaValor);
+
+    const acoes = document.createElement('div');
+    acoes.className = 'produto-acoes';
+    const btnSalvar = document.createElement('button');
+    btnSalvar.type = 'button';
+    btnSalvar.className = 'btn';
+    btnSalvar.textContent = 'Salvar';
+    btnSalvar.disabled = true;
+
+    const btnStatus = document.createElement('button');
+    btnStatus.type = 'button';
+    btnStatus.className = 'btn ' + (it.ativo ? 'btn-perigo' : 'btn-fantasma');
+    btnStatus.textContent = it.ativo ? 'Desativar' : 'Reativar';
+
+    acoes.append(btnSalvar, btnStatus);
+
+    // Só material que nunca apareceu em entrega pode ser apagado de vez
+    if (it.entregas === 0) {
+      const btnExcluir = document.createElement('button');
+      btnExcluir.type = 'button';
+      btnExcluir.className = 'btn btn-perigo';
+      btnExcluir.textContent = 'Excluir';
+      btnExcluir.addEventListener('click', () => {
+        abrirConfirma('Excluir material', 'Apagar <strong>' + esc(it.nome) + '</strong> de vez? Ele nunca apareceu em nenhuma entrega, então nada de histórico se perde.', 'Excluir', true, async () => {
+          await api('/api/admin/farm/itens/' + encodeURIComponent(it.id), { method: 'DELETE' });
+          mostrarMsg('🗑️ ' + it.nome + ' excluído.', 'ok');
+          await carregar();
+        });
+      });
+      acoes.appendChild(btnExcluir);
+    }
+
+    const metaInfo = document.createElement('div');
+    metaInfo.className = 'produto-meta';
+    const partes = [];
+    if (!it.ativo) partes.push('<span class="selo inativo">aposentado</span>');
+    if (it.entregasPendentes > 0) partes.push('<span class="selo pendente">' + it.entregasPendentes + ' entrega(s) esperando aprovação</span>');
+    partes.push(it.entregas > 0 ? fmtInt(it.entregas) + ' entrega(s) no histórico' : 'nunca entregue');
+    if (it.meta != null && it.meta > limiteSemanal) {
+      partes.push('<span class="marca-aviso">⚠️ meta acima do teto semanal de ' + fmtInt(limiteSemanal) + ' — impossível cumprir</span>');
+    }
+    metaInfo.innerHTML = partes.map((t) => '<span>' + t + '</span>').join('');
+
+    function alterado() {
+      return inpNome.value.trim() !== it.nome ||
+        meta.input.value.trim() !== paraCampo(it.meta) ||
+        valor.input.value.trim() !== paraCampo(it.valorUnidade);
+    }
+    function marcar() {
+      const mudou = alterado();
+      btnSalvar.disabled = !mudou;
+      row.classList.toggle('alterado', mudou);
+    }
+    inpNome.addEventListener('input', marcar);
+
+    async function salvar(ativo) {
+      const nome = inpNome.value.trim();
+      if (!nome) { mostrarMsg('Informe o nome do material.', 'erro'); inpNome.focus(); return; }
+      await api('/api/admin/farm/itens/' + encodeURIComponent(it.id), {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nome: nome, meta: meta.input.value, valorUnidade: valor.input.value, ativo: ativo }),
+      });
+      await carregar();
+    }
+
+    btnSalvar.addEventListener('click', async () => {
+      const nomeNovo = inpNome.value.trim();
+      const gravar = async () => {
+        btnSalvar.disabled = true;
+        btnSalvar.textContent = 'Salvando…';
+        try { await salvar(it.ativo); mostrarMsg('✅ ' + nomeNovo + ' atualizado.', 'ok'); }
+        catch (err) { mostrarMsg('❌ ' + err.message, 'erro'); btnSalvar.disabled = false; btnSalvar.textContent = 'Salvar'; }
+      };
+      // Renomear é a única mudança que mexe com o histórico: o teto semanal e
+      // a cobrança de meta procuram o que foi entregue pelo NOME
+      if (nomeNovo !== it.nome && it.entregas > 0) {
+        abrirConfirma('Renomear material',
+          'Renomear <strong>' + esc(it.nome) + '</strong> para <strong>' + esc(nomeNovo) + '</strong>?<br><br>' +
+          'O controle de quanto cada pessoa já entregou na semana procura pelo <strong>nome</strong>. Renomeando no meio da semana, ' +
+          'o que foi entregue como "' + esc(it.nome) + '" deixa de contar: o teto semanal zera (dá pra receber de novo pelo mesmo material) ' +
+          'e a meta desta semana passa a ignorar essas entregas na virada de segunda.<br><br>' +
+          'O momento seguro é logo depois da virada de segunda-feira.',
+          'Renomear mesmo assim', true, gravar);
+        return;
+      }
+      await gravar();
+    });
+
+    btnStatus.addEventListener('click', () => {
+      if (it.ativo) {
+        const aviso = it.entregasPendentes > 0
+          ? '<br><br>Tem <strong>' + it.entregasPendentes + ' entrega(s)</strong> desse material esperando aprovação. Elas continuam sendo pagas normalmente — desativar não mexe nisso.'
+          : '';
+        abrirConfirma('Aposentar material',
+          '<strong>' + esc(it.nome) + '</strong> sai do formulário de Entregar Meta e deixa de ser cobrado na virada de segunda.' +
+          aviso + '<br><br>Dá pra reativar quando quiser.',
+          'Desativar', false, async () => {
+            await salvar(false);
+            mostrarMsg('⏸️ ' + it.nome + ' aposentado.', 'ok');
+          });
+      } else {
+        abrirConfirma('Reativar material',
+          '<strong>' + esc(it.nome) + '</strong> volta pro formulário de entrega e volta a ser cobrado na meta semanal.',
+          'Reativar', false, async () => {
+            await salvar(true);
+            mostrarMsg('▶️ ' + it.nome + ' reativado.', 'ok');
+          });
+      }
+    });
+
+    [inpNome, meta.input, valor.input].forEach((i) => {
+      i.addEventListener('keydown', (e) => { if (e.key === 'Enter' && alterado()) { e.preventDefault(); btnSalvar.click(); } });
+    });
+
+    row.append(campoNome, meta.div, valor.div, acoes, metaInfo);
+    return row;
+  }
+
+  function renderizar() {
+    montarAvisos();
+    const ativos = itens.filter((i) => i.ativo);
+    const inativos = itens.filter((i) => !i.ativo);
+
+    el('contador').textContent = ativos.length ? '(' + ativos.length + ')' : '';
+    el('notaTeto').textContent = 'Teto semanal por material: ' + fmtInt(limiteSemanal) +
+      ' unidades pagas por pessoa (configurado no Discord, em Farm > Limite Semanal por Item).';
+
+    const lista = el('listaAtivos');
+    lista.innerHTML = '';
+    if (ativos.length === 0) {
+      lista.innerHTML = '<div class="vazio">Nenhum material em cobrança. Cadastre o primeiro acima.</div>';
+    } else {
+      ativos.forEach((i) => lista.appendChild(montarLinha(i)));
+    }
+
+    const listaIn = el('listaInativos');
+    listaIn.innerHTML = '';
+    el('blocoInativos').classList.toggle('oculto', inativos.length === 0);
+    inativos.forEach((i) => listaIn.appendChild(montarLinha(i)));
+  }
+
+  async function carregar() {
+    try {
+      const dados = await api('/api/admin/farm/itens');
+      itens = dados.itens || [];
+      limiteSemanal = dados.limiteSemanal || 2000;
+      renderizar();
+    } catch (err) {
+      if (err.message === 'Sessão expirada') return;
+      el('listaAtivos').innerHTML = '<div class="vazio">❌ ' + esc(err.message) + '</div>';
+    }
+  }
+
+  el('novaMeta').addEventListener('input', () => dicaMeta(el('novaMeta'), el('dicaNovaMeta')));
+  el('novoValor').addEventListener('input', () => dicaValor(el('novoValor'), el('dicaNovoValor')));
+  dicaMeta(el('novaMeta'), el('dicaNovaMeta'));
+  dicaValor(el('novoValor'), el('dicaNovoValor'));
+
+  el('formNovo').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const nome = el('novoNome').value.trim();
+    if (!nome) { mostrarMsg('Informe o nome do material.', 'erro'); el('novoNome').focus(); return; }
+
+    el('btnNovo').disabled = true;
+    el('spinnerNovo').classList.remove('oculto');
+    try {
+      await api('/api/admin/farm/itens', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nome: nome, meta: el('novaMeta').value, valorUnidade: el('novoValor').value }),
+      });
+      mostrarMsg('✅ ' + nome + ' cadastrado.', 'ok');
+      el('novoNome').value = '';
+      el('novoNome').focus();
+      await carregar();
+    } catch (err) {
+      mostrarMsg('❌ ' + err.message, 'erro');
+    } finally {
+      el('btnNovo').disabled = false;
+      el('spinnerNovo').classList.add('oculto');
+    }
+  });
+
+  window.addEventListener('beforeunload', (e) => {
+    if (document.querySelector('.produto.alterado')) { e.preventDefault(); e.returnValue = ''; }
+  });
+
+  fetch('/api/vendas/me').then((r) => r.json())
+    .then((u) => { el('nomeUsuario').textContent = (u && u.nome) || '—'; })
+    .catch(() => { el('nomeUsuario').textContent = '—'; });
+
+  carregar();
+})();
+</script>
+</body>
+</html>

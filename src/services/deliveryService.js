@@ -247,6 +247,36 @@ async function getQuantidadeEntregueSemanaAtual(guildId, discordId) {
   }
 }
 
+// Quantas entregas já citaram cada material, e quantas delas ainda esperam
+// aprovação. O painel usa isso pra decidir o que pode ser excluído de vez
+// (material que nunca apareceu em entrega) e pra avisar quando desativar um
+// material que ainda tem entrega pendente - o valor dela só é calculado na
+// aprovação. A junção é pelo NOME porque é assim que itens_entregues guarda.
+async function contarEntregasPorItem(guildId) {
+  try {
+    const result = await pool.query(
+      `SELECT ie.item_nome,
+              COUNT(*)::int AS total,
+              COUNT(*) FILTER (WHERE e.status = 'pendente_aprovacao')::int AS pendentes,
+              COUNT(*) FILTER (WHERE e.status = 'aprovada')::int AS aprovadas
+       FROM itens_entregues ie
+       JOIN entregas_farm e ON ie.entrega_id = e.id
+       JOIN servidores s ON e.servidor_id = s.id
+       WHERE s.guild_id = $1
+       GROUP BY ie.item_nome`,
+      [guildId]
+    );
+    const porNome = {};
+    for (const r of result.rows) {
+      porNome[r.item_nome] = { total: r.total, pendentes: r.pendentes, aprovadas: r.aprovadas };
+    }
+    return porNome;
+  } catch (error) {
+    console.error('Erro ao contar entregas por item:', error);
+    throw error;
+  }
+}
+
 // Estatísticas de entregas aprovadas: total de entregas e soma de unidades
 // entregues. Passe `desde` pra filtrar (ex: início da semana vigente); sem
 // isso, conta o histórico inteiro.
@@ -430,6 +460,7 @@ module.exports = {
   getApprovedDeliveries,
   getQuantidadeEntregueSemanaAtual,
   getQuantidadeAprovadaUltimosDias,
+  contarEntregasPorItem,
   getEstatisticasEntregas,
   getRankingEntregas,
   getTotaisPorItem,

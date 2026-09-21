@@ -2,6 +2,7 @@ const serverService = require('../services/serverService');
 const deliveryService = require('../services/deliveryService');
 const memberService = require('../services/memberService');
 const { postarFechamentoSemanal } = require('../utils/fechamentoSemanal');
+const { metasAtivas } = require('../utils/farmItens');
 const { agoraEmBrasiliaComoUTC } = require('../utils/horarioBrasil');
 
 // Usa o horário de Brasília em vez do fuso do processo (Railway roda em
@@ -117,7 +118,7 @@ module.exports = {
               // por item). Sem nenhuma meta configurada, cai no fallback de
               // "entregou pelo menos alguma coisa aprovada".
               const agora = new Date();
-              const metas = config.farm.metas || {};
+              const metas = metasAtivas(config);
               const temMetaConfigurada = Object.values(metas).some(m => (m.meta_semanal || 0) > 0);
 
               let metaCumprida;

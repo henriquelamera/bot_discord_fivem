@@ -3,6 +3,7 @@ const path = require('path');
 const crypto = require('crypto');
 const serverService = require('../services/serverService');
 const vendaService = require('../services/vendaService');
+const deliveryService = require('../services/deliveryService');
 const { parsePrecoBR, normalizarNomeProduto } = require('../utils/precos');
 
 const SESSAO_DURACAO_MS = 12 * 60 * 60 * 1000; // 12h
@@ -606,6 +607,239 @@ function iniciarServidorWeb(client) {
     } catch (err) {
       console.error('Erro ao excluir produto:', err);
       res.status(500).json({ error: 'Erro ao excluir o produto.' });
+    }
+  });
+
+  // ===== Painel de materiais de farm (só Administrador) =====
+
+  // Meta e valor por unidade aceitam branco, com significados diferentes:
+  // meta em branco = material entregue sem cobrança de quantidade (não gera
+  // ADV); valor em branco = material entregue mas não pago.
+  function lerDadosItemFarm(body) {
+    const nome = String(body?.nome ?? '').trim();
+    if (!nome) return { erro: 'Informe o nome do material.' };
+    if (nome.length > 100) return { erro: 'O nome do material pode ter no máximo 100 caracteres.' };
+
+    const saida = { nome, ativo: body?.ativo !== false };
+
+    const brutoMeta = body?.meta;
+    if (brutoMeta === null || brutoMeta === undefined || String(brutoMeta).trim() === '') {
+      saida.meta = null;
+    } else {
+      const meta = parsePrecoBR(brutoMeta);
+      if (!Number.isInteger(meta) || meta < 1) {
+        return { erro: `Meta: "${String(brutoMeta).trim()}" não serve. Use um número inteiro de 1 pra cima, ou deixe em branco pra não cobrar meta desse material.` };
+      }
+      if (meta > 10000000) return { erro: 'Meta: valor alto demais.' };
+      saida.meta = meta;
+    }
+
+    const brutoValor = body?.valorUnidade;
+    if (brutoValor === null || brutoValor === undefined || String(brutoValor).trim() === '') {
+      saida.valorUnidade = null;
+    } else {
+      const valor = parsePrecoBR(brutoValor);
+      if (!Number.isFinite(valor) || valor <= 0) {
+        return { erro: `Valor por unidade: não entendi "${String(brutoValor).trim()}". Use só números, ex: 15 ou 1.500,50.` };
+      }
+      if (valor > 99999999) return { erro: 'Valor por unidade: alto demais.' };
+      saida.valorUnidade = Math.round(valor * 100) / 100;
+    }
+
+    return saida;
+  }
+
+  // Grava meta e pagamento de um item. O nome é copiado junto porque a
+  // cobrança semanal de ADV procura o que foi entregue pelo NOME guardado
+  // aqui - deixar uma cópia velha pra trás faria a meta parar de bater.
+  function aplicarMetaEPagamento(config, item, dados) {
+    const agora = new Date().toISOString();
+    if (!config.farm.metas) config.farm.metas = {};
+    if (!config.farm.pagamentos) config.farm.pagamentos = {};
+
+    if (dados.meta === null) delete config.farm.metas[item.id];
+    else config.farm.metas[item.id] = { nome: dados.nome, meta_semanal: dados.meta, data_atualizacao: agora };
+
+    if (dados.valorUnidade === null) delete config.farm.pagamentos[item.id];
+    else config.farm.pagamentos[item.id] = { nome: dados.nome, valor_unidade: dados.valorUnidade, data_atualizacao: agora };
+  }
+
+  // Soma o uso de um material considerando TODOS os nomes que ele já teve.
+  // itens_entregues guarda o nome usado na hora da entrega, então depois de
+  // renomear o nome atual não acha mais o histórico - e a trava que impede
+  // excluir material com entrega pendente deixaria passar.
+  function usoDoItem(usoPorNome, item) {
+    const nomes = [item.nome, ...(item.nomes_anteriores || [])];
+    const total = { total: 0, pendentes: 0, aprovadas: 0 };
+    for (const nome of nomes) {
+      const u = usoPorNome[nome];
+      if (!u) continue;
+      total.total += u.total;
+      total.pendentes += u.pendentes;
+      total.aprovadas += u.aprovadas;
+    }
+    return total;
+  }
+
+  function registrarLogFarm(req, acao, descricao) {
+    serverService
+      .logAction(guildId, req.discordUser.id, acao, `${req.discordUser.nome}: ${descricao}`)
+      .catch((err) => console.error('Erro ao registrar log de material de farm:', err.message));
+  }
+
+  app.get('/admin/farm', requireAuth, requireAdmin, (req, res) => {
+    res.sendFile(path.join(__dirname, 'views', 'farm.html'));
+  });
+
+  app.get('/api/admin/farm/itens', requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const config = await serverService.getConfig(guildId);
+      const itens = config.farm?.itens || [];
+      const metas = config.farm?.metas || {};
+      const pagamentos = config.farm?.pagamentos || {};
+      const entregasPorNome = await deliveryService.contarEntregasPorItem(guildId).catch(() => ({}));
+
+      const quantosComOMesmoNome = new Map();
+      for (const i of itens) {
+        const chave = normalizarNomeProduto(i.nome);
+        quantosComOMesmoNome.set(chave, (quantosComOMesmoNome.get(chave) || 0) + 1);
+      }
+
+      res.json({
+        limiteSemanal: config.farm?.limite_semanal_item || 2000,
+        itens: itens.map((i) => {
+          const uso = usoDoItem(entregasPorNome, i);
+          return {
+            id: i.id,
+            nome: i.nome,
+            ativo: i.ativo !== false,
+            meta: metas[i.id]?.meta_semanal ?? null,
+            valorUnidade: pagamentos[i.id]?.valor_unidade ?? null,
+            entregas: uso.total,
+            entregasPendentes: uso.pendentes,
+            duplicado: (quantosComOMesmoNome.get(normalizarNomeProduto(i.nome)) || 0) > 1,
+            criadoEm: i.data_criacao || null,
+          };
+        }),
+      });
+    } catch (err) {
+      console.error('Erro ao listar materiais de farm:', err);
+      res.status(500).json({ error: 'Erro ao carregar os materiais.' });
+    }
+  });
+
+  app.post('/api/admin/farm/itens', requireAuth, requireAdmin, async (req, res) => {
+    const dados = lerDadosItemFarm(req.body);
+    if (dados.erro) return res.status(400).json({ error: dados.erro });
+
+    try {
+      const config = await serverService.getConfig(guildId);
+      if (!config.farm) config.farm = {};
+      if (!config.farm.itens) config.farm.itens = [];
+
+      const igual = nomeJaUsado(config.farm.itens, dados.nome, null);
+      if (igual) {
+        return res.status(409).json({
+          error: `Já existe o material "${igual.nome}". Edite ele em vez de cadastrar outro igual — dois materiais com o mesmo nome dividem o histórico de entregas e bagunçam a meta.`,
+        });
+      }
+
+      const item = {
+        id: `${Date.now()}_${crypto.randomBytes(4).toString('hex')}`,
+        nome: dados.nome,
+        descricao: '',
+        data_criacao: new Date().toISOString(),
+        ativo: true,
+      };
+      config.farm.itens.push(item);
+      aplicarMetaEPagamento(config, item, dados);
+
+      await serverService.saveConfig(guildId, config);
+      registrarLogFarm(req, 'farm_item_criado', `criou o material "${dados.nome}" (meta ${dados.meta ?? '—'}, R$ ${dados.valorUnidade ?? '—'}/un)`);
+      res.json({ success: true, id: item.id });
+    } catch (err) {
+      console.error('Erro ao criar material de farm:', err);
+      res.status(500).json({ error: 'Erro ao salvar o material.' });
+    }
+  });
+
+  app.put('/api/admin/farm/itens/:id', requireAuth, requireAdmin, async (req, res) => {
+    const dados = lerDadosItemFarm(req.body);
+    if (dados.erro) return res.status(400).json({ error: dados.erro });
+
+    try {
+      const config = await serverService.getConfig(guildId);
+      const itens = config.farm?.itens || [];
+      const item = itens.find((i) => i.id === req.params.id);
+      if (!item) return res.status(404).json({ error: 'Material não encontrado — recarregue a página.' });
+
+      const igual = nomeJaUsado(itens, dados.nome, item.id);
+      if (igual) return res.status(409).json({ error: `Já existe outro material chamado "${igual.nome}".` });
+
+      const antes = {
+        nome: item.nome,
+        ativo: item.ativo !== false,
+        meta: config.farm.metas?.[item.id]?.meta_semanal ?? null,
+        valor: config.farm.pagamentos?.[item.id]?.valor_unidade ?? null,
+      };
+
+      if (antes.nome !== dados.nome) {
+        // Guarda o nome antigo: e a unica pista de que o historico de
+        // entregas daquele material esta gravado com outro nome
+        const anteriores = item.nomes_anteriores || [];
+        if (!anteriores.includes(antes.nome)) anteriores.push(antes.nome);
+        item.nomes_anteriores = anteriores.slice(-10);
+      }
+      item.nome = dados.nome;
+      item.ativo = dados.ativo;
+      aplicarMetaEPagamento(config, item, dados);
+
+      await serverService.saveConfig(guildId, config);
+
+      const mudancas = [];
+      if (antes.nome !== dados.nome) mudancas.push(`nome "${antes.nome}" -> "${dados.nome}"`);
+      if (antes.ativo !== dados.ativo) mudancas.push(dados.ativo ? 'reativado' : 'DESATIVADO');
+      if (antes.meta !== dados.meta) mudancas.push(`meta ${antes.meta ?? '—'} -> ${dados.meta ?? '—'}`);
+      if (antes.valor !== dados.valorUnidade) mudancas.push(`R$/un ${antes.valor ?? '—'} -> ${dados.valorUnidade ?? '—'}`);
+      registrarLogFarm(req, 'farm_item_editado', `editou "${dados.nome}" (${mudancas.join('; ') || 'sem mudanças'})`);
+
+      res.json({ success: true });
+    } catch (err) {
+      console.error('Erro ao editar material de farm:', err);
+      res.status(500).json({ error: 'Erro ao salvar as alterações.' });
+    }
+  });
+
+  app.delete('/api/admin/farm/itens/:id', requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const config = await serverService.getConfig(guildId);
+      const itens = config.farm?.itens || [];
+      const indice = itens.findIndex((i) => i.id === req.params.id);
+      if (indice === -1) return res.status(404).json({ error: 'Material não encontrado — recarregue a página.' });
+
+      const item = itens[indice];
+      // Material que já apareceu em entrega não pode ser apagado: o valor de
+      // uma entrega só é calculado na aprovação, lendo o pagamento daqui, e
+      // o histórico de metas ficaria sem referência. Pra esses, desativar.
+      const uso = await deliveryService.contarEntregasPorItem(guildId).catch(() => ({}));
+      const usado = usoDoItem(uso, item);
+      if (usado.total > 0) {
+        return res.status(409).json({
+          error: `"${item.nome}" já aparece em ${usado.total} entrega(s)${usado.pendentes ? ` (${usado.pendentes} ainda esperando aprovação)` : ''}. Excluir apagaria a referência de pagamento delas. Use **Desativar**: o material some do formulário de entrega e da cobrança de meta, mas as entregas que já existem continuam sendo pagas.`,
+          sugerirDesativar: true,
+        });
+      }
+
+      itens.splice(indice, 1);
+      if (config.farm.metas) delete config.farm.metas[item.id];
+      if (config.farm.pagamentos) delete config.farm.pagamentos[item.id];
+
+      await serverService.saveConfig(guildId, config);
+      registrarLogFarm(req, 'farm_item_excluido', `excluiu o material "${item.nome}" (nunca usado em entrega)`);
+      res.json({ success: true, nome: item.nome });
+    } catch (err) {
+      console.error('Erro ao excluir material de farm:', err);
+      res.status(500).json({ error: 'Erro ao excluir o material.' });
     }
   });
 

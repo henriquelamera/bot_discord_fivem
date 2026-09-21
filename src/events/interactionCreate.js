@@ -9,6 +9,7 @@ const { marcarAguardandoImagem, desmarcarAguardandoImagem, estaAguardandoImagem,
 const { salvarRecrutador, pegarRecrutador, limparRecrutador } = require('../utils/registroTracker');
 const { salvarProdutoParceria, pegarProdutoParceria, limparProdutoParceria } = require('../utils/parceriaTracker');
 const { formatarMoeda, calcularPagamentosPorMembro } = require('../utils/farmPagamentos');
+const { itensAtivosFarm } = require('../utils/farmItens');
 const { parsePrecoBR } = require('../utils/precos');
 const { postarFechamentoSemanal, removerEntregaDosFechamentosPendentes, limparCardsFechamento } = require('../utils/fechamentoSemanal');
 
@@ -234,7 +235,7 @@ async function limparMensagensCanal(canal, limiteCiclos = 50) {
 // 2 = próximos 5, etc). customId da página 1 fica igual ao antigo
 // ('modal_cadastro_meta') pra não quebrar quem já usa esse fluxo.
 function construirModalMetas(config, pagina) {
-  const itens = config.farm?.itens || [];
+  const itens = itensAtivosFarm(config);
   const totalPaginas = Math.max(1, Math.ceil(itens.length / ITENS_POR_MODAL_META));
   const inicio = (pagina - 1) * ITENS_POR_MODAL_META;
   const itensPagina = itens.slice(inicio, inicio + ITENS_POR_MODAL_META);
@@ -289,7 +290,7 @@ function construirModalEntregarMeta(itens, pagina) {
 // Mesma paginação de construirModalMetas, só que pro modal de valor por
 // unidade de pagamento (também limitado a 5 campos por modal do Discord)
 function construirModalPagamento(config, pagina) {
-  const itens = config.farm?.itens || [];
+  const itens = itensAtivosFarm(config);
   const totalPaginas = Math.max(1, Math.ceil(itens.length / ITENS_POR_MODAL_META));
   const inicio = (pagina - 1) * ITENS_POR_MODAL_META;
   const itensPagina = itens.slice(inicio, inicio + ITENS_POR_MODAL_META);
@@ -571,7 +572,7 @@ async function concederPromocaoHierarquia(config, guild, userId, solicitacao, ca
 // Monta o bloco de texto com metas de farm, prazo de entrega e as
 // implicações de não entregar no prazo. Só lista itens com meta definida.
 function montarInfoFarm(config) {
-  const itens = config.farm?.itens || [];
+  const itens = itensAtivosFarm(config);
   const metas = config.farm?.metas || {};
 
   const itensComMeta = itens.filter((item) => metas[item.id]?.meta_semanal);
@@ -997,7 +998,7 @@ module.exports = {
 
         const config = await serverService.getConfig(interaction.guild.id);
         const guildId = interaction.guild.id;
-        const itens = config.farm?.itens || [];
+        const itens = itensAtivosFarm(config);
         const cargoAprovadoresIds = config.farm?.cargo_pagamento || [];
 
         if (!cargoAprovadoresIds || cargoAprovadoresIds.length === 0) {
@@ -1462,7 +1463,7 @@ module.exports = {
         if (!config.farm) config.farm = {};
         if (!config.farm.metas) config.farm.metas = {};
 
-        const itens = config.farm.itens || [];
+        const itens = itensAtivosFarm(config);
         const totalPaginas = Math.max(1, Math.ceil(itens.length / ITENS_POR_MODAL_META));
         const inicio = (pagina - 1) * ITENS_POR_MODAL_META;
         // Só processa os itens que realmente apareceram NESSE modal - iterar
@@ -1523,7 +1524,7 @@ module.exports = {
         if (!config.farm) config.farm = {};
         if (!config.farm.pagamentos) config.farm.pagamentos = {};
 
-        const itens = config.farm.itens || [];
+        const itens = itensAtivosFarm(config);
         const totalPaginas = Math.max(1, Math.ceil(itens.length / ITENS_POR_MODAL_META));
         const inicio = (pagina - 1) * ITENS_POR_MODAL_META;
         // Só processa os itens dessa página - iterar por todos os itens
@@ -2502,7 +2503,7 @@ module.exports = {
       if (interaction.customId.startsWith('farm_entrega_pagina_')) {
         const pagina = parseInt(interaction.customId.replace('farm_entrega_pagina_', ''), 10);
         const config = await serverService.getConfig(interaction.guild.id);
-        const itens = config.farm?.itens || [];
+        const itens = itensAtivosFarm(config);
         const { modal } = construirModalEntregarMeta(itens, pagina);
         await interaction.showModal(modal);
       }
@@ -4418,7 +4419,7 @@ module.exports = {
         if (valor === 'farm_criar_metas') {
           const config = await serverService.getConfig(interaction.guild.id);
           const cargoIds = config.farm?.cargo_metas || [];
-          const itens = config.farm?.itens || [];
+          const itens = itensAtivosFarm(config);
           const metasExistentes = config.farm?.metas || {};
 
           if (!cargoIds || cargoIds.length === 0) {
@@ -4481,7 +4482,7 @@ module.exports = {
         if (valor === 'farm_criar_pagamento') {
           const config = await serverService.getConfig(interaction.guild.id);
           const cargoIds = config.farm?.cargo_pagamento || [];
-          const itens = config.farm?.itens || [];
+          const itens = itensAtivosFarm(config);
           const pagamentosExistentes = config.farm?.pagamentos || {};
 
           if (!cargoIds || cargoIds.length === 0) {
@@ -6789,7 +6790,7 @@ module.exports = {
 
       if (interaction.customId === 'entregar_meta') {
         const config = await serverService.getConfig(interaction.guild.id);
-        const itens = config.farm?.itens || [];
+        const itens = itensAtivosFarm(config);
 
         if (itens.length === 0) {
           return await interaction.reply({
