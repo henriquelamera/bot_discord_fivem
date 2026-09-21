@@ -861,6 +861,88 @@ function iniciarServidorWeb(client) {
     }
   });
 
+  // ===== Baús (canais privados de farm) =====
+
+  // O canal do baú é ligado à pessoa por uma permissão individual (é assim
+  // que criarCanalPrivadoFarm monta e que o guildMemberRemove acha depois).
+  // O nome do canal é só um apelido: não dá pra confiar nele.
+  function donoDoBau(canal) {
+    const overwrites = [...canal.permissionOverwrites.cache.values()];
+    const deMembro = overwrites.filter((po) => po.type === 1 && po.id !== client.user?.id);
+    // Quem tem permissão de escrever é a pessoa; responsáveis de farm entram
+    // por cargo, não por permissão individual
+    const escreve = deMembro.find((po) => po.allow?.has?.('SendMessages'));
+    return (escreve || deMembro[0])?.id || null;
+  }
+
+  async function listarBaus() {
+    const config = await serverService.getConfig(guildId);
+    const categoriaId = config.farm?.categoria_bau_id;
+    if (!categoriaId) throw new Error('Categoria de Baú não configurada (Discord: Farm > Categoria de Farm).');
+
+    const guild = client.guilds.cache.get(guildId);
+    if (!guild) throw new Error('Servidor do Discord não encontrado pelo bot.');
+
+    const categoria = guild.channels.cache.get(categoriaId);
+    if (!categoria) throw new Error('A Categoria de Baú configurada não existe mais no Discord.');
+
+    // Sem esse fetch o cache tem só quem "passou" pelo bot recentemente, e
+    // membro ativo apareceria como se tivesse saído
+    await guild.members.fetch();
+
+    const canais = [...categoria.children.cache.values()].filter((ch) => ch.type === 0);
+    return canais.map((ch) => {
+      const donoId = donoDoBau(ch);
+      const membro = donoId ? guild.members.cache.get(donoId) : null;
+      return {
+        canalId: ch.id,
+        nome: ch.name,
+        donoId,
+        donoNome: membro ? (membro.nickname || membro.user.globalName || membro.user.username) : null,
+        saiu: !!donoId && !membro,
+        semDono: !donoId,
+        criadoEm: ch.createdAt ? ch.createdAt.toISOString() : null,
+      };
+    }).sort((a, b) => (Number(b.saiu || b.semDono) - Number(a.saiu || a.semDono)) || a.nome.localeCompare(b.nome));
+  }
+
+  app.get('/api/admin/baus', requireAuth, requireAdmin, async (req, res) => {
+    try {
+      res.json({ baus: await listarBaus() });
+    } catch (err) {
+      console.error('Erro ao listar baús:', err.message);
+      res.status(400).json({ error: err.message });
+    }
+  });
+
+  app.delete('/api/admin/baus/:canalId', requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const baus = await listarBaus();
+      const alvo = baus.find((b) => b.canalId === req.params.canalId);
+      if (!alvo) return res.status(404).json({ error: 'Esse canal não está na categoria de baú — recarregue a página.' });
+
+      // Só apaga baú órfão. O canal guarda o histórico de entregas da pessoa,
+      // então apagar o de alguém que ainda está no servidor seria perda de
+      // dado sem volta - esse continua só pelo Discord, na mão.
+      if (!alvo.saiu && !alvo.semDono) {
+        return res.status(409).json({
+          error: `${alvo.donoNome || 'Essa pessoa'} ainda está no servidor. O painel só apaga baú de quem saiu — se precisar apagar esse, faça pelo Discord.`,
+        });
+      }
+
+      const guild = client.guilds.cache.get(guildId);
+      const canal = guild?.channels.cache.get(req.params.canalId);
+      if (!canal) return res.status(404).json({ error: 'Canal não encontrado no Discord.' });
+
+      await canal.delete('Baú de membro que saiu do servidor (painel web)');
+      registrarLogFarm(req, 'farm_bau_removido', `apagou o baú #${alvo.nome} (dono ${alvo.donoId || 'desconhecido'} não está mais no servidor)`);
+      res.json({ success: true, nome: alvo.nome });
+    } catch (err) {
+      console.error('Erro ao apagar baú:', err.message);
+      res.status(500).json({ error: 'Erro ao apagar o canal: ' + err.message });
+    }
+  });
+
   // ===== Relatório de vendas por período =====
 
   // Valida ?inicio=YYYY-MM-DD&fim=YYYY-MM-DD. Datas são dias no horário de
